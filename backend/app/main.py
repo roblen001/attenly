@@ -5,7 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.db import Base, engine
 from .routers import auth
 from pathlib import Path
-from app.supabase.config import SUPABASE_URL
+from backend.app.config import SUPABASE_URL
 
 app = FastAPI(title="Attenly", version="0.1.0")
 

@@ -2,6 +2,6 @@
 # that enable Python applications to interact with various Supabase services.
 
 from supabase import create_client, Client
-from .supabase.config import SUPABASE_URL, SUPABASE_KEY
+from .config import SUPABASE_URL, SUPABASE_KEY
 
 supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)

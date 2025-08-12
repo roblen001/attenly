@@ -1,4 +1,5 @@
 # FILE INFO: This config.py use to store Supabase URL and API key.
+# TODO delete restart when supabase set up backend
 import os
 from dotenv import load_dotenv
 

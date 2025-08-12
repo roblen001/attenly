@@ -7,12 +7,10 @@ import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
-import { VITE_SUPABASE_URL, VITE_SUPABASE_KEY } from config.tsx;
 
-const supabase = createClient(
-  "https://<project>.supabase.co",
-  "<your-anon-key>"
-);
+import { supabase } from "../supabaseClient";
+
+const { data } = await supabase.from("profiles").select("*");
 
 export default function App() {
   const [session, setSession] = useState(null);

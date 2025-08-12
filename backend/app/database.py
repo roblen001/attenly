@@ -23,14 +23,12 @@
 # By isolating database logic in database.py, developers can easily modify the database system or
 # its schema without significantly impacting other parts of the application.
 
+# TODO: check if I need to python -m pip install fastapi uvicorn jinja2, and other stuff shown in https://www.youtube.com/watch?v=PlZcgIMk3aw
+
 import os
 from supabase import create_client, Client
-from dotenv import load_dotenv
 
-load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 if not all([SUPABASE_URL, SUPABASE_KEY]):
     raise ValueError("Supabase URL and Key must be set in environment variables.")

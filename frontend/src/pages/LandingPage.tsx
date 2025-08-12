@@ -1,8 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import "./LandingPage.css";
 import { api } from "../libs/https";
+import { supabase } from "../config";
+
+import { createClient } from "@supabase/supabase-js";
+import { Database } from "./database_types";
 
 export default function LandingPage() {
+
   const navigate = useNavigate();
 
   const handleGetStarted = async () => {
@@ -10,8 +15,8 @@ export default function LandingPage() {
       const res = await api("/api/auth/signup", {
         method: "POST",
         body: JSON.stringify({
-          email: `guest+${crypto.randomUUID()}@example.com`,
-          hashed_password: "TempPass123!",
+          email: `guest@example.com`,
+          password: "TempPass123!",
           full_name: "Guest User",
         }),
       });

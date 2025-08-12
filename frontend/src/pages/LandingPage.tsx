@@ -11,7 +11,7 @@ export default function LandingPage() {
         method: "POST",
         body: JSON.stringify({
           email: `guest+${crypto.randomUUID()}@example.com`,
-          password: "TempPass123!",
+          hashed_password: "TempPass123!",
           full_name: "Guest User",
         }),
       });

@@ -52,7 +52,6 @@ export default function Dashboard() {
       setUser(me);
     } catch (e: unknown) {
       if ((e as { name?: string })?.name !== "AbortError") {
-        console.log("HI_____________");
         setErr(errorMessage(e) || "Failed to load user");
       }
     } finally {

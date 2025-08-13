@@ -3,9 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from app.db import Base, engine
-from .routers import auth
+from app.routers import auth
 from pathlib import Path
-from backend.app.config import SUPABASE_URL
+from app.config import SUPABASE_URL
 
 app = FastAPI(title="Attenly", version="0.1.0")
 

@@ -1,131 +1,75 @@
-// src/pages/Dashboard.tsx
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from 'react';
+import type { PrebuiltAgentOut } from '../types';
+import PrebuiltAgentCard from '../components/dashboard/PrebuiltAgentCard';
+import './Dashboard.css';
 import { api } from "../libs/https";
 
-type User = {
-  id: string;
-  email: string;
-  full_name?: string;
-  is_active?: boolean;
-  is_verified?: boolean;
-  created_at?: string; // ISO
-};
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
-}
-
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  const loadMe = async (signal?: AbortSignal): Promise<void> => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const res = await api("/api/auth/me", {
-        method: "GET",
-        credentials: "include",
-        headers: { Accept: "application/json" },
-        signal,
-      });
-
-      if (res.status === 401 || res.status === 403) {
-        navigate("/");
-        return;
-      }
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`${res.status} ${text}`);
-      }
-
-      const me: User = await res.json();
-      setUser(me);
-    } catch (e: unknown) {
-      if ((e as { name?: string })?.name !== "AbortError") {
-        setErr(errorMessage(e) || "Failed to load user");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [prebuiltAgents, setPrebuiltAgents] = useState<PrebuiltAgentOut[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadMe(controller.signal);
+
+    async function loadPrebuiltAgents() {
+      try {
+        const res = await api("/agents/prebuilt", {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          console.error("Failed to load prebuilt agents:", res.status, msg);
+          setPrebuiltAgents([]);
+          return;
+        }
+
+        const list = (await res.json()) as PrebuiltAgentOut[];    
+        const agents: PrebuiltAgentOut[] = list.map((a) => ({
+          ...a,
+        }));
+
+        setPrebuiltAgents(agents);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.error("Error loading prebuilt agents:", err);
+          setPrebuiltAgents([]);
+        }
+      }
+    }
+
+    loadPrebuiltAgents();
     return () => controller.abort();
   }, []);
 
-  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
-
-  if (err) {
-    return (
-      <div style={{ padding: 24 }}>
-        <p style={{ color: "crimson", marginBottom: 12 }}>{err}</p>
-        <button onClick={() => void loadMe()} style={{ marginRight: 8 }}>
-          Retry
-        </button>
-        <button onClick={() => navigate("/")}>Go to Home</button>
-      </div>
-    );
-  }
-
-  if (!user) return null;
-
-  const created = user.created_at
-    ? new Date(user.created_at).toLocaleString()
-    : "—";
-
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Dashboard</h1>
-      <ul>
-        <li>
-          <b>ID:</b> {user.id}
-        </li>
-        <li>
-          <b>Email:</b> {user.email}
-        </li>
-        <li>
-          <b>Name:</b> {user.full_name || "—"}
-        </li>
-        <li>
-          <b>Active:</b> {user.is_active ? "Yes" : "No"}
-        </li>
-        <li>
-          <b>Verified:</b> {user.is_verified ? "Yes" : "No"}
-        </li>
-        <li>
-          <b>Created:</b> {created}
-        </li>
-      </ul>
+    <div className="modern-dashboard">
+      <main className="dashboard-main">
+        <div className="dashboard-container">
+          {/* Featured Templates Section */}
+          <div className="featured-templates-section">
+            <div className="section-header">
+              <h2 className="section-title">
+                <span className="section-icon">⭐</span>
+                Featured Agents
+              </h2>
+              <p className="section-subtitle">
+                Start with these proven agents, then customize to your needs
+              </p>
+            </div>
 
-      <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-        <button onClick={() => void loadMe()}>Refresh</button>
-        <button
-          onClick={async () => {
-            try {
-              await api("/api/auth/logout", {
-                method: "POST",
-                credentials: "include",
-              });
-            } finally {
-              navigate("/");
-            }
-          }}
-        >
-          Sign out
-        </button>
-      </div>
+            <div className="templates-grid">
+              {prebuiltAgents.map((template) => (
+                <PrebuiltAgentCard
+                  key={template.id}
+                  agent={template}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

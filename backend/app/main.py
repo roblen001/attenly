@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from app.db import Base, engine 
-from .routers import auth
+from .routers import auth, agents
 from pathlib import Path
 
 app = FastAPI(title="Attenly", version="0.1.0")
@@ -26,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(agents.router)
 
 @app.get("/health")
 def health_check():

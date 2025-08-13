@@ -1,9 +1,12 @@
-// TODO createClient with anon key
 import { createClient } from '@supabase/supabase-js';
 
-export const supabase_client = createClient(
+console.log("SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
+console.log("SUPABASE_KEY:", import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL!,
   import.meta.env.VITE_SUPABASE_ANON_KEY!
+
 );
 
 

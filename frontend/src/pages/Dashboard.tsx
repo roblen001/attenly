@@ -3,7 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 type DashboardProps = {
   session: Session;
 };
-
+// TODO important to adjust supabase polies to include email confirmation and what not
 export default function Dashboard({ session }: DashboardProps) {
   const user = session.user;
 

@@ -1,15 +1,16 @@
-import type { PrebuiltAgentOut } from '../../types';
-import '../PrebuiltAgentCard.css';
+import type { Agent } from '../../types';
+import './PrebuiltAgentCard.css';
 
 interface PrebuiltAgentCardProps {
-  agent: Omit<PrebuiltAgentOut, 'createdAt' | 'updatedAt'>;
+  agent: Omit<Agent, 'createdAt' | 'updatedAt'>;
+  onSelectAgent : (agent: Omit<Agent, 'createdAt' | 'updatedAt'>) => void;
 }
 
-export default function PrebuiltAgentCard({agent}: PrebuiltAgentCardProps) {
+export default function PrebuiltAgentCard({agent, onSelectAgent}: PrebuiltAgentCardProps) {
   return (
-    <div className="prebuilt-agent-card">
+    <div className="prebuilt-agent-card" onClick={() => onSelectAgent(agent)}>
       <div className="card-header">
-        <div className="card-icon">
+        <div className="card-icon"> 
           <span className="template-badge">📋</span>
         </div>
         <div className="card-title">

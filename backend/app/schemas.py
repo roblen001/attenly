@@ -39,7 +39,7 @@ class BaseAgentOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class PrebuiltAgentOut(BaseAgentOut):
+class Agent(BaseAgentOut):
     """Schema for prebuilt agents loaded from JSON"""
     pass
 

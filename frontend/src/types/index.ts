@@ -4,10 +4,18 @@ export interface Question {
   prompt: string;
 }
 
-export interface PrebuiltAgentOut {
+export interface Agent {
   id: string;
   name: string;
   description?: string;
   reportTemplate: string; // mandatory for all agents
   questions: Question[];
+}
+
+export interface UploadedFile {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  status: 'uploading' | 'uploaded' | 'failed';
 }

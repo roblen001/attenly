@@ -1,11 +1,21 @@
 import { useState, useEffect } from 'react';
-import type { PrebuiltAgentOut } from '../types';
+import type { Agent } from '../types';
 import PrebuiltAgentCard from '../components/dashboard/PrebuiltAgentCard';
 import './Dashboard.css';
 import { api } from "../libs/https";
+import { useNavigate } from 'react-router-dom';
+
 
 export default function Dashboard() {
-  const [prebuiltAgents, setPrebuiltAgents] = useState<PrebuiltAgentOut[]>([]);
+  const navigate = useNavigate();
+  const [prebuiltAgents, setPrebuiltAgents] = useState<Agent[]>([]);
+
+  
+  const handleExecuteAgent = (agent: Agent) => {
+    navigate(`/agent-execution/${agent.id}`);
+  };
+
+
 
   useEffect(() => {
     const controller = new AbortController();
@@ -25,8 +35,8 @@ export default function Dashboard() {
           return;
         }
 
-        const list = (await res.json()) as PrebuiltAgentOut[];    
-        const agents: PrebuiltAgentOut[] = list.map((a) => ({
+        const list = (await res.json()) as Agent[];    
+        const agents: Agent[] = list.map((a) => ({
           ...a,
         }));
 
@@ -63,6 +73,7 @@ export default function Dashboard() {
               {prebuiltAgents.map((template) => (
                 <PrebuiltAgentCard
                   key={template.id}
+                  onSelectAgent={handleExecuteAgent}
                   agent={template}
                 />
               ))}

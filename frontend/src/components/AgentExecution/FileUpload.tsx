@@ -27,11 +27,11 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
       for (let i = 0; i < selectedFiles.length; i++) {
         formData.append('files', selectedFiles[i]);
       }
-
+      
       // Upload files to backend
       const response = await api('/agents/files/upload', {
         method: 'POST',
-        headers: {}, // Remove Content-Type to let browser set it for FormData
+        headers: {},
         body: formData,
       });
 

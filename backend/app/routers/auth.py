@@ -5,12 +5,15 @@ from sqlalchemy.exc import IntegrityError
 import uuid
 
 from app.db import get_db
-from app.core.deps import get_current_user
+# from app.core.deps import get_current_user
 from ..models import User
 from ..schemas import UserCreate, UserOut
 from ..security import hash_password # cant store passwords that are not hashed
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# TODO: temp shit
+user_is = "test_user_id"  # This should be replaced with actual user retrieval logic
 
 @router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def signup(user_in: UserCreate, request: Request, db: Session = Depends(get_db)):
@@ -46,14 +49,14 @@ def signup(user_in: UserCreate, request: Request, db: Session = Depends(get_db))
     
     return user
 
-@router.get("/me", response_model=UserOut)
-def read_me(
-    response: Response,
-    current_user: User = Depends(get_current_user),
-):
-    # prevent caching of identity
-    response.headers["Cache-Control"] = "no-store"
-    return current_user
+# @router.get("/me", response_model=UserOut)
+# def read_me(
+#     response: Response,
+#     current_user: User = Depends(get_current_user),
+# ):
+#     # prevent caching of identity
+#     response.headers["Cache-Control"] = "no-store"
+#     return current_user
 
 @router.post("/logout")
 def logout(request: Request):

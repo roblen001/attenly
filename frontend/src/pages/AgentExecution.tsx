@@ -46,12 +46,35 @@ export default function AgentExecutionPage() {
 
     setIsGenerating(true);
     setReportReady(false);
+    setError(null);
 
-    // Mock generation process with timeout
-    setTimeout(() => {
+    try {
+      // Call the new processing endpoint
+      const response = await api(`/agents/${agentId}/process`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Processing failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        setIsGenerating(false);
+        setReportReady(true);
+        console.log('Processing result:', result);
+        // Backend will handle template population and return the complete report
+      } else {
+        throw new Error(result.error || 'Processing failed');
+      }
+
+    } catch (err) {
+      console.error('Report generation failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate report');
       setIsGenerating(false);
-      setReportReady(true);
-    }, 3000); // 3 second mock generation
+      setReportReady(false);
+    }
   };
 
   const handlePreview = () => {

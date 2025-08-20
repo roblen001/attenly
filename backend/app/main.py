@@ -13,9 +13,6 @@ app = FastAPI(title="Attenly", version="0.1.0")
 Base.metadata.create_all(bind=engine)
 
 
-# Add session middleware for authentication
-app.add_middleware(SessionMiddleware, secret_key="your-secret-key-change-in-production")
-
 # CORS, some browser security shit
 app.add_middleware(
     CORSMiddleware,
@@ -24,6 +21,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add session middleware for authentication
+app.add_middleware(SessionMiddleware, secret_key="your-secret-key-change-in-production")
+
 
 app.include_router(auth.router)
 app.include_router(agents.router)

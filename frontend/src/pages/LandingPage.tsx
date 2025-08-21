@@ -1,10 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import "./LandingPage.css";
 import { api } from "../libs/https";
-// import { supabase } from "../config";
-
-// import { createClient } from "@supabase/supabase-js";
-// import { Database } from "./database_types";
 
 export default function LandingPage() {
   const navigate = useNavigate();

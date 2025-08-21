@@ -1,29 +1,29 @@
-# In a Python project, a database.py file typically encapsulates all the logic and functions
-# related to interacting with a database. Its primary purpose is to centralize database operations,
-# making the rest of the application cleaner and more organized.
+'''
+In a Python project, a database.py file typically encapsulates all the logic and functions
+related to interacting with a database. Its primary purpose is to centralize database operations,
+making the rest of the application cleaner and more organized.
 
-# This file can contain:
+This file can contain:
 
-# Database connection management:
-# Functions to establish and close connections to the database (e.g., SQLite, PostgreSQL, MySQL).
+Database connection management:
+Functions to establish and close connections to the database (e.g., SQLite, PostgreSQL, MySQL).
 
-# SQL query execution:
-# Functions to execute various SQL commands like CREATE TABLE, INSERT, SELECT, UPDATE, and DELETE.
+SQL query execution:
+Functions to execute various SQL commands like CREATE TABLE, INSERT, SELECT, UPDATE, and DELETE.
 
-# Data modeling:
-# Definitions of how data is structured within the database, potentially using Object-Relational
-# Mappers (ORMs) like SQLAlchemy or Flask-SQLAlchemy to map Python objects to database tables.
+Data modeling:
+Definitions of how data is structured within the database, potentially using Object-Relational
+Mappers (ORMs) like SQLAlchemy or Flask-SQLAlchemy to map Python objects to database tables.
 
-# Helper functions:
-# Utility functions for common database tasks, such as creating tables,
-# adding data, retrieving specific records, or handling transactions.
+Helper functions:
+Utility functions for common database tasks, such as creating tables,
+adding data, retrieving specific records, or handling transactions.
 
-# Error handling:
-# Mechanisms to gracefully manage potential errors during database interactions.
-# By isolating database logic in database.py, developers can easily modify the database system or
-# its schema without significantly impacting other parts of the application.
-
-# TODO: check if I need to python -m pip install fastapi uvicorn jinja2, and other stuff shown in https://www.youtube.com/watch?v=PlZcgIMk3aw
+Error handling:
+Mechanisms to gracefully manage potential errors during database interactions.
+By isolating database logic in database.py, developers can easily modify the database system or
+its schema without significantly impacting other parts of the application.
+'''
 
 import os
 from supabase import create_client, Client

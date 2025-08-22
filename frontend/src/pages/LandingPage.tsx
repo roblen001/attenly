@@ -6,7 +6,6 @@ import { supabase } from "../libs/supabase";
 export default function LandingPage() {
   const navigate = useNavigate();
 
-  //   TODO this actually is not needed I need to use supabase user info instead of this
   const handleGetStarted = async () => {
     const {
       data: { session },

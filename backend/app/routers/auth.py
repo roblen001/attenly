@@ -6,9 +6,9 @@ import uuid
 
 from app.db import get_db
 from app.core.deps import get_current_user
-from ..models import User
-from ..schemas import UserCreate, UserOut
-from ..security import hash_password  # cant store passwords that are not hashed
+from app.models import User
+from app.schemas import UserCreate, UserOut
+from app.security import hash_password  # cant store passwords that are not hashed
 
 # TODO revise
 from fastapi import APIRouter, Request, Depends, UploadFile, File

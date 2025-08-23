@@ -1,22 +1,31 @@
 import { useNavigate } from "react-router-dom";
 import "./LandingPage.css";
 import { supabase } from "../libs/supabase";
+import { useEffect } from "react";
 
 export default function LandingPage() {
   const navigate = useNavigate();
 
-  //   TODO this actually is not needed I need to use supabase user info instead of this
-  const handleGetStarted = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+  // TODO question: this redirects on page load if not login, is this necessar or should I just leave it up to when the user to clickse "Get Started"?
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) navigate("/dashboard");
+    });
+  }, []);
 
-    if (session) {
-      // ✅ Already logged in
-      navigate("/dashboard");
-    } else {
-      // 🔐 Not logged in → redirect to login page (with Supabase <Auth />)
-      navigate("/login"); // or whatever route renders your <Auth /> component
+  const handleGetStarted = async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+
+      if (data.session) {
+        navigate("/dashboard");
+      } else {
+        navigate("/login");
+      }
+    } catch (error) {
+      console.error("Error during authentication:", error);
+      alert("Something went wrong. Please try again.");
     }
   };
 

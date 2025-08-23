@@ -1,4 +1,3 @@
-# FILE INFO: This config.py use to store Supabase URL and API key.
 import os
 from dotenv import load_dotenv
 

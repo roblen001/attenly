@@ -35,7 +35,7 @@ export default function App() {
     };
   }, []);
 
-  if (loading) return null; // TODO adjust this feature add loading screen
+  if (loading) return null; // TODO add loading screen ring
 
   return (
     <Router>
@@ -43,7 +43,11 @@ export default function App() {
         <Route
           path="/"
           element={
-            session ? <Navigate to="/dashboard" replace /> : <LandingPage />
+            session ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <LandingPage session={session} />
+            )
           }
         />
 

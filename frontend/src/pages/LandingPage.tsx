@@ -1,31 +1,15 @@
 import { useNavigate } from "react-router-dom";
 import "./LandingPage.css";
-import { supabase } from "../libs/supabase";
-import { useEffect } from "react";
+import type { Session } from "@supabase/supabase-js";
 
-export default function LandingPage() {
+export default function LandingPage({ session }: { session: Session | null }) {
   const navigate = useNavigate();
 
-  // TODO question: this redirects on page load if not login, is this necessar or should I just leave it up to when the user to clickse "Get Started"?
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate("/dashboard");
-    });
-  }, []);
-
   const handleGetStarted = async () => {
-    try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-
-      if (data.session) {
-        navigate("/dashboard");
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error during authentication:", error);
-      alert("Something went wrong. Please try again.");
+    if (session) {
+      navigate("/dashboard");
+    } else {
+      navigate("/login");
     }
   };
 

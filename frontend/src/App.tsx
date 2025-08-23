@@ -1,5 +1,11 @@
 import "./App.css";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import { useState, useEffect } from "react";
@@ -10,10 +16,12 @@ import type { Session } from "@supabase/supabase-js";
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+      setLoading(false);
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange(
@@ -27,21 +35,43 @@ export default function App() {
     };
   }, []);
 
-  if (!session) {
-    return (
-      <Auth
-        supabaseClient={supabase}
-        appearance={{ theme: ThemeSupa }}
-        providers={[]}
-      />
-    );
-  }
+  if (loading) return null; // TODO adjust this feature add loading screen
 
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={<Dashboard session={session} />} />
+        <Route
+          path="/"
+          element={
+            session ? <Navigate to="/dashboard" replace /> : <LandingPage />
+          }
+        />
+
+        <Route
+          path="/login"
+          element={
+            session ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Auth
+                supabaseClient={supabase}
+                appearance={{ theme: ThemeSupa }}
+                providers={[]}
+              />
+            )
+          }
+        />
+
+        <Route
+          path="/dashboard"
+          element={
+            session ? (
+              <Dashboard session={session} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
       </Routes>
     </Router>
   );

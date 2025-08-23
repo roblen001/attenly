@@ -1,23 +1,22 @@
 import { useNavigate } from "react-router-dom";
 import "./LandingPage.css";
 import { supabase } from "../libs/supabase";
-// import { api } from "../libs/https"; // TODO legacy server-side signup no longer needed
 
 export default function LandingPage() {
   const navigate = useNavigate();
 
+  //   TODO this actually is not needed I need to use supabase user info instead of this
   const handleGetStarted = async () => {
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
     if (session) {
-      // Already logged in
+      // ✅ Already logged in
       navigate("/dashboard");
     } else {
-      // Not logged in redirect to login page
-      // TODO use old loggin page we created
-      navigate(<Auth />); // or whatever route renders your <Auth /> component
+      // 🔐 Not logged in → redirect to login page (with Supabase <Auth />)
+      navigate("/login"); // or whatever route renders your <Auth /> component
     }
   };
 

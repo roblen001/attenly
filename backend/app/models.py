@@ -2,7 +2,7 @@
 # models.py
 from sqlalchemy import Column, String, Boolean, DateTime
 from datetime import datetime, timezone
-from .db import Base
+from .db import Base 
 
 def utcnow():
     return datetime.now(timezone.utc)
@@ -18,3 +18,4 @@ class User(Base):
     is_verified = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    

@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 import json
 from pathlib import Path
 from typing import List
+import hashlib
 from app.schemas import Agent
 from app.models import User
 from app.core.deps import get_current_user
@@ -20,6 +21,21 @@ uploaded_files_storage = {}
 
 # Initialize document processor
 document_processor = DocumentProcessor()
+
+def calculate_content_hash(content: bytes) -> str:
+    """Calculate SHA-256 hash of file content for duplicate detection"""
+    return hashlib.sha256(content).hexdigest()
+
+def find_duplicate_file(user_id: str, content_hash: str) -> dict:
+    """Find existing file with same content hash in user's session"""
+    if user_id not in uploaded_files_storage:
+        return None
+    
+    for file_id, file_record in uploaded_files_storage[user_id].items():
+        if file_record.get("content_hash") == content_hash:
+            return file_record
+    
+    return None
 
 @router.get("/prebuilt", response_model=list[Agent])
 def list_prebuilt_agents():
@@ -78,6 +94,31 @@ async def upload_files(files: List[UploadFile] = File(...)):
             # Read file content
             content = await file.read()
             
+            # Calculate content hash for duplicate detection
+            content_hash = calculate_content_hash(content)
+            # Check for duplicate file
+            duplicate_file = find_duplicate_file(user_id, content_hash)
+            if duplicate_file:
+                logging.info(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
+                print(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
+                # Return existing file info without reprocessing
+                uploaded_files.append({
+                    "id": duplicate_file["id"],
+                    "name": file.filename,
+                    "size": len(content),
+                    "type": file.content_type or "application/pdf",
+                    "status": duplicate_file["status"],
+                    "processing_stats": duplicate_file.get("processing_stats", {}),
+                    "error": duplicate_file.get("error"),
+                    "duplicate": True,
+                    "original_filename": duplicate_file["name"],
+                    "message": f"Duplicate file detected - using existing processed version of '{duplicate_file['name']}'"
+                })
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}"
+                )
+            
             # Validate document using document processor
             validation_result = document_processor.validate_document(content, file.filename)
             
@@ -92,6 +133,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
             file_record = {
                 "id": file_id,
                 "name": file.filename,
+                "content_hash": content_hash,  # Store content hash
                 "size": len(content),
                 "type": file.content_type,
                 "content": content,
@@ -152,8 +194,18 @@ async def upload_files(files: List[UploadFile] = File(...)):
     # Compile response
     successful_uploads = [f for f in uploaded_files if f["status"] == "uploaded"]
     failed_uploads = [f for f in uploaded_files if f["status"] == "failed"]
+    duplicate_uploads = [f for f in uploaded_files if f.get("duplicate", False)]
     
-    response_message = f"Processed {len(uploaded_files)} files: {len(successful_uploads)} successful, {len(failed_uploads)} failed"
+    # Create detailed response message
+    message_parts = [f"Processed {len(uploaded_files)} files"]
+    if successful_uploads:
+        message_parts.append(f"{len(successful_uploads)} successful")
+    if failed_uploads:
+        message_parts.append(f"{len(failed_uploads)} failed")
+    if duplicate_uploads:
+        message_parts.append(f"{len(duplicate_uploads)} duplicates detected")
+    
+    response_message = ": ".join([message_parts[0], ", ".join(message_parts[1:])])
     
     return {
         "files": uploaded_files,
@@ -162,6 +214,8 @@ async def upload_files(files: List[UploadFile] = File(...)):
             "total_files": len(uploaded_files),
             "successful": len(successful_uploads),
             "failed": len(failed_uploads),
+            "duplicates": len(duplicate_uploads),
+            "newly_processed": len(uploaded_files) - len(duplicate_uploads),
             "total_chunks": sum(f.get("processing_stats", {}).get("l2_chunks", 0) for f in uploaded_files),
             "vector_store_available": vector_store.available
         }
@@ -288,58 +342,6 @@ async def process_agent_documents(agent_id: str, current_user: User = Depends(ge
             "error": str(e),
             "status": "failed"
         }
-
-
-@router.get("/processing/capabilities")
-async def get_processing_capabilities():
-    """Get information about document processing capabilities"""
-    try:
-        capabilities = document_processor.get_processing_capabilities()
-        return {
-            "success": True,
-            "capabilities": capabilities,
-            "active_sessions": len(vector_store_manager.get_active_sessions())
-        }
-    except Exception as e:
-        logging.error(f"Failed to get processing capabilities: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve processing capabilities")
-
-
-@router.get("/user/stats")
-async def get_user_stats(current_user: User = Depends(get_current_user)):
-    """Get statistics about the current user's processed documents"""
-    user_id = current_user.id
-    
-    try:
-        # Get file storage stats
-        file_stats = {
-            "total_files": 0,
-            "uploaded_files": 0,
-            "failed_files": 0,
-            "processing_files": 0
-        }
-        
-        if user_id in uploaded_files_storage:
-            files = uploaded_files_storage[user_id]
-            file_stats["total_files"] = len(files)
-            file_stats["uploaded_files"] = sum(1 for f in files.values() if f["status"] == "uploaded")
-            file_stats["failed_files"] = sum(1 for f in files.values() if f["status"] == "failed")
-            file_stats["processing_files"] = sum(1 for f in files.values() if f["status"] == "processing")
-        
-        # Get vector store stats
-        vector_store = vector_store_manager.get_store(user_id)
-        vector_stats = vector_store.get_session_statistics()
-        
-        return {
-            "success": True,
-            "user_id": user_id,
-            "file_stats": file_stats,
-            "vector_stats": vector_stats
-        }
-        
-    except Exception as e:
-        logging.error(f"Failed to get user stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve user statistics")
 
 
 @router.get("/{agent_id}", response_model=Agent)

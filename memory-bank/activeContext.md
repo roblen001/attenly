@@ -154,6 +154,24 @@ The project is currently in the second development phase, focusing on building o
      - Invalid PDF data with no extractable pages
      - Any exception during the chunking pipeline
 
+3. **File Duplicate Prevention System** (January 2025):
+   - **NEW**: Implemented content-based duplicate detection for file uploads
+   - Added SHA-256 content hashing to prevent identical files from being processed twice
+   - Enhanced upload endpoint with duplicate detection logic in `backend/app/routers/agents.py`
+   - Features:
+     - Content hash calculation using `calculate_content_hash()` utility function
+     - Session-based duplicate detection with `find_duplicate_file()` lookup
+     - Automatic reuse of existing processed chunks when duplicate detected
+     - Clear user feedback with duplicate status and original filename reference
+     - Enhanced response summary with duplicate count tracking
+     - Prevents unnecessary vector database storage and processing overhead
+   - Benefits:
+     - Eliminates duplicate chunks in ChromaDB vector store
+     - Faster upload response for repeated files (instant duplicate detection)
+     - Reduced memory usage in session cache
+     - Better user experience with clear duplicate messaging
+     - Maintains processing statistics from original file
+
 ### Medium-term Goals
 1. **Custom Agent Creation**: UI for users to create their own agents
 2. **Batch Processing**: Handle multiple documents at once

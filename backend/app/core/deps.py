@@ -1,23 +1,64 @@
-"""Home to resuable dependencies files that are used with Depends(...) FastApi.
+"""Authentication dependencies for Supabase integration."""
+from fastapi import Depends, HTTPException, status, Header
+from typing import Optional
+from app.client import supabase_client
+import logging
 
-Depends() basically means: “FastAPI, before running this endpoint, call this function and give me its return value.”
-"""
+logger = logging.getLogger(__name__)
 
-from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
-from app.db import get_db
-from app import models
-from app.routers.auth import user_is  # Temporary import for user_ variable
-
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
-    print(user_is)
-    # uid = request.session.get("user_id")
-
-    # if not uid:
-    #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-
-    # user = db.get(models.User, uid)
-    # if not user or not user.is_active:
-    #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
-
-    return user_is
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """
+    Dependency to get the current authenticated user from Supabase JWT token.
+    
+    Args:
+        authorization: Authorization header containing Bearer token
+        
+    Returns:
+        Supabase user object
+        
+    Raises:
+        HTTPException: If token is missing, invalid, or user not found
+    """
+    if not authorization:
+        logger.warning("Authentication attempt without authorization header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not authorization.startswith("Bearer "):
+        logger.warning(f"Invalid authorization header format: {authorization[:20]}...")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication format. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = authorization.split(" ")[1]
+    
+    try:
+        # Validate token with Supabase
+        user_response = supabase_client.auth.get_user(token)
+        
+        if not user_response.user:
+            logger.warning("Token validation failed - no user returned")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        logger.info(f"User authenticated successfully: {user_response.user.id}")
+        return user_response.user
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (already logged above)
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during token validation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

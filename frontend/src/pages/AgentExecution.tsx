@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import type { Agent, UploadedFile } from '../types';
 import FileUpload from '../components/AgentExecution/FileUpload';
 import { api } from '../libs/https';
+import { useAuth } from '../feature/auth/useAuth';
 import './AgentExecution.css';
 
 export default function AgentExecutionPage() {
+  const { loading: authLoading } = useAuth();
   const { agentId } = useParams<{ agentId: string }>();
   const navigate = useNavigate();
   const [agent, setAgent] = useState<Agent | null>(null);
@@ -23,11 +25,20 @@ export default function AgentExecutionPage() {
         return;
       }
 
+      // Wait for auth to be ready before making API calls
+      if (authLoading) {
+        return;
+      }
+
       try {
         const response = await api(`/agents/${agentId}`);
         const agentData = await response.json();
         setAgent(agentData);
       } catch (err) {
+        if (err instanceof Error && err.message.includes('Authentication failed')) {
+          // Auth error will be handled by the api() function (redirect to login)
+          return;
+        }
         setError(err instanceof Error ? err.message : 'Failed to load agent');
       } finally {
         setLoading(false);
@@ -35,7 +46,7 @@ export default function AgentExecutionPage() {
     };
 
     fetchAgent();
-  }, [agentId]);
+  }, [agentId, authLoading]);
 
   const handleBack = () => {
     navigate('/dashboard');

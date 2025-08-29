@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import List
 import hashlib
 from app.schemas import Agent
-from app.models import User
 from app.core.deps import get_current_user
 import uuid
 
@@ -72,13 +71,9 @@ def list_prebuilt_agents():
         raise HTTPException(status_code=500, detail="Failed to load prebuilt agents")
 
 @router.post("/files/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
+async def upload_files(files: List[UploadFile] = File(...), current_user = Depends(get_current_user)):
     """Upload multiple files and process them through the document pipeline"""
-    from app.routers.auth import user_is  # Temporary import for user_ variable
-    
-    user_id = user_is
-    # print(current_user)
-    # user_id = current_user.id
+    user_id = current_user.id
 
     # Initialize user storage if not exists
     if user_id not in uploaded_files_storage:
@@ -251,12 +246,9 @@ async def upload_files(files: List[UploadFile] = File(...)):
     }
 
 @router.delete("/files/{file_id}")
-async def delete_file(file_id: str, current_user: User = Depends(get_current_user)):
+async def delete_file(file_id: str, current_user = Depends(get_current_user)):
     """Delete a specific file and its associated chunks from vector store"""
-    #TODO: Temporary import for user_ variable
-    from app.routers.auth import user_is  # Temporary import for user_ variable
-    
-    user_id = user_is
+    user_id = current_user.id
     
     if user_id not in uploaded_files_storage:
         raise HTTPException(status_code=404, detail="No files found for this user")
@@ -296,7 +288,7 @@ async def delete_file(file_id: str, current_user: User = Depends(get_current_use
     }
 
 @router.get("/files")
-async def list_files(current_user: User = Depends(get_current_user)):
+async def list_files(current_user = Depends(get_current_user)):
     """List all uploaded files for the current user"""
     user_id = current_user.id
     
@@ -316,7 +308,7 @@ async def list_files(current_user: User = Depends(get_current_user)):
     return {"files": files}
 
 @router.post("/{agent_id}/process")
-async def process_agent_documents(agent_id: str, current_user: User = Depends(get_current_user)):
+async def process_agent_documents(agent_id: str, current_user = Depends(get_current_user)):
     """Process uploaded documents with specific agent for data extraction"""
     user_id = current_user.id
     

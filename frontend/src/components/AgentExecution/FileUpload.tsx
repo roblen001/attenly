@@ -99,7 +99,6 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
         // Upload single file to backend with AbortController
         const response = await api('/agents/files/upload', {
           method: 'POST',
-          headers: {},
           body: formData,
           signal: tempFile.abortController?.signal
         });
@@ -147,10 +146,21 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
           // Don't add cancelled files to processedFiles or show them in summary
         } else {
           // Handle other upload failures
+          let errorMessage = 'Upload failed';
+          
+          if (err instanceof Error) {
+            // Check if it's an authentication error
+            if (err.message.includes('Authentication failed')) {
+              errorMessage = 'Session expired - please refresh the page and log in again';
+            } else {
+              errorMessage = err.message;
+            }
+          }
+          
           const failedFile: UploadedFile = {
             ...tempFile,
             status: 'failed',
-            error: err instanceof Error ? err.message : 'Upload failed'
+            error: errorMessage
           };
           processedFiles.push(failedFile);
           
@@ -194,13 +204,18 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
       await api(`/agents/files/${fileId}`, {
         method: 'DELETE',
       });
-
-      // Remove file from UI
-      const updatedFiles = files.filter(file => file.id !== fileId);
-      onFilesChange(updatedFiles);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      // If file not found (404), it's already gone - that's fine
+      const errorMessage = err instanceof Error ? err.message : 'Delete failed';
+      if (!errorMessage.includes('404') && !errorMessage.includes('not found')) {
+        setError(errorMessage);
+        return; // Don't remove from UI if it's a real error
+      }
     }
+    
+    // Remove file from UI (whether delete succeeded or file was already gone)
+    const updatedFiles = files.filter(file => file.id !== fileId);
+    onFilesChange(updatedFiles);
   };
 
   const formatFileSize = (bytes: number) => {

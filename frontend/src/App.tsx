@@ -1,19 +1,87 @@
 import "./App.css";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
+import { useAuth } from "./feature/auth/useAuth";
+import { Auth } from "@supabase/auth-ui-react";
+import { ThemeSupa } from "@supabase/auth-ui-shared";
+import { supabase } from "./libs/supabase";
 import AgentExecutionPage from "./pages/AgentExecution";
 
 export default function App() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '1.2rem'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
   return (
     <Router>
-      <div>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/agent-execution/:agentId" element={<AgentExecutionPage />} />
-        </Routes>
-      </div>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            session ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <LandingPage session={session} />
+            )
+          }
+        />
+
+        <Route
+          path="/login"
+          element={
+            session ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Auth
+                supabaseClient={supabase}
+                appearance={{ theme: ThemeSupa }}
+                providers={[]}
+              />
+            )
+          }
+        />
+
+        <Route
+          path="/dashboard"
+          element={
+            session ? (
+              <Dashboard />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+        <Route 
+          path="/agent-execution/:agentId" 
+          element={
+            session ? (
+              <AgentExecutionPage />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+      </Routes>
     </Router>
   );
 }

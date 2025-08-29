@@ -17,5 +17,9 @@ export interface UploadedFile {
   name: string;
   size: number;
   type: string;
-  status: 'uploading' | 'uploaded' | 'failed';
+  status: 'queued' | 'uploading' | 'uploaded' | 'failed' | 'duplicate';
+  error?: string;
+  progress?: number; // Upload progress percentage (0-100)
+  abortController?: AbortController; // For cancelling uploads
+  queuePosition?: number; // Position in upload queue
 }

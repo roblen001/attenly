@@ -172,6 +172,45 @@ The project is currently in the second development phase, focusing on building o
      - Better user experience with clear duplicate messaging
      - Maintains processing statistics from original file
 
+4. **Enhanced Upload System with Cancellation** (January 2025):
+   - **NEW**: Implemented comprehensive upload cancellation and queue management system
+   - Added AbortController-based cancellation for individual file uploads
+   - Enhanced TypeScript interfaces with new upload states: 'queued', 'cancelled'
+   - Features:
+     - **Individual File Cancellation**: Users can cancel specific files during upload
+     - **Cancel All Button**: Batch cancellation of all pending uploads
+     - **Queue Visualization**: Clear indication of upload queue position (#1, #2, etc.)
+     - **Smart Button Controls**: Cancel button (⏹️) for uploading/queued files, Remove (✕) for completed files
+     - **Immediate UI Feedback**: Cancelled files are removed from UI instantly (no "cancelled" status shown)
+     - **AbortController Integration**: Proper HTTP request cancellation using native browser APIs
+     - **Race Condition Prevention**: Handles cancellation during sequential upload processing
+   - Benefits:
+     - **Improved UX**: Users have full control over upload process
+     - **No Orphaned Uploads**: Cancelled requests don't continue processing in background
+     - **Clear Status Indicators**: Queue position, uploading status, and completion states
+     - **Responsive Interface**: Upload controls adapt based on file status
+     - **Resource Efficiency**: Cancelled uploads free up network and processing resources
+   - Technical Implementation:
+     - Updated `UploadedFile` interface with `abortController`, `queuePosition`, `progress` fields
+     - Enhanced `FileUpload.tsx` with `cancelFileUpload()` and `cancelAllUploads()` functions
+     - Improved status handling with queue position display and dynamic button controls
+     - Proper cleanup of cancelled files from UI state management
+
+5. **File Cancellation Bug Fix** (January 2025):
+   - **ISSUE RESOLVED**: Fixed bug where cancelled files would reappear in UI with "cancelled" status
+   - **Root Cause**: AbortError handling in `handleFileUpload()` was creating cancelled file objects and adding them back to UI
+   - **Solution**: Modified error handling to completely remove cancelled files from UI without creating status objects
+   - **Changes Made**:
+     - Updated AbortError catch block to filter out cancelled files instead of updating their status
+     - Removed 'cancelled' status from TypeScript `UploadedFile` interface
+     - Cleaned up UI helper functions to remove cancelled status handling
+     - Ensured cancelled files are excluded from error summary counts
+   - **Result**: Cancelled files are now completely removed from both upload process and frontend view
+   - **Files Modified**:
+     - `frontend/src/components/AgentExecution/FileUpload.tsx`: Fixed AbortError handling
+     - `frontend/src/types/index.ts`: Removed 'cancelled' from status union type
+   - **Testing**: Verified that individual and batch cancellation properly removes files from UI
+
 ### Medium-term Goals
 1. **Custom Agent Creation**: UI for users to create their own agents
 2. **Batch Processing**: Handle multiple documents at once

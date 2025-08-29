@@ -88,7 +88,7 @@ class PDFDocumentProcessor(BaseDocumentProcessor):
             validation_result["errors"].append("File must be a PDF")
         
         # Check file size (10MB limit)
-        max_size_mb = 10
+        max_size_mb = 500
         if validation_result["file_info"]["size_mb"] > max_size_mb:
             validation_result["valid"] = False
             validation_result["errors"].append(f"File size exceeds {max_size_mb}MB limit")

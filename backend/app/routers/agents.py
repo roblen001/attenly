@@ -90,43 +90,65 @@ async def upload_files(files: List[UploadFile] = File(...)):
     processing_results = []
     
     for file in files:
+        file_result = None
         try:
             # Read file content
             content = await file.read()
             
             # Calculate content hash for duplicate detection
             content_hash = calculate_content_hash(content)
+            
             # Check for duplicate file
             duplicate_file = find_duplicate_file(user_id, content_hash)
             if duplicate_file:
                 logging.info(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
                 print(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
-                # Return existing file info without reprocessing
-                uploaded_files.append({
-                    "id": duplicate_file["id"],
+                
+                # Create a unique ID for the duplicate file entry
+                duplicate_file_id = str(uuid.uuid4())
+                
+                # Create a separate file record for the duplicate (without storing content again)
+                duplicate_file_record = {
+                    "id": duplicate_file_id,
+                    "name": file.filename,
+                    "content_hash": content_hash,
+                    "size": len(content),
+                    "type": file.content_type,
+                    "status": "duplicate",
+                    "original_file_id": duplicate_file["id"],  # Reference to original file
+                    "error": f"Duplicate of existing file '{duplicate_file['name']}'"
+                }
+                
+                # Store the duplicate file record (but don't store content or process)
+                uploaded_files_storage[user_id][duplicate_file_id] = duplicate_file_record
+                
+                # Add duplicate file info to results
+                file_result = {
+                    "id": duplicate_file_id,
                     "name": file.filename,
                     "size": len(content),
                     "type": file.content_type or "application/pdf",
-                    "status": duplicate_file["status"],
-                    "processing_stats": duplicate_file.get("processing_stats", {}),
-                    "error": duplicate_file.get("error"),
-                    "duplicate": True,
-                    "original_filename": duplicate_file["name"],
-                    "message": f"Duplicate file detected - using existing processed version of '{duplicate_file['name']}'"
-                })
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}"
-                )
+                    "status": "duplicate",
+                    "error": f"Duplicate of existing file '{duplicate_file['name']}'"
+                }
+                uploaded_files.append(file_result)
+                continue  # Skip to next file instead of raising exception
             
             # Validate document using document processor
             validation_result = document_processor.validate_document(content, file.filename)
             
             if not validation_result["valid"]:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"File {file.filename} validation failed: {', '.join(validation_result['errors'])}"
-                )
+                # Handle validation failure gracefully
+                file_result = {
+                    "id": str(uuid.uuid4()),
+                    "name": file.filename,
+                    "size": len(content),
+                    "type": file.content_type or "application/pdf",
+                    "status": "failed",
+                    "error": f"Validation failed: {', '.join(validation_result['errors'])}"
+                }
+                uploaded_files.append(file_result)
+                continue  # Skip to next file instead of raising exception
             
             # Create file record with initial processing status
             file_id = str(uuid.uuid4())
@@ -175,26 +197,33 @@ async def upload_files(files: List[UploadFile] = File(...)):
                 })
             
             # Add to response (without content)
-            uploaded_files.append({
+            file_result = {
                 "id": file_id,
                 "name": file.filename,
                 "size": len(content),
                 "type": file.content_type or "application/pdf",
                 "status": file_record["status"],
-                "processing_stats": file_record.get("processing_stats", {}),
                 "error": file_record.get("error")
-            })
+            }
+            uploaded_files.append(file_result)
             
-        except HTTPException:
-            raise  # Re-raise HTTP exceptions
         except Exception as e:
+            # Handle any unexpected errors gracefully
             logging.error(f"Unexpected error processing file {file.filename}: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to process file {file.filename}: {str(e)}")
+            file_result = {
+                "id": str(uuid.uuid4()),
+                "name": file.filename,
+                "size": 0,
+                "type": file.content_type or "application/pdf",
+                "status": "failed",
+                "error": f"Unexpected error: {str(e)}"
+            }
+            uploaded_files.append(file_result)
     
     # Compile response
     successful_uploads = [f for f in uploaded_files if f["status"] == "uploaded"]
     failed_uploads = [f for f in uploaded_files if f["status"] == "failed"]
-    duplicate_uploads = [f for f in uploaded_files if f.get("duplicate", False)]
+    duplicate_uploads = [f for f in uploaded_files if f["status"] == "duplicate"]
     
     # Create detailed response message
     message_parts = [f"Processed {len(uploaded_files)} files"]
@@ -203,7 +232,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
     if failed_uploads:
         message_parts.append(f"{len(failed_uploads)} failed")
     if duplicate_uploads:
-        message_parts.append(f"{len(duplicate_uploads)} duplicates detected")
+        message_parts.append(f"{len(duplicate_uploads)} duplicates")
     
     response_message = ": ".join([message_parts[0], ", ".join(message_parts[1:])])
     
@@ -215,7 +244,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
             "successful": len(successful_uploads),
             "failed": len(failed_uploads),
             "duplicates": len(duplicate_uploads),
-            "newly_processed": len(uploaded_files) - len(duplicate_uploads),
+            "newly_processed": len(successful_uploads),
             "total_chunks": sum(f.get("processing_stats", {}).get("l2_chunks", 0) for f in uploaded_files),
             "vector_store_available": vector_store.available
         }
@@ -235,16 +264,27 @@ async def delete_file(file_id: str, current_user: User = Depends(get_current_use
     if file_id not in uploaded_files_storage[user_id]:
         raise HTTPException(status_code=404, detail="File not found")
     
+    # Get the file record to check if it's a duplicate
+    file_record = uploaded_files_storage[user_id][file_id]
+    
     # Get vector store for this user
     vector_store = vector_store_manager.get_store(user_id)
     
-    # Remove chunks from vector store first
-    try:
-        vector_store.delete_document_chunks(file_id)
-        logging.info(f"Deleted chunks for document {file_id} from vector store")
-    except Exception as e:
-        logging.error(f"Failed to delete chunks for document {file_id}: {e}")
-        # Continue with file deletion even if vector store cleanup fails
+    chunks_removed = False
+    
+    # Only remove chunks if this is NOT a duplicate file
+    if file_record.get("status") != "duplicate":
+        # This is an original file, remove its chunks from vector store
+        try:
+            vector_store.delete_document_chunks(file_id)
+            logging.info(f"Deleted chunks for document {file_id} from vector store")
+            chunks_removed = True
+        except Exception as e:
+            logging.error(f"Failed to delete chunks for document {file_id}: {e}")
+            # Continue with file deletion even if vector store cleanup fails
+    else:
+        # This is a duplicate file, no chunks to remove (they belong to the original)
+        logging.info(f"Skipping chunk deletion for duplicate file {file_id}")
     
     # Remove file from storage
     deleted_file = uploaded_files_storage[user_id].pop(file_id)
@@ -252,7 +292,7 @@ async def delete_file(file_id: str, current_user: User = Depends(get_current_use
     return {
         "message": f"File {deleted_file['name']} deleted successfully",
         "file_id": file_id,
-        "chunks_removed": True
+        "chunks_removed": chunks_removed
     }
 
 @router.get("/files")

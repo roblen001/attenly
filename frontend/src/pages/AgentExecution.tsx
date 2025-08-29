@@ -41,8 +41,13 @@ export default function AgentExecutionPage() {
     navigate('/dashboard');
   };
 
+  // Helper functions to check file upload status
+  const hasUploadingFiles = uploadedFiles.some(file => file.status === 'uploading');
+  const hasSuccessfullyUploadedFiles = uploadedFiles.some(file => file.status === 'uploaded');
+  const canGenerateReport = hasSuccessfullyUploadedFiles && !hasUploadingFiles;
+
   const generateReport = async () => {
-    if (uploadedFiles.length === 0) return;
+    if (!canGenerateReport) return;
 
     setIsGenerating(true);
     setReportReady(false);
@@ -167,11 +172,25 @@ export default function AgentExecutionPage() {
                     <p>Upload your documents and click generate to extract data using this agent's configuration.</p>
                     <button
                       onClick={generateReport}
-                      disabled={uploadedFiles.length === 0}
+                      disabled={!canGenerateReport}
                       className="generate-btn"
+                      title={
+                        hasUploadingFiles 
+                          ? "Please wait for files to finish uploading"
+                          : !hasSuccessfullyUploadedFiles
+                          ? "Please upload at least one file successfully"
+                          : "Generate report from uploaded files"
+                      }
                     >
-                      <span className="btn-icon">✨</span>
-                      Generate Report
+                      <span className="btn-icon">
+                        {hasUploadingFiles ? '⏳' : '✨'}
+                      </span>
+                      {hasUploadingFiles 
+                        ? 'Processing files...' 
+                        : !hasSuccessfullyUploadedFiles
+                        ? 'No files uploaded'
+                        : 'Generate Report'
+                      }
                     </button>
                   </div>
                 )}

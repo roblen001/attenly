@@ -33,7 +33,7 @@ export async function api(path: string, init: RequestInit = {}) {
     await supabase.auth.signOut();
     
     // Redirect to login page
-    window.location.href = '/';
+    window.location.href = '/login';
     
     // Throw error with clear message
     throw new Error('Authentication failed. Please log in again.');

@@ -129,7 +129,30 @@ The project is currently in the second development phase, focusing on building o
 4. **Error Handling**: ✅ **COMPLETED** - Robust error handling for file processing failures
 
 ### Recently Completed Work
-1. **File Deletion Race Condition Fix** (January 2025):
+1. **Vector Store Clearing on Navigation** (January 2025):
+   - **NEW FEATURE**: Implemented automatic vector store clearing when users navigate away from agent execution page
+   - **Problem Solved**: Vector store was never cleared, causing data mixing between agent sessions and memory accumulation
+   - **Solution**: Added cleanup effect in React component that triggers on navigation away
+   - **Implementation**:
+     - **Backend**: New `DELETE /agents/files/clear` endpoint that clears both vector store and uploaded files storage
+     - **Frontend**: `useEffect` cleanup function in `AgentExecution.tsx` that calls clear endpoint on component unmount
+     - **Vector Store**: Uses existing `cleanup_user_session()` method to delete entire user collection
+   - **Benefits**:
+     - Fresh start for each agent session
+     - Prevents data mixing between different agent executions
+     - Reduces memory usage in ChromaDB
+     - Automatic cleanup (no user action required)
+   - **Navigation Scenarios Covered**:
+     - Back to Dashboard button clicks
+     - Browser back/forward navigation
+     - Direct URL navigation
+     - Page refresh and tab close
+   - **Technical Details**:
+     - Non-blocking: Navigation continues even if cleanup fails
+     - User-isolated: Each user's cleanup is independent
+     - Idempotent: Safe to call multiple times
+
+2. **File Deletion Race Condition Fix** (January 2025):
    - **ISSUE RESOLVED**: Fixed edge case where deleting uploaded files during concurrent processing caused 404 errors
    - **Root Cause**: Race condition between file deletion and ongoing upload processing created inconsistent UI/backend state
    - **Solution**: Enhanced frontend error handling to treat 404 responses as successful deletions

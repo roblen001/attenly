@@ -245,6 +245,38 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
         }
     }
 
+# This endpoint needs to be above file-specific delete to avoid path conflicts
+@router.delete("/files/clear")
+async def clear_all_files(current_user = Depends(get_current_user)):
+    """Clear all uploaded files and vector store for current user"""
+    user_id = current_user.id
+    
+    # Get counts before clearing for response
+    files_count = 0
+    if user_id in uploaded_files_storage:
+        files_count = len(uploaded_files_storage[user_id])
+    
+    # Clear vector store
+    try:
+        vector_store_manager.cleanup_user_session(user_id)
+        vector_store_cleared = True
+        logging.info(f"Cleared vector store for user {user_id}")
+    except Exception as e:
+        logging.error(f"Failed to clear vector store for user {user_id}: {e}")
+        vector_store_cleared = False
+    
+    # Clear uploaded files storage
+    if user_id in uploaded_files_storage:
+        del uploaded_files_storage[user_id]
+        logging.info(f"Cleared uploaded files storage for user {user_id}")
+    
+    return {
+        "message": "All files and vector store cleared successfully",
+        "user_id": user_id,
+        "files_cleared": files_count,
+        "vector_store_cleared": vector_store_cleared
+    }
+
 @router.delete("/files/{file_id}")
 async def delete_file(file_id: str, current_user = Depends(get_current_user)):
     """Delete a specific file and its associated chunks from vector store"""

@@ -5,7 +5,7 @@ import '../../pages/AgentExecution.css';
 
 interface FileUploadProps {
   files: UploadedFile[];
-  onFilesChange: (files: UploadedFile[]) => void;
+  onFilesChange: React.Dispatch<React.SetStateAction<UploadedFile[]>>;
 }
 
 export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
@@ -15,29 +15,23 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
 
   // Cancel a specific file upload
   const cancelFileUpload = (fileId: string) => {
-    const fileToCancel = files.find(f => f.id === fileId);
-    if (fileToCancel?.abortController) {
-      fileToCancel.abortController.abort();
-      
-      // Remove cancelled file from UI immediately
-      const updatedFiles = files.filter(f => f.id !== fileId);
-      onFilesChange(updatedFiles);
-    }
+    onFilesChange(prev => {
+      const f = prev.find(x => x.id === fileId);
+      f?.abortController?.abort();
+      return prev.filter(x => x.id !== fileId);
+    });
   };
 
   // Cancel all pending uploads
   const cancelAllUploads = () => {
-    // Abort all uploading/queued files and remove them from UI
-    const filesToKeep = files.filter(file => {
-      if (file.status === 'uploading' || file.status === 'queued') {
-        if (file.abortController) {
-          file.abortController.abort();
-        }
-        return false; // Remove from UI
+    onFilesChange(prev => {
+    prev.forEach(f => {
+      if ((f.status === 'uploading' || f.status === 'queued') && f.abortController) {
+        f.abortController.abort();
       }
-      return true; // Keep completed/failed files
     });
-    onFilesChange(filesToKeep);
+    return prev.filter(f => !(f.status === 'uploading' || f.status === 'queued'));
+  });
     setUploading(false);
   };
 
@@ -64,9 +58,8 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
       progress: 0
     }));
     
-    // Add files to UI immediately
-    let currentFiles = [...files, ...initialFiles];
-    onFilesChange(currentFiles);
+    // Add files to UI immediately (based on latest state)
+    onFilesChange(prev => [...prev, ...initialFiles]);
     
     // Process files sequentially
     const processedFiles: UploadedFile[] = [];
@@ -75,21 +68,10 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
       const tempFile = initialFiles[i];
-      
-      // Check if this file was cancelled (removed from UI) before we started processing it
-      const currentFileState = currentFiles.find(f => f.id === tempFile.id);
-      if (!currentFileState) {
-        // File was cancelled and removed from UI, skip processing
-        continue;
-      }
-      
-      // Update file status to uploading if it was queued
-      if (tempFile.status === 'queued') {
-        currentFiles = currentFiles.map(f => 
-          f.id === tempFile.id ? { ...f, status: 'uploading' as const } : f
+  
+      onFilesChange(prev =>
+          prev.map(f => f.id === tempFile.id ? { ...f, status: 'uploading' as const } : f)
         );
-        onFilesChange(currentFiles);
-      }
       
       try {
         // Create FormData for single file upload
@@ -111,11 +93,14 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
           uploadedFile.abortController = tempFile.abortController;
           processedFiles.push(uploadedFile);
           
-          // Update the specific file in the UI
-          currentFiles = currentFiles.map(f => 
-            f.id === tempFile.id ? uploadedFile : f
-          );
-          onFilesChange(currentFiles);
+          // Update only if the temp still exists (prevents resurrection)
+          onFilesChange(prev => {
+            const idx = prev.findIndex(f => f.id === tempFile.id);
+            if (idx === -1) return prev; // was removed while awaiting
+            const next = [...prev];
+            next[idx] = uploadedFile;
+            return next;
+          });
           
           // Check for issues with this file
           if (uploadedFile.status === 'failed' || uploadedFile.status === 'duplicate') {
@@ -130,19 +115,21 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
           };
           processedFiles.push(failedFile);
           
-          currentFiles = currentFiles.map(f => 
-            f.id === tempFile.id ? failedFile : f
-          );
-          onFilesChange(currentFiles);
+          onFilesChange(prev => {
+            const idx = prev.findIndex(f => f.id === tempFile.id);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = failedFile;
+            return next;
+          });
           hasErrors = true;
         }
         
       } catch (err) {
         // Check if the error was due to abortion
         if (err instanceof Error && err.name === 'AbortError') {
-          // File was cancelled - remove it completely from UI, don't add to processedFiles
-          currentFiles = currentFiles.filter(f => f.id !== tempFile.id);
-          onFilesChange(currentFiles);
+           // File was cancelled - remove it completely
+          onFilesChange(prev => prev.filter(f => f.id !== tempFile.id));
           // Don't add cancelled files to processedFiles or show them in summary
         } else {
           // Handle other upload failures
@@ -164,10 +151,13 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
           };
           processedFiles.push(failedFile);
           
-          currentFiles = currentFiles.map(f => 
-            f.id === tempFile.id ? failedFile : f
-          );
-          onFilesChange(currentFiles);
+          onFilesChange(prev => {
+            const idx = prev.findIndex(f => f.id === tempFile.id);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = failedFile;
+            return next;
+          });
           hasErrors = true;
         }
       }
@@ -214,8 +204,7 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
     }
     
     // Remove file from UI (whether delete succeeded or file was already gone)
-    const updatedFiles = files.filter(file => file.id !== fileId);
-    onFilesChange(updatedFiles);
+    onFilesChange(prev => prev.filter(file => file.id !== fileId));
   };
 
   const formatFileSize = (bytes: number) => {

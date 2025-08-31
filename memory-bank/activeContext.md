@@ -40,7 +40,7 @@ The project is currently in the second development phase, focusing on building o
 1. **Agent Template Structure**: Decided on JSON-based agent definitions with HTML templates and question arrays
 2. **File Upload Strategy**: Implemented drag-and-drop interface with file validation
 3. **State Management**: Using local React state with direct API calls (no global state management yet)
-4. **Authentication**: Session-based authentication chosen over JWT for simplicity
+4. **Authentication**: Migrated from session-based to Supabase JWT authentication for better scalability and security
 
 ### Implementation Patterns
 1. **Component Organization**: Separated AgentExecution components into dedicated directory
@@ -129,7 +129,29 @@ The project is currently in the second development phase, focusing on building o
 4. **Error Handling**: ✅ **COMPLETED** - Robust error handling for file processing failures
 
 ### Recently Completed Work
-1. **Vector Store Clearing on Navigation** (January 2025):
+1. **Supabase Authentication Migration** (January 2025):
+   - **MAJOR CHANGE**: Migrated from session-based authentication to Supabase JWT authentication
+   - **Problem Solved**: Session-based auth was limiting scalability and required manual user management
+   - **Solution**: Integrated Supabase Auth for complete authentication management
+   - **Implementation**:
+     - **Backend**: Updated `backend/app/core/deps.py` with JWT token validation via Supabase Auth API
+     - **Frontend**: Implemented `frontend/src/feature/auth/useAuth.ts` hook with Supabase client integration
+     - **Configuration**: Added environment-based Supabase URL and key management
+     - **Client Setup**: Created `backend/app/client.py` for Supabase client initialization
+   - **Benefits**:
+     - Eliminates need for custom user registration and password management
+     - Provides secure JWT token-based authentication
+     - Enables future features like social login, email verification, password reset
+     - Reduces backend complexity by offloading auth to Supabase
+     - Better security with industry-standard authentication practices
+   - **API Endpoint**: Kept `/api/auth/me` endpoint for backend user info access and token validation
+   - **Technical Details**:
+     - JWT tokens validated on each protected API request
+     - Frontend manages auth state with Supabase client
+     - Environment variables for secure credential management
+     - Backward-compatible API structure maintained
+
+2. **Vector Store Clearing on Navigation** (January 2025):
    - **NEW FEATURE**: Implemented automatic vector store clearing when users navigate away from agent execution page
    - **Problem Solved**: Vector store was never cleared, causing data mixing between agent sessions and memory accumulation
    - **Solution**: Added cleanup effect in React component that triggers on navigation away

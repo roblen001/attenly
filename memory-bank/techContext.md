@@ -6,9 +6,9 @@
 - **Framework**: FastAPI (Python web framework)
 - **Database**: SQLite (development) / PostgreSQL (production ready)
 - **ORM**: SQLAlchemy with declarative base
-- **Authentication**: Session-based with bcrypt password hashing
-- **Security**: itsdangerous for session management
-- **File Processing**: Custom PDF parsing service
+- **Authentication**: Supabase JWT token-based authentication
+- **Security**: Supabase Auth with JWT token validation
+- **File Processing**: Custom PDF parsing service with document classification
 - **Server**: Uvicorn ASGI server
 
 ### Frontend Technologies
@@ -115,7 +115,8 @@ frontend/
 
 ### Backend Configuration
 - **CORS Origins**: `http://127.0.0.1:5173`, `http://localhost:5173`
-- **Session Secret**: Configurable (currently hardcoded for dev)
+- **Supabase URL**: Environment variable `SUPABASE_URL`
+- **Supabase Key**: Environment variable `SUPABASE_KEY`
 - **Database URL**: SQLite file path (configurable for production)
 - **Server Host**: 127.0.0.1:8000 (development)
 
@@ -135,8 +136,8 @@ frontend/
 ### Backend Dependencies
 ```
 fastapi          # Web framework
-bcrypt==4.0.1    # Password hashing
-itsdangerous     # Session token security
+supabase         # Supabase client for authentication
+python-dotenv    # Environment variable management
 sqlalchemy       # ORM (implicit dependency)
 uvicorn          # ASGI server (implicit dependency)
 ```
@@ -146,6 +147,7 @@ uvicorn          # ASGI server (implicit dependency)
 react@19.1.1              # UI framework
 react-dom@19.1.1          # DOM rendering
 react-router-dom@7.8.0    # Client-side routing
+@supabase/supabase-js      # Supabase client for authentication
 typescript@5.8.3          # Type system
 vite@5.0.12              # Build tool
 @vitejs/plugin-react@4.7.0 # Vite React integration
@@ -183,14 +185,15 @@ vite@5.0.12              # Build tool
 ## Security Configuration
 
 ### Current Security Measures
-- **Password Hashing**: bcrypt with salt
-- **Session Management**: Secure session middleware
+- **JWT Authentication**: Supabase JWT token validation
+- **Token Management**: Supabase Auth handles token lifecycle
 - **CORS Policy**: Restricted to development origins
 - **Input Validation**: Pydantic schemas for API validation
+- **Environment Variables**: Supabase credentials externalized
 
 ### Production Security Checklist
 - [ ] Environment-based configuration
-- [ ] Secure session keys
+- [ ] Secure Supabase key management
 - [ ] HTTPS enforcement
 - [ ] Rate limiting
 - [ ] Input sanitization

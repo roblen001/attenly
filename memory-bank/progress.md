@@ -13,7 +13,7 @@
 ### ✅ Foundation Infrastructure
 - **Backend API**: FastAPI application with proper structure
 - **Database**: SQLAlchemy models with User, Agent, and AgentQuestion tables
-- **Authentication**: Session-based user authentication system
+- **Authentication**: Supabase JWT token-based authentication system
 - **Frontend Framework**: React 19 + TypeScript with Vite build system
 - **Routing**: React Router DOM for client-side navigation
 - **CORS Configuration**: Proper cross-origin setup for development
@@ -246,7 +246,7 @@
 
 ### 🔄 Technology Choices
 - **Database**: Started with SQLite, planning PostgreSQL for production
-- **Authentication**: Chose sessions over JWT for simplicity
+- **Authentication**: Migrated from sessions to Supabase JWT for better scalability and security
 - **Frontend**: React chosen for component reusability and ecosystem
 - **Backend**: FastAPI chosen for Python ecosystem and async capabilities
 

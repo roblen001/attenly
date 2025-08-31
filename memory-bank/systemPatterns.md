@@ -103,9 +103,10 @@ Document Upload → Document Classification → Processor Routing → Content Ex
 - **Error Handling**: Comprehensive validation with user-friendly messages
 
 #### Authentication Pattern
-- Session-based authentication with middleware
-- Password hashing using bcrypt
-- User state management through FastAPI dependencies
+- JWT token-based authentication with Supabase
+- Token validation through Supabase Auth API
+- User state management through FastAPI dependencies with JWT validation
+- Frontend authentication state managed by Supabase client
 
 ## Frontend Architecture
 
@@ -155,10 +156,11 @@ App
 6. **Report Delivery**: Generated report returned to frontend
 
 ### Authentication Flow
-1. **Login Request**: User credentials sent to backend
-2. **Validation**: Password verification and session creation
-3. **Session Management**: Session token stored and validated
-4. **Protected Routes**: Frontend routes protected by auth state
+1. **Login Request**: User credentials sent to Supabase Auth
+2. **Token Generation**: Supabase generates JWT token upon successful authentication
+3. **Token Storage**: Frontend stores JWT token and manages auth state
+4. **API Requests**: Backend validates JWT tokens via Supabase Auth API
+5. **Protected Routes**: Frontend routes protected by Supabase auth state
 
 ### Error Handling Patterns
 - **Backend**: HTTP status codes with descriptive error messages

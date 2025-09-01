@@ -12,6 +12,7 @@ import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "./libs/supabase";
 import AgentExecutionPage from "./pages/AgentExecution";
+import ReportView from "./pages/ReportView";
 
 export default function App() {
   const { session, loading } = useAuth();
@@ -75,6 +76,17 @@ export default function App() {
           element={
             session ? (
               <AgentExecutionPage />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+        <Route 
+          path="/report/:agentId" 
+          element={
+            session ? (
+              <ReportView />
             ) : (
               <Navigate to="/" replace />
             )

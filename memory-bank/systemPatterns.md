@@ -116,9 +116,18 @@ App
 ├── LandingPage
 ├── Dashboard
 │   └── PrebuiltAgentCard
-└── AgentExecution
-    ├── FileUpload
-    └── ReportGeneration (planned)
+├── AgentExecution
+│   ├── FileUpload
+│   └── ReportGeneration (planned)
+└── ReportView
+    ├── ReportHeader
+    ├── ReportActionsBar
+    ├── ReportInstructions
+    ├── ReportContent
+    ├── EditAnswerModal
+    ├── DocumentViewer
+    ├── LoadingState
+    └── ErrorState
 ```
 
 ### State Management Patterns
@@ -126,6 +135,11 @@ App
 - **Props Drilling**: Data passed down through component hierarchy
 - **API State**: Direct API calls with loading/error states
 - **File State**: Centralized file upload state management
+- **Custom Hooks**: Specialized hooks for complex state management
+  - `useReportData`: Report data fetching and authentication
+  - `useAnswerEditing`: In-place answer modification state
+  - `useQuoteInteraction`: Quote-to-document viewing state
+- **Hook Composition**: Multiple hooks working together in components
 
 ### Key Frontend Patterns
 
@@ -139,6 +153,15 @@ App
 - **Custom HTTP Client**: Centralized API configuration (`libs/https.ts`)
 - **Error Handling**: Consistent error state management
 - **Loading States**: User feedback during async operations
+- **Authentication Integration**: Supabase JWT validation in API calls
+- **Report Data Fetching**: Complex data structures with nested relationships
+
+#### Report Management Pattern
+- **Data Flow**: ReportView → Custom Hooks → API → Backend
+- **State Composition**: Multiple hooks managing different aspects of report state
+- **Modal Management**: EditAnswerModal for in-place data modification
+- **Document Interaction**: Quote clicking triggers document viewer
+- **Error Boundaries**: Comprehensive error handling with fallback UI
 
 #### File Upload Pattern
 - **Drag & Drop Interface**: Intuitive file handling

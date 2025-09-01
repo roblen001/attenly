@@ -23,3 +23,50 @@ export interface UploadedFile {
   abortController?: AbortController; // For cancelling uploads
   queuePosition?: number; // Position in upload queue
 }
+
+export interface Template {
+  html: string;
+  name: string;
+}
+
+export interface Quote {
+  id: string;
+  index: number;
+  chunk_id: string;
+  text: string;
+  page_range: string;
+  relevance_score: number;
+}
+
+export interface ReportAnswer {
+  id: string;
+  placeholder: string;
+  question: string;
+  answer: string;
+  quotes: Quote[];
+  word_count: number;
+  error?: string;
+}
+
+export interface DocumentInfo {
+  id: string;
+  filename: string;
+  pages: number[];
+  chunk_count: number;
+}
+
+export interface DocumentContext {
+  document_ids: string[];
+  documents: { [id: string]: DocumentInfo };
+  total_documents: number;
+  total_pages: number;
+  total_chunks: number;
+}
+
+export interface ReportData {
+  template: Template;
+  answers: { [placeholder: string]: ReportAnswer };
+  quotes: Quote[];
+  document_context: DocumentContext;
+  generated_at: string;
+}

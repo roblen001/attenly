@@ -12,6 +12,7 @@ import uuid
 # Import document processing services
 from app.services.document_processor import DocumentProcessor
 from app.services.vector_store import vector_store_manager # In user-based storage, we use a global manager for vector store operations
+from app.services.report_service import report_service
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -346,7 +347,9 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
     
     # Get agent configuration
     try:
-        agent = get_agent_by_id(agent_id)
+        agent_dict = get_agent_by_id(agent_id)
+        # Convert dictionary to Agent object for type safety
+        agent = Agent(**agent_dict)
     except HTTPException as e:
         raise e
     
@@ -381,19 +384,19 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
         # Placeholder for extracted data - will be replaced with actual LLM extraction
         # TODO: Batch processing of prompts
         extracted_data = {}
-        for question in agent["questions"]:
+        for question in agent.questions:
             # Simulate data extraction for each question
-            extracted_data[question["placeholder"]] = f"[Extracted data for: {question['prompt']}]"
-        
+            extracted_data[question.placeholder] = f"[Extracted data for: {question.prompt}]"
+
         return {
             "success": True,
             "agent_id": agent_id,
-            "agent_name": agent["name"],
+            "agent_name": agent.name,
             "processed_documents": len(succesfully_uploaded_files),
             "document_ids": document_ids,
             "vector_store_stats": vector_stats,
             "extracted_data": extracted_data,
-            "questions_processed": len(agent["questions"]),
+            "questions_processed": len(agent.questions),
             "status": "completed",
             "message": "Document processing completed successfully (using placeholder data - LLM integration pending)"
         }
@@ -406,6 +409,70 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
             "error": str(e),
             "status": "failed"
         }
+
+
+@router.get("/{agent_id}/report")
+async def get_agent_report(agent_id: str, current_user = Depends(get_current_user)):
+    """Generate and return complete report data for an agent"""
+    user_id = current_user.id
+    
+    # Get agent configuration
+    try:
+        agent_dict = get_agent_by_id(agent_id)
+        # Convert dictionary to Agent object for type safety
+        agent = Agent(**agent_dict)
+    except HTTPException as e:
+        raise e
+    
+    # Check if there are uploaded files for this user
+    if user_id not in uploaded_files_storage or not uploaded_files_storage[user_id]:
+        raise HTTPException(status_code=400, detail="No documents uploaded for report generation")
+    
+    # Get vector store for this user
+    vector_store = vector_store_manager.get_store(user_id)
+    
+    if not vector_store.available:
+        raise HTTPException(status_code=503, detail="Vector search not available - please ensure ChromaDB is installed")
+    
+    # Get list of successfully processed documents
+    successfully_uploaded_files = [
+        file_record for file_record in uploaded_files_storage[user_id].values()
+        if file_record["status"] == "uploaded"
+    ]
+    
+    if not successfully_uploaded_files:
+        raise HTTPException(status_code=400, detail="No successfully uploaded documents available for report generation")
+    
+    try:
+        # Get document IDs for report generation (these are the file IDs that were used as document_id in vector store)
+        document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
+        
+        # Generate report using report service
+        report_result = report_service.generate_report(
+            agent=agent,
+            vector_store=vector_store,
+            document_ids=document_ids
+        )
+        
+        if not report_result["success"]:
+            raise HTTPException(status_code=500, detail=f"Report generation failed: {report_result.get('error', 'Unknown error')}")
+        
+        return {
+            "success": True,
+            "report_id": report_result["report_id"],
+            "agent_id": agent_id,
+            "agent_name": agent.name,
+            "report_data": report_result["report_data"],
+            "processing_stats": report_result["processing_stats"],
+            "message": "Report generated successfully"
+        }
+        
+    except ValueError as e:
+        # Handle service-level errors
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"Failed to generate report for agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
 
 @router.get("/{agent_id}", response_model=Agent)
@@ -425,14 +492,14 @@ def get_agent_by_id(agent_id: str):
             # Find the specific agent in prebuilt
             for item in items:
                 if item["slug"] == agent_id:
-                    agent = {
+                    agent_dict = {
                         "id": item["slug"],
                         "name": item["name"],
                         "description": item.get("description"),
                         "reportTemplate": item.get("reportTemplate"),
                         "questions": item.get("questions", [])
                     }
-                    return agent
+                    return agent_dict
         
         # TODO: Add database lookup for custom agents here
         # Example:

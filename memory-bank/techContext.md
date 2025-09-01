@@ -93,15 +93,35 @@ frontend/
 │   ├── components/
 │   │   ├── AgentExecution/
 │   │   │   └── FileUpload.tsx
-│   │   └── dashboard/
-│   │       └── PrebuiltAgentCard.tsx
+│   │   ├── dashboard/
+│   │   │   └── PrebuiltAgentCard.tsx
+│   │   └── report/         # Report viewing components
+│   │       ├── DocumentViewer.tsx
+│   │       ├── EditAnswerModal.tsx
+│   │       ├── ErrorState.tsx
+│   │       ├── LoadingState.tsx
+│   │       ├── ReportActionsBar.tsx
+│   │       ├── ReportContent.tsx
+│   │       ├── ReportHeader.tsx
+│   │       └── ReportInstructions.tsx
 │   ├── pages/
 │   │   ├── LandingPage.tsx
 │   │   ├── Dashboard.tsx
-│   │   └── AgentExecution.tsx
+│   │   ├── AgentExecution.tsx
+│   │   └── ReportView.tsx  # Report viewing page
+│   ├── hooks/              # Custom React hooks
+│   │   ├── useAnswerEditing.ts
+│   │   ├── useQuoteInteraction.ts
+│   │   └── useReportData.ts
+│   ├── utils/              # Utility functions
+│   │   └── reportUtils.ts
+│   ├── feature/
+│   │   └── auth/
+│   │       └── useAuth.ts  # Supabase authentication hook
 │   ├── libs/
 │   │   ├── configs.ts      # Configuration constants
-│   │   └── https.ts        # HTTP client utilities
+│   │   ├── https.ts        # HTTP client utilities
+│   │   └── supabase.ts     # Supabase client configuration
 │   └── types/
 │       └── index.ts        # TypeScript type definitions
 ├── public/                 # Static assets
@@ -153,6 +173,13 @@ vite@5.0.12              # Build tool
 @vitejs/plugin-react@4.7.0 # Vite React integration
 ```
 
+### Key Frontend Features
+- **Report Management**: Complete report viewing and editing system
+- **Custom Hooks**: Specialized hooks for complex state management
+- **Component Composition**: Modular report components with clear separation of concerns
+- **TypeScript Integration**: Strong typing for complex data structures (ReportData, Quotes, etc.)
+- **Authentication Flow**: Supabase JWT integration throughout report system
+
 ## Development Workflow
 
 ### Local Development
@@ -162,10 +189,12 @@ vite@5.0.12              # Build tool
 4. **API Communication**: CORS configured for local development
 
 ### Code Quality
-- **TypeScript**: Strict type checking on frontend
+- **TypeScript**: Strict type checking on frontend with complex interface definitions
 - **ESLint**: Code linting with React-specific rules
-- **File Organization**: Clear separation of concerns
+- **File Organization**: Clear separation of concerns with dedicated directories for hooks, utils, and components
 - **Import Structure**: Organized imports with path aliases
+- **Custom Hooks**: Reusable logic extraction for report management
+- **Component Documentation**: Comprehensive JSDoc comments for complex components
 
 ## Deployment Considerations
 

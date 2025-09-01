@@ -1,0 +1,249 @@
+/**
+ * ReportHeader Component Styles
+ * 
+ * Styles for the report header including title, stats, back button,
+ * and responsive design for different screen sizes.
+ */
+
+.report-header {
+  background: linear-gradient(135deg, var(--background-primary) 0%, #fafbfc 100%);
+  border-bottom: 1px solid var(--border-light);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  padding: var(--spacing-2xl) var(--spacing-2xl) var(--spacing-xl);
+  position: relative;
+  overflow: hidden;
+}
+
+.report-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 20% 80%, rgba(0, 211, 149, 0.03) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, rgba(125, 211, 192, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  position: relative;
+  z-index: 1;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  flex: 1;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: var(--background-primary);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
+  align-self: flex-start;
+}
+
+.back-btn:hover {
+  color: var(--primary-green);
+  border-color: var(--primary-green);
+  background: var(--primary-green-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.back-icon {
+  font-size: var(--font-size-md);
+  transition: transform 0.2s ease;
+}
+
+.back-btn:hover .back-icon {
+  transform: translateX(-2px);
+}
+
+.report-info h1.report-title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-md);
+  line-height: 1.2;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--primary-green) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.report-description {
+  font-size: var(--font-size-lg);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 600px;
+}
+
+.report-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xl);
+  margin-top: var(--spacing-lg);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: var(--background-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  min-width: 120px;
+}
+
+.stat-item:hover {
+  border-color: var(--primary-green);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--primary-green);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .report-stats {
+    gap: var(--spacing-lg);
+  }
+
+  .report-header {
+    padding: var(--spacing-xl) var(--spacing-lg);
+  }
+
+  .report-info h1.report-title {
+    font-size: 2rem;
+  }
+
+  .stat-item {
+    min-width: 100px;
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .report-header {
+    padding: var(--spacing-lg);
+  }
+
+  .header-content {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-xl);
+    text-align: center;
+  }
+
+  .header-left {
+    width: 100%;
+    align-items: center;
+  }
+
+  .back-btn {
+    align-self: flex-start;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .report-info {
+    text-align: center;
+    padding: var(--spacing-md) 0;
+  }
+
+  .report-info h1.report-title {
+    font-size: 1.75rem;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .report-description {
+    font-size: var(--font-size-md);
+    max-width: 100%;
+  }
+
+  .report-stats {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-md);
+  }
+
+  .stat-item {
+    min-width: 80px;
+    padding: var(--spacing-md);
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
+
+  .stat-label {
+    font-size: var(--font-size-xs);
+  }
+}
+
+@media (max-width: 480px) {
+  .report-header {
+    padding: var(--spacing-md);
+  }
+
+  .report-info h1.report-title {
+    font-size: 1.5rem;
+  }
+
+  .report-description {
+    font-size: var(--font-size-sm);
+  }
+
+  .back-btn {
+    padding: var(--spacing-xs) var(--spacing-md);
+    font-size: var(--font-size-xs);
+  }
+
+  .stat-item {
+    min-width: 70px;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .stat-value {
+    font-size: 1rem;
+  }
+}

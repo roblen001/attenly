@@ -116,8 +116,8 @@ export default function AgentExecutionPage() {
   };
 
   const handlePreview = () => {
-    // Placeholder for preview functionality
-    console.log('Preview report clicked');
+    // Navigate to ReportView to see the generated report
+    navigate(`/report/${agentId}`);
   };
 
   const downloadReportAsPDF = () => {

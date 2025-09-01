@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.core.deps import get_current_user
 from fastapi import Depends
 import supabase
-le
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.get("/me")

@@ -1,0 +1,37 @@
+/**
+ * ReportView Page Styles
+ * 
+ * Main page container styles for the ReportView page.
+ * Individual component styles are now in their respective CSS files.
+ */
+
+.report-view-page {
+  min-height: 100vh;
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Override for report-main when used in page context */
+.report-view-page .report-main {
+  flex: 1;
+  padding: var(--spacing-2xl);
+}
+
+.report-view-page .report-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .report-view-page .report-main {
+    padding: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .report-view-page .report-main {
+    padding: var(--spacing-md);
+  }
+}

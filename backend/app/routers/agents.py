@@ -364,51 +364,44 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
         raise HTTPException(status_code=503, detail="Vector search not available - please ensure ChromaDB is installed")
     
     # Get list of successfully processed documents
-    succesfully_uploaded_files = [
+    successfully_uploaded_files = [
         file_record for file_record in uploaded_files_storage[user_id].values()
         if file_record["status"] == "uploaded"
     ]
     
-    if not succesfully_uploaded_files:
+    if not successfully_uploaded_files:
         raise HTTPException(status_code=400, detail="No successfully uploaded documents available for agent processing")
     
     try:
-        # TODO: For now, return a placeholder response since we haven't implemented LLM integration yet
-        # This will be replaced with actual LLM processing in the next step
+        # Generate report using report service (which now requires real LLM)
+        document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
         
-        document_ids = [file_record["id"] for file_record in succesfully_uploaded_files]
+        report_result = report_service.generate_report(
+            agent=agent,
+            vector_store=vector_store,
+            document_ids=document_ids
+        )
         
-        # Get vector store statistics
-        vector_stats = vector_store.get_session_statistics()
+        if not report_result["success"]:
+            raise HTTPException(status_code=500, detail=f"Document processing failed: {report_result.get('error', 'Unknown error')}")
         
-        # Placeholder for extracted data - will be replaced with actual LLM extraction
-        # TODO: Batch processing of prompts
-        extracted_data = {}
-        for question in agent.questions:
-            # Simulate data extraction for each question
-            extracted_data[question.placeholder] = f"[Extracted data for: {question.prompt}]"
-
         return {
             "success": True,
             "agent_id": agent_id,
             "agent_name": agent.name,
-            "processed_documents": len(succesfully_uploaded_files),
+            "processed_documents": len(successfully_uploaded_files),
             "document_ids": document_ids,
-            "vector_store_stats": vector_stats,
-            "extracted_data": extracted_data,
-            "questions_processed": len(agent.questions),
+            "processing_stats": report_result["processing_stats"],
             "status": "completed",
-            "message": "Document processing completed successfully (using placeholder data - LLM integration pending)"
+            "message": "Document processing completed successfully with real LLM inference"
         }
         
+    except ValueError as e:
+        # Handle service-level errors (including LLM unavailability)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logging.error(f"Failed to process documents with agent {agent_id}: {e}")
-        return {
-            "success": False,
-            "agent_id": agent_id,
-            "error": str(e),
-            "status": "failed"
-        }
+        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
 
 
 @router.get("/{agent_id}/report")

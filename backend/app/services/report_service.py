@@ -11,6 +11,12 @@ from typing import List, Dict, Any, Optional
 from app.schemas import Agent, QuestionOut
 from app.services.llm_service import llm_service
 from app.services.vector_store import VectorStore
+from app.config import (
+    VECTOR_SEARCH_TOP_K_PER_QUESTION,
+    VECTOR_SEARCH_MAX_SOURCE_QUOTES,
+    VECTOR_SEARCH_TOP_K_LEGACY,
+    VECTOR_SEARCH_MAX_TOTAL_CHUNKS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,36 +41,43 @@ class ReportService:
             Complete report data with answers, quotes, and metadata
             
         Raises:
-            ValueError: If vector store is not available or no chunks found
+            ValueError: If vector store is not available, no chunks found, or LLM service is not available
         """
         
         if not vector_store.available:
             raise ValueError("Vector store not available for report generation")
         
+        # Check LLM service availability before processing
+        if not self.llm_service.available:
+            raise ValueError("LLM service is not available. Please ensure GEMINI_API_KEY is configured and the service is properly initialized.")
+        
         try:
-            # Get all relevant chunks for the agent's questions
-            all_relevant_chunks = self._gather_relevant_chunks(
+            # Get question-specific chunks for each question individually
+            questions_with_chunks = self._gather_question_specific_chunks(
                 agent.questions, vector_store, document_ids
             )
             
-            if not all_relevant_chunks:
-                raise ValueError("No relevant document chunks found for report generation")
+            if not questions_with_chunks:
+                raise ValueError("No relevant document chunks found for any questions")
             
-            # Process questions through LLM service
-            document_context = self._build_document_context(all_relevant_chunks, document_ids)
+            # Build document context from all chunks
+            all_chunks = []
+            for item in questions_with_chunks:
+                all_chunks.extend(item['relevant_chunks'])
             
+            document_context = self._build_document_context(all_chunks, document_ids)
+            
+            # Process questions through LLM service with individual contexts
             llm_results = self.llm_service.process_agent_questions(
-                agent.questions, all_relevant_chunks, document_context
+                questions_with_chunks, document_context
             )
             
-            # Handle both successful LLM processing and placeholder responses
-            if not llm_results["success"]:
-                logger.warning(f"LLM processing not successful: {llm_results.get('error', 'Unknown error')}")
-                # Continue with placeholder data instead of raising an error
+            # LLM service now only returns successful results or raises an exception
+            # No need to handle placeholder responses anymore
             
             # Build complete report data
             report_data = self._build_report_data(
-                agent, llm_results["results"], all_relevant_chunks, document_context
+                agent, llm_results["results"], all_chunks, document_context
             )
             
             return {
@@ -75,7 +88,7 @@ class ReportService:
                 "report_data": report_data,
                 "processing_stats": {
                     "questions_processed": len(agent.questions),
-                    "chunks_analyzed": len(all_relevant_chunks),
+                    "chunks_analyzed": len(all_chunks),
                     "documents_processed": len(document_context.get("document_ids", [])),
                     "llm_model": llm_results.get("model_used", "unknown")
                 }
@@ -98,7 +111,7 @@ class ReportService:
                 # Use the question prompt as search query
                 chunks = vector_store.search_chunks(
                     query=question.prompt,
-                    top_k=15,  # Get more chunks per question for better coverage
+                    top_k=VECTOR_SEARCH_TOP_K_LEGACY,  # Use configurable value for legacy method
                     document_ids=document_ids
                 )
                 
@@ -116,8 +129,42 @@ class ReportService:
         # Sort by relevance (distance) and limit total chunks
         all_chunks.sort(key=lambda x: x.get("distance", float('inf')))
         
-        # Limit to top 50 chunks to manage token usage
-        return all_chunks[:50]
+        # Limit to configurable number of chunks to manage token usage
+        return all_chunks[:VECTOR_SEARCH_MAX_TOTAL_CHUNKS]
+    
+    def _gather_question_specific_chunks(self, questions: List[QuestionOut], vector_store: VectorStore, 
+                                       document_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Gather relevant chunks for each question individually for optimal RAG processing"""
+        
+        questions_with_chunks = []
+        
+        # Search for chunks relevant to each question individually
+        for question in questions:
+            try:
+                # Use the question prompt as search query
+                chunks = vector_store.search_chunks(
+                    query=question.prompt,
+                    top_k=VECTOR_SEARCH_TOP_K_PER_QUESTION,  # Use configurable value
+                    document_ids=document_ids
+                )
+                
+                # Store question with its specific relevant chunks
+                questions_with_chunks.append({
+                    'question': question,
+                    'relevant_chunks': chunks
+                })
+                
+                logger.info(f"Found {len(chunks)} relevant chunks for question: {question.placeholder}")
+                        
+            except Exception as e:
+                logger.warning(f"Failed to search chunks for question {question.placeholder}: {e}")
+                # Still add the question but with empty chunks
+                questions_with_chunks.append({
+                    'question': question,
+                    'relevant_chunks': []
+                })
+        
+        return questions_with_chunks
     
     def _build_document_context(self, chunks: List[Dict], document_ids: Optional[List[str]]) -> Dict[str, Any]:
         """Build document context from chunks for LLM processing"""

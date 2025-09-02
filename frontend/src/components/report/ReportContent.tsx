@@ -30,8 +30,22 @@ const ReportContent: React.FC<ReportContentProps> = ({
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       
-      // Handle answer editing clicks
+      // Handle superscript clicks FIRST (higher priority)
+      if (target.classList.contains('quote-superscript')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const quoteIndex = parseInt(target.getAttribute('data-quote-index') || '0');
+        onQuoteClick(quoteIndex);
+        return;
+      }
+      
+      // Handle answer editing clicks (only if not a superscript)
       if (target.classList.contains('editable-answer') || target.closest('.editable-answer')) {
+        // Don't trigger edit if clicking on a superscript
+        if (target.classList.contains('quote-superscript') || target.closest('.quote-superscript')) {
+          return;
+        }
+        
         e.preventDefault();
         e.stopPropagation();
         
@@ -49,15 +63,6 @@ const ReportContent: React.FC<ReportContentProps> = ({
             }
           }
         }
-        return;
-      }
-      
-      // Handle superscript clicks
-      if (target.classList.contains('quote-superscript')) {
-        e.preventDefault();
-        e.stopPropagation();
-        const quoteIndex = parseInt(target.getAttribute('data-quote-index') || '0');
-        onQuoteClick(quoteIndex);
         return;
       }
     };

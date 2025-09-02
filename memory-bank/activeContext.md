@@ -59,6 +59,29 @@ The project is currently in the second development phase, focusing on building o
 2. **File Upload Strategy**: Implemented drag-and-drop interface with file validation
 3. **State Management**: Using local React state with direct API calls (no global state management yet)
 4. **Authentication**: Migrated from session-based to Supabase JWT authentication for better scalability and security
+5. **LLM Integration**: **COMPLETED** - Removed all placeholder/testing modes, now requires real LLM for report generation
+
+### Recent Major Changes (January 2025)
+
+#### **Removal of Testing Mode for Report Generation** ✅ **COMPLETED**
+- **Problem Solved**: Eliminated ability to generate reports without real LLM answers
+- **Changes Made**:
+  - **LLM Service**: Removed `_generate_placeholder_responses()` method entirely
+  - **LLM Service**: Modified `process_agent_questions()` to raise exceptions instead of falling back to placeholders
+  - **Report Service**: Added strict LLM availability validation before processing
+  - **Report Service**: Removed fallback logic that continued with placeholder data
+  - **API Endpoints**: Updated `/agents/{agent_id}/process` and `/agents/{agent_id}/report` to use real LLM processing
+  - **Error Handling**: Improved error messages to clearly indicate LLM configuration requirements
+- **Benefits**:
+  - **Production Ready**: Application now only works with real AI processing
+  - **No Confusion**: Eliminates placeholder data that could be mistaken for real results
+  - **Better UX**: Clear error messages when LLM service is not configured
+  - **Cleaner Code**: Removed conditional logic and fallback mechanisms
+- **Technical Details**:
+  - LLM service now raises `ValueError` when `GEMINI_API_KEY` is not configured
+  - Report service validates LLM availability before processing any questions
+  - API endpoints return proper HTTP error codes (400/500) with descriptive messages
+  - All placeholder generation code has been completely removed
 
 ### Implementation Patterns
 1. **Component Organization**: Separated AgentExecution components into dedicated directory
@@ -147,7 +170,49 @@ The project is currently in the second development phase, focusing on building o
 4. **Error Handling**: ✅ **COMPLETED** - Robust error handling for file processing failures
 
 ### Recently Completed Work
-1. **Complete Report Viewing & Management System** (January 2025):
+
+1. **Backend Configuration Centralization System** ✅ **COMPLETED** (January 2025):
+   - **MAJOR INFRASTRUCTURE IMPROVEMENT**: Centralized all backend configuration variables into a single, comprehensive configuration system
+   - **Problem Solved**: Hardcoded values scattered throughout services made tuning difficult and deployment inflexible
+   - **Solution**: Created comprehensive `backend/app/config.py` with environment variable support and validation
+   - **Implementation**:
+     - **Centralized Config File**: All configurable parameters organized by category (LLM, Chunking, Vector Search, etc.)
+     - **Environment Variable Support**: All settings can be overridden via environment variables for different deployment environments
+     - **Configuration Validation**: Startup validation with detailed error messages for invalid settings
+     - **Configuration Summary**: Debug endpoint to view current configuration (excluding sensitive values)
+     - **Service Updates**: Updated all services (LLMService, ChunkingService, ReportService) to use centralized config
+   - **Key Configuration Categories**:
+     - **LLM Settings**: Model selection, context limits, temperature, thinking budget, response format
+     - **Vector Search**: Top-K values per question, max source quotes, legacy compatibility settings
+     - **Document Chunking**: L1/L2 chunk sizes, overlap settings, target token counts
+     - **File Processing**: Upload limits, supported types, PDF processing options
+     - **Database & Auth**: Connection strings, Supabase configuration
+     - **Performance**: Concurrency limits, caching settings, optimization flags
+   - **Benefits**:
+     - **Easy Tuning**: All performance parameters in one place for optimization
+     - **Environment Flexibility**: Different settings for dev/staging/production via environment variables
+     - **Maintainability**: Clear separation of configuration from business logic
+     - **Documentation**: Comprehensive comments and recommended values for each setting
+     - **Validation**: Startup validation prevents runtime errors from invalid configuration
+     - **Debugging**: Configuration summary for troubleshooting and monitoring
+   - **Technical Details**:
+     - Replaced hardcoded values in: `llm_service.py`, `chunking_service.py`, `report_service.py`
+     - Added startup validation in `main.py` with detailed error reporting
+     - Environment variable defaults with type conversion and validation
+     - Configuration categories: Authentication, LLM, Vector Search, Chunking, Processing, Database, Development, Performance
+   - **Files Modified**:
+     - `backend/app/config.py`: Comprehensive configuration system with validation
+     - `backend/app/main.py`: Added configuration validation on startup
+     - `backend/app/services/llm_service.py`: Uses centralized LLM and vector search config
+     - `backend/app/services/chunking_service.py`: Uses centralized chunking config
+     - `backend/app/services/report_service.py`: Uses centralized vector search config
+   - **Configuration Examples**:
+     - `LLM_MAX_CONTEXT_TOKENS_PER_QUESTION=8000` (per-question context limit)
+     - `VECTOR_SEARCH_TOP_K_PER_QUESTION=10` (chunks retrieved per question)
+     - `CHUNK_L1_TARGET_TOKENS=1200` (semantic chunk target size)
+     - `CHUNK_L2_WINDOW_TOKENS=512` (vector search window size)
+
+2. **Complete Report Viewing & Management System** (January 2025):
    - **MAJOR MILESTONE**: Implemented comprehensive report viewing system with advanced features
    - **Problem Solved**: Bridged the gap between file processing and user interaction with generated reports
    - **Solution**: Built complete report management interface with sophisticated state management

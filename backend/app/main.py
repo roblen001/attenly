@@ -4,9 +4,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db import Base, engine
 from app.routers import auth, agents
 from pathlib import Path
-from app.config import SUPABASE_URL
+from app.config import SUPABASE_URL, validate_config, get_config_summary
+import logging
 
 app = FastAPI(title="Attenly", version="0.1.0")
+
+# Validate configuration on startup
+try:
+    validate_config()
+    config_summary = get_config_summary()
+    logging.info("Configuration validation successful")
+    logging.info(f"Configuration summary: {config_summary}")
+except ValueError as e:
+    logging.error(f"Configuration validation failed: {e}")
+    raise e
 
 # TODO: ONLLY FOR DEV MODE
 Base.metadata.create_all(bind=engine)

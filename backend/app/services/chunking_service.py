@@ -10,6 +10,12 @@ import uuid
 import logging
 from typing import List, Dict, Any, Tuple
 import re
+from app.config import (
+    CHUNK_L1_TARGET_TOKENS,
+    CHUNK_L1_MAX_TOKENS,
+    CHUNK_L2_WINDOW_TOKENS,
+    CHUNK_L2_OVERLAP_TOKENS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +31,11 @@ class ChunkingService:
             # Fallback token estimation if tiktoken not available
             self.encoder = None
         
-        # Chunking parameters based on best practices
-        self.L1_TARGET = 1200  # tokens - target size for L1 chunks
-        self.L1_MAX = 2000     # tokens - hard maximum for L1 chunks
-        self.L2_WINDOW = 512   # tokens - size of L2 windows
-        self.L2_OVERLAP = 80   # tokens - overlap between L2 windows
+        # Chunking parameters from configuration
+        self.L1_TARGET = CHUNK_L1_TARGET_TOKENS
+        self.L1_MAX = CHUNK_L1_MAX_TOKENS
+        self.L2_WINDOW = CHUNK_L2_WINDOW_TOKENS
+        self.L2_OVERLAP = CHUNK_L2_OVERLAP_TOKENS
     
     def create_two_level_chunks(self, document_id: str, pdf_data: Dict[str, Any], filename: str) -> Tuple[List[Dict], List[Dict]]:
         """Create L1 and L2 chunks from processed PDF data"""

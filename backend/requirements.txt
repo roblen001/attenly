@@ -47,3 +47,4 @@ PyMuPDF
 chromadb
 tiktoken
 openai
+google-genai

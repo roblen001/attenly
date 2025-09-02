@@ -33,6 +33,7 @@ export interface Quote {
   id: string;
   index: number;
   chunk_id: string;
+  document_id: string;
   text: string;
   page_range: string;
   relevance_score: number;
@@ -69,4 +70,25 @@ export interface ReportData {
   quotes: Quote[];
   document_context: DocumentContext;
   generated_at: string;
+}
+
+export interface PageInfo {
+  page_number: number;
+  start_position: number;
+  end_position: number;
+  content_length: number;
+}
+
+export interface DocumentContent {
+  document_id: string;
+  filename: string;
+  full_text: string;
+  pages: PageInfo[];
+  total_pages: number;
+  total_characters: number;
+  metadata: {
+    size: number;
+    type: string;
+    processing_stats: Record<string, unknown>;
+  };
 }

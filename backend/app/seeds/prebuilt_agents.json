@@ -8,142 +8,142 @@
       {
         "id": "insured-name",
         "placeholder": "InsuredName",
-        "prompt": "Insured Name"
+        "prompt": "Extract the full legal name of the primary Named Insured from broker submissions/ACORD/policy docs. Include legal suffixes (Inc., Ltd., LLC). Exclude DBAs unless they are the only name. Return text only or 'N/A'."
       },
       {
         "id": "broker-agent",
         "placeholder": "BrokerAgent",
-        "prompt": "Broker / Agent"
+        "prompt": "Return the brokerage/agency firm name (not the individual producer). Use the most prominent/current firm listed. Text only or 'N/A'."
       },
       {
         "id": "policy-number",
         "placeholder": "PolicyNumber",
-        "prompt": "Policy Number"
+        "prompt": "Return the current term policy number for the line(s) in scope; if multiple, prefer the one matching Coverage Line. Preserve formatting as printed (dashes/spaces). If none, 'N/A'."
       },
       {
         "id": "effective-date",
         "placeholder": "EffectiveDate",
-        "prompt": "Effective Date"
+        "prompt": "Return the policy effective date for the current term in YYYY-MM-DD. If only month/year given, use the first day of the month (YYYY-MM-01). If unknown, 'N/A'."
       },
       {
         "id": "expiration-date",
         "placeholder": "ExpirationDate",
-        "prompt": "Expiration Date"
+        "prompt": "Return the policy expiration date for the current term in YYYY-MM-DD. If only month/year given, use the last day of the month. If unknown, 'N/A'."
       },
       {
         "id": "lines-of-business",
         "placeholder": "LinesOfBusiness",
-        "prompt": "Lines of Business"
+        "prompt": "List comma-separated canonical lines of business present (Property, General Liability, Auto, Workers' Comp, Umbrella/Excess, Cyber, D&O, E&O, Inland Marine, Cargo). Map synonyms (e.g., CGL→General Liability)."
       },
       {
         "id": "company-address",
         "placeholder": "CompanyAddress",
-        "prompt": "Company Address"
+        "prompt": "Return the principal location mailing address on one line: 'Street, City, State/Prov, Country, Postal/ZIP'. If multiple, choose HQ or primary risk location. 'N/A' if missing."
       },
       {
         "id": "industry-classification",
         "placeholder": "IndustryClassification",
-        "prompt": "Industry Classification"
+        "prompt": "Return NAICS (or SIC) code with label if available, e.g., 'NAICS 236220 — Commercial and Institutional Building Construction'; otherwise a concise industry description. Text only or 'N/A'."
       },
       {
         "id": "annual-revenue",
         "placeholder": "AnnualRevenue",
-        "prompt": "Annual Revenue"
+        "prompt": "Return the most recent single-year gross revenue as a number only (no symbols/commas), annualized if needed. If a range, pick the latest/most recent figure. 'N/A' if not found."
       },
       {
         "id": "annual-payroll",
         "placeholder": "AnnualPayroll",
-        "prompt": "Annual Payroll"
+        "prompt": "Return total annual payroll as a number only (no symbols/commas), annualized if needed. Use the most recent figure. 'N/A' if not found."
       },
       {
         "id": "business-description",
         "placeholder": "BusinessDescription",
-        "prompt": "Business Description"
+        "prompt": "Summarize core operations and major exposures in 1–2 sentences (≤35 words). Avoid marketing language. If unknown, 'N/A'."
       },
       {
         "id": "coverage-line",
         "placeholder": "CoverageLine",
-        "prompt": "Coverage Line"
+        "prompt": "Return the coverage line name in canonical form (e.g., Property, General Liability, Auto, Workers' Comp, Umbrella/Excess, Cyber, D&O, E&O, Inland Marine, Cargo)."
       },
       {
         "id": "coverage-limit",
         "placeholder": "CoverageLimit",
-        "prompt": "Coverage Limit"
+        "prompt": "Return the most material limit for the coverage line (prefer per occurrence; otherwise aggregate) AS PRINTED in the source (keep symbols and qualifiers like 'per occ/agg'). If missing, 'N/A'."
       },
       {
         "id": "deductible",
         "placeholder": "Deductible",
-        "prompt": "Deductible"
+        "prompt": "Return the deductible/retention for the coverage line AS PRINTED (retain symbols and units, e.g., '$10,000 per loss'). If multiple, pick the primary. 'N/A' if none."
       },
       {
         "id": "estimated-premium",
         "placeholder": "EstimatedPremium",
-        "prompt": "Estimated Premium"
+        "prompt": "Return the estimated/quoted premium AS PRINTED (retain symbols and any breakdown notes like 'subject to audit'). If unknown, 'N/A'."
       },
       {
         "id": "total-claims-5yr",
         "placeholder": "TotalClaims5Yr",
-        "prompt": "Total Claims (5 Years)"
+        "prompt": "Count total claims in the last 5 full policy years. Return an integer. If only partial data appears, count what is available and return the integer."
       },
       {
         "id": "aggregate-incurred",
         "placeholder": "AggregateIncurred",
-        "prompt": "Aggregate Incurred"
+        "prompt": "Sum paid + outstanding reserves for the last 5 years. Return a number only with 2 decimals (no symbols/commas). If unavailable, 'N/A'."
       },
       {
         "id": "open-claims",
         "placeholder": "OpenClaims",
-        "prompt": "Open Claims"
+        "prompt": "Count currently open claims (status not closed). Return an integer; 0 if none."
       },
       {
         "id": "recent-large-claims",
         "placeholder": "RecentLargeClaims",
-        "prompt": "Recent Large Claims"
+        "prompt": "List up to the top 3 largest claims in the last 5 years as: 'YYYY-MM-DD — Cause/Type — $Amount incurred' separated by semicolons. If none, 'N/A'."
       },
       {
         "id": "property-condition",
         "placeholder": "PropertyCondition",
-        "prompt": "Property Condition"
+        "prompt": "Condense property condition into a short assessment (e.g., 'Good: 2019 roof; updated wiring 2022; sprinklered 100%'). If unknown, 'N/A'."
       },
       {
         "id": "safety-programs",
         "placeholder": "SafetyPrograms",
-        "prompt": "Safety Programs"
+        "prompt": "Comma-separated list of documented safety programs/certifications (e.g., 'formal RTW, driver MVR checks, hot-work permit'). If none noted, 'N/A'."
       },
       {
         "id": "identified-gaps",
         "placeholder": "IdentifiedGaps",
-        "prompt": "Identified Gaps"
+        "prompt": "List specific risk/control gaps as short phrases separated by semicolons (e.g., 'no central alarm; limited driver training; aging roof'). 'N/A' if none."
       },
       {
         "id": "current-ratio",
         "placeholder": "CurrentRatio",
-        "prompt": "Current Ratio"
+        "prompt": "Return Current Ratio as a decimal with 2 decimals (e.g., '1.35'). If only working capital is given and current liabilities unknown, return 'N/A'."
       },
       {
         "id": "ebitda-margin",
         "placeholder": "EbitdaMargin",
-        "prompt": "EBITDA Margin"
+        "prompt": "Return EBITDA margin as a percent with '%' (e.g., '12.4%'). If only EBITDA and revenue are provided, compute margin. If not derivable, 'N/A'."
       },
       {
         "id": "financial-controls",
         "placeholder": "FinancialControls",
-        "prompt": "Financial Controls"
+        "prompt": "List notable financial controls as short phrases separated by semicolons (e.g., 'annual audit; dual-signature checks; inventory cycle counts'). 'N/A' if none."
       },
       {
         "id": "overall-risk-grade",
         "placeholder": "OverallRiskGrade",
-        "prompt": "Overall Risk Grade"
+        "prompt": "Return an overall risk grade present in the file (e.g., 'A', 'B', 'C', or 'Low/Medium/High'). If absent, infer succinctly as 'Low', 'Medium', or 'High' based on controls and loss experience."
       },
       {
         "id": "pricing-considerations",
         "placeholder": "PricingConsiderations",
-        "prompt": "Pricing Considerations"
+        "prompt": "Provide 2–5 concise pricing drivers separated by semicolons (e.g., 'recent large loss 2023; frame construction; improved housekeeping 2024; modest payroll growth')."
       },
       {
         "id": "conditions-endorsements",
         "placeholder": "ConditionsEndorsements",
-        "prompt": "Conditions / Endorsements"
+        "prompt": "Provide 2–6 recommended conditions/endorsements separated by semicolons (e.g., 'sprinkler warranty; hot-work permit; driver MVR program; burglary alarm certificate')."
       }
     ]
   },

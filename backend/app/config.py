@@ -32,7 +32,7 @@ LLM_MODEL_NAME = "gemini-2.5-flash-lite"
 
 # Context and Token Limits
 LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = 4000 # Recommended: 4000-8000 for dev, 8000-12000 for prod
-LLM_TEMPERATURE = 0.1
+LLM_TEMPERATURE = 0.01
 
 # Processing Configuration
 LLM_THINKING_BUDGET = 0  # 0 for cost optimization
@@ -46,9 +46,21 @@ LLM_RESPONSE_FORMAT = "application/json"
 VECTOR_SEARCH_TOP_K_PER_QUESTION = 10
 VECTOR_SEARCH_MAX_SOURCE_QUOTES = 3
 
-# Legacy search parameters (for backward compatibility)
-VECTOR_SEARCH_TOP_K_LEGACY = 15
-VECTOR_SEARCH_MAX_TOTAL_CHUNKS = 50
+# =============================================================================
+# INTELLIGENT QUOTE EXTRACTION CONFIGURATION
+# =============================================================================
+
+# Quote Extraction Features
+QUOTE_CONTEXT_CHARS = 50  # Characters of context before/after extracted quote
+MAX_QUOTE_LENGTH = 300    # Maximum length of extracted quote text
+MIN_ANSWER_CONFIDENCE = 0.7  # Minimum confidence threshold for including quotes
+
+# Answer Quality Analysis
+ANSWER_NOT_FOUND_PHRASES = [
+    "not found", "not specified", "not available", "not mentioned", 
+    "not provided", "unknown", "unclear", "not stated", "not indicated",
+    "no information", "cannot be determined", "not disclosed"
+]
 
 # =============================================================================
 # DOCUMENT CHUNKING CONFIGURATION
@@ -149,6 +161,20 @@ def validate_config():
     if MAX_FILE_SIZE_MB < 1:
         errors.append("MAX_FILE_SIZE_MB must be at least 1")
     
+    # Validate quote extraction parameters
+    if QUOTE_CONTEXT_CHARS < 0:
+        errors.append("QUOTE_CONTEXT_CHARS must be non-negative")
+    if QUOTE_CONTEXT_CHARS > 200:
+        errors.append("QUOTE_CONTEXT_CHARS should not exceed 200")
+    
+    if MAX_QUOTE_LENGTH < 50:
+        errors.append("MAX_QUOTE_LENGTH must be at least 50")
+    if MAX_QUOTE_LENGTH > 1000:
+        errors.append("MAX_QUOTE_LENGTH should not exceed 1000")
+    
+    if not 0.0 <= MIN_ANSWER_CONFIDENCE <= 1.0:
+        errors.append("MIN_ANSWER_CONFIDENCE must be between 0.0 and 1.0")
+    
     if errors:
         raise ValueError(f"Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors))
 
@@ -192,6 +218,11 @@ def get_config_summary() -> dict:
         "supabase": {
             "url_configured": bool(SUPABASE_URL),
             "key_configured": bool(SUPABASE_KEY)
+        },
+        "quote_extraction": {
+            "context_chars": QUOTE_CONTEXT_CHARS,
+            "max_quote_length": MAX_QUOTE_LENGTH,
+            "min_answer_confidence": MIN_ANSWER_CONFIDENCE
         }
     }
 

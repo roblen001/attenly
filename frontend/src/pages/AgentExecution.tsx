@@ -17,27 +17,24 @@ export default function AgentExecutionPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportReady, setReportReady] = useState(false);
 
-  // Clear vector store and files when navigating away from this page, only if files exist
+  // Clear vector store and files when entering this page, only if files exist
   useEffect(() => {
-    const clearUserSession = async () => {
+    const clearFilesOnEntry = async () => {
       try {
         const filesResponse = await api('/agents/files');
         const filesData = await filesResponse.json();
         if (filesData.files && filesData.files.length > 0) {
           await api('/agents/files/clear', { method: 'DELETE' });
-          console.log('Vector store cleared on navigation away');
+          console.log('Files cleared on entering agent execution page');
         }
       } catch (error) {
-        console.error('Failed to clear vector store:', error);
-        // Don't block navigation on cleanup failure
+        console.error('Failed to clear files on entry:', error);
+        // Don't block page loading on cleanup failure
       }
     };
 
-    // Cleanup function that runs when component unmounts (navigation away)
-    return () => {
-      clearUserSession();
-    };
-  }, []);
+    clearFilesOnEntry();
+  }, []); // Empty dependency array = runs once on component mount
 
   useEffect(() => {
     const fetchAgent = async () => {

@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional, Union
 import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 from app.schemas import QuestionOut
 from app.config import (
     LLM_MODEL_NAME,
@@ -23,10 +24,22 @@ from app.config import (
     LLM_TEMPERATURE,
     LLM_THINKING_BUDGET,
     LLM_RESPONSE_FORMAT,
-    VECTOR_SEARCH_MAX_SOURCE_QUOTES
+    VECTOR_SEARCH_MAX_SOURCE_QUOTES,
+    QUOTE_CONTEXT_CHARS,
+    MAX_QUOTE_LENGTH,
+    MIN_ANSWER_CONFIDENCE,
+    ANSWER_NOT_FOUND_PHRASES
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AnswerQuality(Enum):
+    """Enum for answer quality assessment"""
+    FOUND = "found"
+    NOT_FOUND = "not_found"
+    PARTIAL = "partial"
+    UNCERTAIN = "uncertain"
 
 
 class LLMService:
@@ -118,7 +131,8 @@ class LLMService:
                 thinking_config=self.types.ThinkingConfig(thinking_budget=LLM_THINKING_BUDGET),
                 # Use structured JSON output for consistent parsing
                 response_mime_type=LLM_RESPONSE_FORMAT,
-                response_schema=self._create_batch_response_schema(agent_questions)
+                response_schema=self._create_batch_response_schema(agent_questions),
+                temperature=LLM_TEMPERATURE,
             )
             
             # Single API call for all questions - maximum cost efficiency
@@ -204,22 +218,46 @@ RELEVANT CONTEXT FOR THIS QUESTION:
 
 """
         
-        return f"""You are an expert data extraction AI analyzing insurance documents. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
+        return f"""
+You are an expert insurance-document extraction AI. Your task is to extract answers for ALL questions. Each question comes with its OWN relevant context block.
 
 {questions_section}
 
-INSTRUCTIONS:
-1. For each question, analyze ONLY its specific relevant context section
-2. Extract the specific information requested for each question
-3. If information is not found in a question's context, respond with "Not specified" or "Not found"
-4. Be precise and factual - only extract information that is explicitly stated
-5. For numerical values, include units when specified
-6. For dates, use a consistent format (MM/DD/YYYY or as stated in document)
-7. Keep responses concise and directly answer each question
-8. Respond in the exact JSON format specified
+GLOBAL PRINCIPLES (apply to EVERY question unless the question text explicitly overrides):
+- Scope: Use ONLY the provided context block for that question. Do not use other questions’ context or outside knowledge.
+- No guessing: If the value is missing, illegible, or not stated, return one of:
+  - "Not found" = field is absent in the context
+  - "Not specified" = context references the field but gives no concrete value (e.g., “TBD”, “—”, “N/A”)
+- Precision: Extract exactly what the document states. Do not paraphrase labels, invent units, or expand abbreviations unless explicitly instructed.
+- Normalization defaults:
+  - Dates → use MM/DD/YYYY (or the exact format explicitly stated in the question).
+  - Numbers → keep digits only; include units ONLY if they appear next to the number in the context or if the question asks for units.
+  - Currency → if the question asks for “as printed”, keep symbols and punctuation; otherwise return digits with two decimals and NO symbols/commas.
+  - Percentages → return with "%" (e.g., "12.34%") if percent is explicitly shown; otherwise do not infer.
+  - Text → trim whitespace; collapse internal multiple spaces; remove trailing periods.
+- Multiple candidates in the SAME context block:
+  - Prefer the value explicitly labeled for the field (exact label match > partial match).
+  - If multiple values remain, choose the one marked "current", "effective", or the most recent by date.
+  - If still ambiguous, return "Not specified".
+- OCR artifacts: Correct obvious OCR errors (e.g., “Ioss”→“Loss”) only when unambiguous; otherwise treat as "Not specified".
+- Ignore placeholders and non-values such as "{{...}}", "example", "sample", "—", "TBD", "N/A" (unless the question asks to return them literally).
+- Computations: Only compute if ALL operands exist within the SAME question’s context; otherwise return "Not found".
+
+OUTPUT REQUIREMENTS (STRICT):
+- Respond with a SINGLE valid JSON object whose keys are the EXACT question IDs and whose values are STRINGS.
+- Do NOT include extra keys, comments, explanations, trailing commas, code fences, or backticks.
+- Escape any internal quotes to maintain valid JSON.
+- Every question ID MUST be present in the output.
+
+EXAMPLES (illustrative, not to be returned):
+- If the context shows “Effective: 07/01/2025” → "07/01/2025"
+- If the context shows “Premium: $12,345 (subject to audit)” and the question says “as printed” → "$12,345 (subject to audit)"
+- If the context shows “EBITDA 1.2M; Revenue 10M” and the question asks for EBITDA margin but no formula is allowed → "Not found"
 
 RESPONSE FORMAT:
-You must respond with a valid JSON object containing answers for all questions using their IDs as keys."""
+Return ONLY a valid JSON object mapping question IDs to string answers (no arrays/objects as values unless a question explicitly requests lists as text).
+"""
+
 
     def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> 'self.types.Schema':
         """Create JSON schema for structured batch response from questions with chunks"""
@@ -256,12 +294,14 @@ You must respond with a valid JSON object containing answers for all questions u
                 if placeholder in batch_data:
                     answer = batch_data[placeholder]
                     
-                    # Create structured result with question-specific source chunks
+                    # Create structured result with intelligent source chunks using answer quality analysis
                     results[placeholder] = {
                         "answer": answer,
-                        "source_chunks": self._get_source_chunks_for_question(relevant_chunks),
+                        "source_chunks": self._get_source_chunks_for_question(relevant_chunks, answer, question.prompt),
                         "word_count": len(answer.split()) if answer else 0
                     }
+                    print("===================================================")
+                    print(results[placeholder]['source_chunks'])
                 else:
                     # Question missing from response - create empty result
                     logger.warning(f"Question {placeholder} missing from batch response")
@@ -290,22 +330,35 @@ You must respond with a valid JSON object containing answers for all questions u
             
             return results
 
-    def _get_source_chunks_for_question(self, relevant_chunks: List[Dict]) -> List[Dict]:
-        """Get source chunks for a specific question (top 3 most relevant)"""
+    def _get_source_chunks_for_question(self, relevant_chunks: List[Dict], answer: str, question_prompt: str) -> List[Dict]:
+        """
+        Get intelligent source chunks for a specific question using answer quality analysis and precise quote extraction
         
-        source_chunks = []
+        Args:
+            relevant_chunks: List of relevant document chunks
+            answer: The LLM's answer for quality analysis
+            question_prompt: The original question prompt for quote extraction
+            
+        Returns:
+            List of source chunk dictionaries with precise quotes or empty list if answer not found
+        """
         
-        # Take configurable number of most relevant chunks as sources for this specific question
-        for i, chunk in enumerate(relevant_chunks[:VECTOR_SEARCH_MAX_SOURCE_QUOTES]):
-            source_chunks.append({
-                "chunk_id": chunk["chunk_id"],
-                "text": chunk["text"][:200] + "..." if len(chunk["text"]) > 200 else chunk["text"],
-                "page_range": f"{chunk['metadata'].get('start_page', 'N/A')}-{chunk['metadata'].get('end_page', 'N/A')}",
-                "relevance_score": chunk.get("distance", 0.0),
-                "quote_index": i + 1
-            })
+        # Analyze answer quality to determine if we should include quotes
+        answer_quality = self._analyze_answer_quality(answer)
         
-        return source_chunks
+        # Only return source quotes for FOUND answers
+        if answer_quality != AnswerQuality.FOUND:
+            logger.info(f"Answer quality is {answer_quality.value}, returning empty source chunks for answer: {answer[:50]}...")
+            return []
+        
+        # For found answers, use precise quote extraction
+        precise_quotes = self._extract_precise_quotes(answer, relevant_chunks, question_prompt)
+        if precise_quotes:
+            logger.info(f"Using {len(precise_quotes)} precise quotes for FOUND answer")
+            return precise_quotes
+        else:
+            logger.warning("Precise quote extraction failed for FOUND answer, returning empty list")
+            return []
     
     def _create_extraction_prompt(self, question_prompt: str, placeholder: str,
                                 context_text: str, document_context: Dict) -> str:
@@ -327,6 +380,7 @@ INSTRUCTIONS:
 5. For numerical values, include units when specified
 6. For dates, use a consistent format (MM/DD/YYYY or as stated in document)
 7. Keep your response concise and directly answer the question
+8. Do not use the file name as a source - only use actual content from the document
 
 RESPONSE FORMAT:
 Provide only the extracted information as your answer. Do not include explanations or additional commentary unless specifically requested.
@@ -413,6 +467,331 @@ ANSWER:"""
         
         return "".join(context_parts)
     
+    def _analyze_answer_quality(self, answer: str) -> AnswerQuality:
+        """
+        Analyze answer text to determine if information was actually found
+        
+        Args:
+            answer: The LLM's answer text
+            
+        Returns:
+            AnswerQuality enum indicating whether information was found
+        """
+        
+        if not answer or not answer.strip():
+            return AnswerQuality.NOT_FOUND
+        
+        answer_lower = answer.lower().strip()
+        
+        # Check for explicit "not found" phrases
+        for phrase in ANSWER_NOT_FOUND_PHRASES:
+            if phrase in answer_lower:
+                return AnswerQuality.NOT_FOUND
+        
+        # Check for partial information indicators
+        partial_indicators = [
+            "partially", "some", "limited", "incomplete", "partial",
+            "may be", "might be", "appears to be", "seems to be"
+        ]
+        
+        for indicator in partial_indicators:
+            if indicator in answer_lower:
+                return AnswerQuality.PARTIAL
+        
+        # Check for uncertainty indicators
+        uncertainty_indicators = [
+            "uncertain", "unclear", "ambiguous", "possibly", "potentially",
+            "likely", "probably", "maybe", "perhaps", "could be"
+        ]
+        
+        for indicator in uncertainty_indicators:
+            if indicator in answer_lower:
+                return AnswerQuality.UNCERTAIN
+        
+        # If answer contains actual content and no negative indicators, consider it found
+        # Additional check: answer should be more than just a few words
+        if len(answer.strip()) > 3 and not answer_lower.startswith(("n/a", "na", "none")):
+            return AnswerQuality.FOUND
+        
+        return AnswerQuality.NOT_FOUND
+    
+    def _create_quote_extraction_prompt(self, answer: str, chunks: List[Dict], question: str) -> str:
+        """
+        Create specialized prompt for LLM to identify exact supporting text with precise positioning
+        
+        Args:
+            answer: The extracted answer from the LLM
+            chunks: List of relevant document chunks
+            question: The original question prompt
+            
+        Returns:
+            Formatted prompt for exact quote extraction optimized for cheap/bad models
+        """
+        
+        # Prepare chunks with clear numbering and page information
+        chunks_section = ""
+        for i, chunk in enumerate(chunks, 1):
+            metadata = chunk.get("metadata", {})
+            page_info = f"Pages {metadata.get('start_page', 'N/A')}-{metadata.get('end_page', 'N/A')}"
+            filename = metadata.get('filename', 'Document')
+            
+            # Extract specific page numbers from chunk text if available
+            page_markers = []
+            lines = chunk['text'].split('\n')
+            for line in lines:
+                if '--- PAGE' in line and '---' in line:
+                    page_markers.append(line.strip())
+            
+            page_info_detailed = f"{page_info}"
+            if page_markers:
+                page_info_detailed += f" (Contains: {', '.join(page_markers[:3])})"
+            
+            chunks_section += f"""
+=== CHUNK {i} ===
+Source: {filename} ({page_info_detailed})
+Text: {chunk['text']}
+
+"""
+        
+        return f"""You are a precise text extraction system. Your ONLY job is to find EXACT text strings from the document that support the given answer.
+
+1. COPY EXACT TEXT ONLY - Do NOT paraphrase, summarize, or change ANY words
+2. EXTRACT VERBATIM - The text must appear EXACTLY as written in the document
+3. NO INTERPRETATION - Just find and copy the exact supporting strings
+4. MAXIMUM PRECISION - Find the shortest exact text that supports the answer
+
+QUESTION: {question}
+
+ANSWER TO SUPPORT: {answer}
+
+DOCUMENT CHUNKS:
+{chunks_section}
+
+TASK:
+Find the EXACT text strings (word-for-word) from the chunks that support the answer. You must:
+
+1. Copy text EXACTLY as it appears - no changes, no paraphrasing
+2. Find the shortest exact text that supports the answer
+3. If the answer mentions "Company A", find the exact text containing "Company A" 
+4. Include minimal context (2-3 words before/after) only if needed for clarity
+5. Maximum {MAX_QUOTE_LENGTH} characters per quote
+6. Return up to {VECTOR_SEARCH_MAX_SOURCE_QUOTES} most relevant exact matches
+
+RESPONSE FORMAT - EXACT JSON:
+[
+  {{
+    "chunk_number": 1,
+    "exact_text": "EXACT STRING FROM DOCUMENT",
+    "page_context": "PAGE X context if available",
+    "start_context": "few words before",
+    "end_context": "few words after"
+  }}
+]
+
+EXAMPLE:
+If answer is "Company A Limited" and document contains "The insurer is Company A Limited with policy", respond:
+[
+  {{
+    "chunk_number": 1,
+    "exact_text": "Company A Limited",
+    "page_context": "PAGE 5",
+    "start_context": "The insurer is",
+    "end_context": "with policy"
+  }}
+]
+
+IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make up or approximate text."""
+
+    def _parse_quote_extraction_response(self, response: str, chunks: List[Dict]) -> List[Dict]:
+        """
+        Parse LLM response containing exact supporting text with precise page tracking
+        
+        Args:
+            response: JSON response from quote extraction LLM call
+            chunks: Original chunks for mapping back to metadata
+            
+        Returns:
+            List of precise quote dictionaries with exact positioning and page numbers
+        """
+        
+        try:
+            quote_data = json.loads(response)
+            
+            if not isinstance(quote_data, list):
+                logger.warning("Quote extraction response is not a list, returning empty quotes")
+                return []
+            
+            precise_quotes = []
+            
+            for i, quote_item in enumerate(quote_data):
+                if not isinstance(quote_item, dict):
+                    continue
+                
+                chunk_number = quote_item.get("chunk_number", 0)
+                exact_text = quote_item.get("exact_text", "")
+                page_context = quote_item.get("page_context", "")
+                start_context = quote_item.get("start_context", "")
+                end_context = quote_item.get("end_context", "")
+                
+                # Validate chunk number and get corresponding chunk
+                if chunk_number < 1 or chunk_number > len(chunks):
+                    logger.warning(f"Invalid chunk number {chunk_number} in quote extraction")
+                    continue
+                
+                chunk = chunks[chunk_number - 1]  # Convert to 0-based index
+                metadata = chunk.get("metadata", {})
+                
+                # Extract document_id and validate it exists
+                document_id = metadata.get("document_id", "")
+                if not document_id:
+                    logger.warning(f"Chunk {chunk.get('chunk_id', 'unknown')} missing document_id in metadata, skipping quote")
+                    continue
+                
+                # Extract precise page number from page_context or chunk text
+                precise_page = self._extract_precise_page_number(exact_text, chunk['text'], page_context, metadata)
+                
+                # Build the full quote text with context for display
+                full_quote_text = ""
+                if start_context:
+                    full_quote_text += start_context + " "
+                full_quote_text += exact_text
+                if end_context:
+                    full_quote_text += " " + end_context
+                
+                # Trim to maximum length if needed
+                if len(full_quote_text) > MAX_QUOTE_LENGTH:
+                    full_quote_text = full_quote_text[:MAX_QUOTE_LENGTH] + "..."
+                
+                # Create precise quote with exact positioning
+                precise_quote = {
+                    "chunk_id": chunk["chunk_id"],
+                    "document_id": document_id,
+                    "text": full_quote_text.strip(),
+                    "exact_text": exact_text,  # The exact string for highlighting
+                    "start_context": start_context,
+                    "end_context": end_context,
+                    "page_range": str(precise_page) if precise_page else f"{metadata.get('start_page', 'N/A')}-{metadata.get('end_page', 'N/A')}",
+                    "precise_page": precise_page,  # Specific page number for highlighting
+                    "page_context": page_context,
+                    "relevance_score": chunk.get("distance", 0.0),
+                    "quote_index": i + 1
+                }
+                
+                precise_quotes.append(precise_quote)
+            
+            logger.info(f"Extracted {len(precise_quotes)} precise quotes with exact positioning")
+            return precise_quotes
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse quote extraction JSON response: {e}")
+            logger.error(f"Raw response: {response}")
+            return []
+        except Exception as e:
+            logger.error(f"Error processing quote extraction response: {e}")
+            return []
+    
+    def _extract_precise_page_number(self, exact_text: str, chunk_text: str, page_context: str, metadata: Dict) -> Optional[int]:
+        """
+        Extract the precise page number where the exact text appears
+        
+        Args:
+            exact_text: The exact text to find
+            chunk_text: The full chunk text
+            page_context: Page context from LLM (e.g., "PAGE 5")
+            metadata: Chunk metadata with page range
+            
+        Returns:
+            Specific page number or None if not found
+        """
+        
+        # First, try to extract from page_context provided by LLM
+        if page_context:
+            import re
+            page_match = re.search(r'PAGE\s+(\d+)', page_context, re.IGNORECASE)
+            if page_match:
+                try:
+                    return int(page_match.group(1))
+                except ValueError:
+                    pass
+        
+        # Second, try to find the exact text in chunk and determine its page
+        if exact_text and chunk_text:
+            # Find the position of exact_text in chunk_text
+            text_position = chunk_text.lower().find(exact_text.lower())
+            if text_position != -1:
+                # Look for page markers before this position
+                text_before = chunk_text[:text_position]
+                page_markers = []
+                
+                import re
+                for match in re.finditer(r'--- PAGE (\d+) ---', text_before):
+                    try:
+                        page_markers.append(int(match.group(1)))
+                    except ValueError:
+                        continue
+                
+                # Return the last page marker found before the text
+                if page_markers:
+                    return page_markers[-1]
+        
+        # Fallback: if chunk spans only one page, use that
+        start_page = metadata.get('start_page')
+        end_page = metadata.get('end_page')
+        if start_page == end_page and start_page:
+            return start_page
+        
+        # Final fallback: use start page
+        return start_page
+    
+    def _extract_precise_quotes(self, answer: str, relevant_chunks: List[Dict], question_prompt: str) -> List[Dict]:
+        """
+        Use LLM to identify specific text portions that support the answer
+        
+        Args:
+            answer: The extracted answer from the LLM
+            relevant_chunks: List of relevant document chunks
+            question_prompt: The original question prompt
+            
+        Returns:
+            List of precise quote dictionaries with supporting text
+        """
+        
+        if not relevant_chunks:
+            logger.info("No relevant chunks provided for quote extraction")
+            return []
+        
+        try:
+            # Create quote extraction prompt
+            quote_prompt = self._create_quote_extraction_prompt(answer, relevant_chunks, question_prompt)
+            
+            # Configure for quote extraction (use JSON output)
+            config = self.types.GenerateContentConfig(
+                thinking_config=self.types.ThinkingConfig(thinking_budget=0),  # No thinking needed for extraction
+                response_mime_type="application/json",
+                temperature=0.01,  # Low temperature for consistent extraction
+            )
+            
+            # Make LLM call for quote extraction
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=quote_prompt,
+                config=config
+            )
+            
+            if not response or not response.text:
+                logger.warning("Empty response from quote extraction LLM call")
+                return []
+            
+            # Parse the quote extraction response
+            precise_quotes = self._parse_quote_extraction_response(response.text, relevant_chunks)
+            
+            logger.info(f"Successfully extracted {len(precise_quotes)} precise quotes for answer: {answer[:50]}...")
+            return precise_quotes
+            
+        except Exception as e:
+            logger.error(f"Failed to extract precise quotes: {e}")
+            # Return empty list on failure - don't break the main processing
+            return []
     
     def get_service_status(self) -> Dict[str, Any]:
         """Get current status of the LLM service"""

@@ -13,9 +13,6 @@ from app.services.llm_service import llm_service
 from app.services.vector_store import VectorStore
 from app.config import (
     VECTOR_SEARCH_TOP_K_PER_QUESTION,
-    VECTOR_SEARCH_MAX_SOURCE_QUOTES,
-    VECTOR_SEARCH_TOP_K_LEGACY,
-    VECTOR_SEARCH_MAX_TOTAL_CHUNKS
 )
 
 logger = logging.getLogger(__name__)
@@ -97,40 +94,6 @@ class ReportService:
         except Exception as e:
             logger.error(f"Failed to generate report for agent {agent.id}: {e}")
             raise ValueError(f"Report generation failed: {str(e)}")
-    
-    def _gather_relevant_chunks(self, questions: List[QuestionOut], vector_store: VectorStore, 
-                              document_ids: Optional[List[str]] = None) -> List[Dict]:
-        """Gather relevant chunks for all questions using vector search"""
-        
-        all_chunks = []
-        seen_chunk_ids = set()
-        
-        # Search for chunks relevant to each question
-        for question in questions:
-            try:
-                # Use the question prompt as search query
-                chunks = vector_store.search_chunks(
-                    query=question.prompt,
-                    top_k=VECTOR_SEARCH_TOP_K_LEGACY,  # Use configurable value for legacy method
-                    document_ids=document_ids
-                )
-                
-                # Add unique chunks to our collection
-                for chunk in chunks:
-                    chunk_id = chunk["chunk_id"]
-                    if chunk_id not in seen_chunk_ids:
-                        all_chunks.append(chunk)
-                        seen_chunk_ids.add(chunk_id)
-                        
-            except Exception as e:
-                logger.warning(f"Failed to search chunks for question {question.placeholder}: {e}")
-                continue
-        
-        # Sort by relevance (distance) and limit total chunks
-        all_chunks.sort(key=lambda x: x.get("distance", float('inf')))
-        
-        # Limit to configurable number of chunks to manage token usage
-        return all_chunks[:VECTOR_SEARCH_MAX_TOTAL_CHUNKS]
     
     def _gather_question_specific_chunks(self, questions: List[QuestionOut], vector_store: VectorStore, 
                                        document_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -227,10 +190,19 @@ class ReportService:
                 # Process source chunks into quotes
                 question_quotes = []
                 for source_chunk in result.get("source_chunks", []):
+                    # Extract document_id directly from source chunk (now included by LLM service)
+                    document_id = source_chunk.get("document_id", "")
+                    
+                    # Add validation to ensure document_id is present
+                    if not document_id:
+                        logger.warning(f"Source chunk {source_chunk.get('chunk_id', 'unknown')} missing document_id")
+                        continue  # Skip chunks without document_id
+                    
                     quote = {
                         "id": str(uuid.uuid4()),
                         "index": quote_counter,
                         "chunk_id": source_chunk["chunk_id"],
+                        "document_id": document_id,
                         "text": source_chunk["text"],
                         "page_range": source_chunk["page_range"],
                         "relevance_score": source_chunk.get("relevance_score", 0.0)

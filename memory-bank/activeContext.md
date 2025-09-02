@@ -23,21 +23,33 @@ The project is currently in the second development phase, focusing on building o
 - **Next Steps**: OCR processor integration when needed
 
 #### 2. Report Viewing & Management System ✅ **COMPLETED**
-- **Current State**: Complete report viewing system implemented with advanced features
+- **Current State**: Complete report viewing system implemented with advanced features including enhanced document viewing
 - **Key Components**:
   - `ReportView.tsx`: Main report display page with comprehensive state management
   - `useReportData.ts`: Custom hook for report data fetching and authentication
   - `useAnswerEditing.ts`: Hook for in-place answer modification
   - `useQuoteInteraction.ts`: Hook for quote-to-source document viewing
+  - `DocumentViewer.tsx`: Enhanced component for full document content viewing with quote highlighting
   - Full suite of report components (Header, Content, Actions, Instructions, etc.)
 - **Advanced Features**:
   - **Quote Attribution**: Click quotes to view source documents with page references
+  - **Full Document Viewing**: ✅ **NEW** - Shows entire document content instead of just quote snippets
+  - **Smart Quote Highlighting**: ✅ **NEW** - Highlights quotes within full document context with surrounding text
+  - **Document Navigation**: ✅ **NEW** - Page-aware content display with document metadata
   - **Answer Editing**: In-place editing of AI-extracted answers with modal interface
   - **Document Context**: Comprehensive tracking of processed documents, pages, and chunks
-  - **Error Handling**: Robust loading states and error management
+  - **Error Handling**: Robust loading states and error management with fallback content
   - **Authentication Integration**: Proper Supabase JWT validation throughout
-- **API Integration**: Calls `/agents/{agentId}/report` endpoint for report data
-- **Data Structures**: Complex TypeScript interfaces for ReportData, Quotes, DocumentContext
+- **API Integration**: 
+  - Calls `/agents/{agentId}/report` endpoint for report data
+  - ✅ **NEW**: `/agents/documents/{document_id}/content` endpoint for full document retrieval
+- **Data Structures**: Complex TypeScript interfaces for ReportData, Quotes, DocumentContext, DocumentContent
+- **Recent Enhancement (January 2025)**:
+  - **Enhanced Document Viewer**: Transformed limited quote viewer into comprehensive document viewer
+  - **Full Content Access**: Leverages existing `uploaded_files_storage` for complete document content
+  - **Context-Aware Display**: Shows quotes within 500 characters of surrounding context
+  - **Intelligent Fallbacks**: Multiple fallback strategies for quote highlighting and content display
+  - **Professional UI**: Enhanced CSS with loading states, error handling, and document metadata display
 
 #### 3. Agent Execution Pipeline 🔄 **IN PROGRESS**
 - **Current State**: Frontend UI for agent execution is implemented with file upload system

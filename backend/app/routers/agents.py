@@ -340,6 +340,76 @@ async def list_files(current_user = Depends(get_current_user)):
     
     return {"files": files}
 
+@router.get("/documents/{document_id}/content")
+async def get_document_content(document_id: str, current_user = Depends(get_current_user)):
+    """Get the full content of a document for viewing"""
+    user_id = current_user.id
+    
+    # Check if user has uploaded files
+    if user_id not in uploaded_files_storage:
+        raise HTTPException(status_code=404, detail="No documents found for this user")
+    
+    # Check if document exists
+    if document_id not in uploaded_files_storage[user_id]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    file_record = uploaded_files_storage[user_id][document_id]
+    
+    # Check if document was successfully processed
+    if file_record["status"] != "uploaded":
+        raise HTTPException(status_code=400, detail=f"Document not available for viewing. Status: {file_record['status']}")
+    
+    try:
+        # Get the raw content
+        content = file_record["content"]
+        filename = file_record["name"]
+        
+        from app.services.pdf_parser import PDFProcessor
+        pdf_processor = PDFProcessor()
+        pdf_data = pdf_processor.process_pdf(content, filename)
+
+        
+        if not pdf_data or not pdf_data.get("pages"):
+            raise HTTPException(status_code=500, detail="Failed to extract readable content from document")
+        
+        # Build full document text with page markers
+        full_text = ""
+        pages_info = []
+        
+        for page in pdf_data["pages"]:
+            page_number = page["page_number"]
+            page_content = page["markdown"]
+            
+            # Add page marker and content
+            page_text = f"\n--- PAGE {page_number} ---\n{page_content}\n"
+            full_text += page_text
+            
+            # Track page info for navigation
+            pages_info.append({
+                "page_number": page_number,
+                "start_position": len(full_text) - len(page_text),
+                "end_position": len(full_text),
+                "content_length": len(page_content)
+            })
+        
+        return {
+            "document_id": document_id,
+            "filename": filename,
+            "full_text": full_text,
+            "pages": pages_info,
+            "total_pages": len(pdf_data["pages"]),
+            "total_characters": len(full_text),
+            "metadata": {
+                "size": file_record["size"],
+                "type": file_record["type"],
+                "processing_stats": file_record.get("processing_stats", {})
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Failed to get content for document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve document content: {str(e)}")
+
 @router.post("/{agent_id}/process")
 async def process_agent_documents(agent_id: str, current_user = Depends(get_current_user)):
     """Process uploaded documents with specific agent for data extraction"""

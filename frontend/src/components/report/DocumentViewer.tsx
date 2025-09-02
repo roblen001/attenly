@@ -76,22 +76,81 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
     fetchDocumentContent();
   }, [quote]);
 
-  // Simple word-based text matching
-  const findTextMatch = (fullText: string, searchText: string): { index: number; length: number } | null => {
-    // Strategy 1: Exact match (case-insensitive)
-    const exactIndex = fullText.toLowerCase().indexOf(searchText.toLowerCase());
+  // Common stop words to filter out
+  const STOP_WORDS = new Set([
+    'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'an', 'a',
+    'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+    'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can',
+    'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her',
+    'us', 'them', 'my', 'your', 'his', 'its', 'our', 'their', 'what', 'which', 'who', 'when', 'where', 'why', 'how'
+  ]);
+
+  // Priority-based text matching with exact match first
+  const findTextMatch = (fullText: string, searchText: string, pageSections: PageSection[], currentQuote: Quote): { index: number; length: number; isExactMatch: boolean } | null => {
+    // Strategy 1: Exact match anywhere in document (HIGHEST PRIORITY)
+    const exactIndex = fullText.indexOf(searchText);
     if (exactIndex !== -1) {
-      return { index: exactIndex, length: searchText.length };
+      console.log('Found exact match for:', searchText);
+      return { index: exactIndex, length: searchText.length, isExactMatch: true };
     }
 
-    // Strategy 2: Word sequence match (handles spacing differences)
+    // Strategy 2: Page-aware exact match (within specified page)
+    const pageExactMatch = findPageAwareExactMatch(fullText, searchText, pageSections, currentQuote);
+    if (pageExactMatch) {
+      console.log('Found page-aware exact match for:', searchText);
+      return { ...pageExactMatch, isExactMatch: true };
+    }
+
+    // Strategy 3: Word sequence match (only if exact fails)
     const wordMatch = findWordSequenceMatch(fullText, searchText);
     if (wordMatch) {
-      return wordMatch;
+      console.log('Found word sequence match for:', searchText);
+      return { ...wordMatch, isExactMatch: false };
     }
 
-    // Strategy 3: Individual significant words (fallback)
-    return findIndividualWords(fullText, searchText);
+    // Strategy 4: Multi-word combination (last resort)
+    const multiWordMatch = findMultiWordCombination(fullText, searchText);
+    if (multiWordMatch) {
+      console.log('Found multi-word combination match for:', searchText);
+      return { ...multiWordMatch, isExactMatch: false };
+    }
+
+    console.warn('No match found for:', searchText);
+    return null;
+  };
+
+  // Find exact match within the specified page
+  const findPageAwareExactMatch = (fullText: string, searchText: string, pageSections: PageSection[], currentQuote: Quote): { index: number; length: number } | null => {
+    const extendedQuote = currentQuote as ExtendedQuote;
+    let targetPage = extendedQuote.precise_page;
+
+    if (!targetPage) {
+      const pageRangeMatch = currentQuote.page_range.match(/(\d+)/);
+      if (pageRangeMatch) {
+        targetPage = parseInt(pageRangeMatch[1]);
+      }
+    }
+
+    if (!targetPage) return null;
+
+    // Find the page section
+    const targetSection = pageSections.find(section => section.pageNumber === targetPage);
+    if (!targetSection) return null;
+
+    // Extract text from the target page
+    const pageText = fullText.substring(targetSection.startPosition, targetSection.endPosition);
+
+    // Look for exact match within this page
+    const pageIndex = pageText.indexOf(searchText);
+    if (pageIndex !== -1) {
+      // Convert page-relative index to document-relative index
+      return {
+        index: targetSection.startPosition + pageIndex,
+        length: searchText.length
+      };
+    }
+
+    return null;
   };
 
   // Find word sequence allowing for spacing differences
@@ -103,31 +162,49 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
     const regexPattern = searchWords
       .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) // Escape special regex chars
       .join('\\s+'); // Allow one or more whitespace characters between words
-    
+
     const regex = new RegExp(regexPattern, 'gi');
     const match = regex.exec(fullText);
-    
+
     if (match) {
       return { index: match.index, length: match[0].length };
     }
-    
+
     return null;
   };
 
-  // Find individual significant words as fallback
-  const findIndividualWords = (fullText: string, searchText: string): { index: number; length: number } | null => {
-    const significantWords = searchText.split(/\s+/).filter(word => word.length > 3);
-    if (significantWords.length === 0) return null;
 
-    // Find the first significant word that appears in the text
-    for (const word of significantWords) {
-      const wordRegex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-      const match = wordRegex.exec(fullText);
+
+  // Find multi-word combinations (2-3 words together)
+  const findMultiWordCombination = (fullText: string, searchText: string): { index: number; length: number } | null => {
+    const words = searchText.trim().split(/\s+/).filter(word =>
+      word.length > 2 && !STOP_WORDS.has(word.toLowerCase())
+    );
+
+    if (words.length < 2) return null;
+
+    // Try 3-word combinations first
+    if (words.length >= 3) {
+      for (let i = 0; i <= words.length - 3; i++) {
+        const combination = words.slice(i, i + 3).join('\\s+');
+        const regex = new RegExp(combination, 'gi');
+        const match = regex.exec(fullText);
+        if (match) {
+          return { index: match.index, length: match[0].length };
+        }
+      }
+    }
+
+    // Try 2-word combinations
+    for (let i = 0; i <= words.length - 2; i++) {
+      const combination = words.slice(i, i + 2).join('\\s+');
+      const regex = new RegExp(combination, 'gi');
+      const match = regex.exec(fullText);
       if (match) {
         return { index: match.index, length: match[0].length };
       }
     }
-    
+
     return null;
   };
 
@@ -139,11 +216,11 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
     const exactTextToHighlight = extendedQuote.exact_text || currentQuote.text.trim();
     const precisePage = extendedQuote.precise_page;
     
-    // Parse page sections from the full text
-    const pageMarkerRegex = /--- PAGE (\d+) ---/g;
+    // Parse page sections from the full text - handle both formats
+    const pageMarkerRegex = /(?:--- PAGE (\d+) ---|PAGE (\d+))/gi;
     const sections: PageSection[] = [];
     let match;
-    
+
     while ((match = pageMarkerRegex.exec(fullText)) !== null) {
       if (sections.length > 0) {
         // Complete the previous section
@@ -153,9 +230,9 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
           match.index
         ).trim();
       }
-      
-      // Start new section
-      const pageNumber = parseInt(match[1]);
+
+      // Get page number from either capture group
+      const pageNumber = parseInt(match[1] || match[2]);
       sections.push({
         pageNumber,
         content: '',
@@ -193,27 +270,27 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
     let highlightedFullText = fullText;
     
     // Use simple word-based matching to find the quote text
-    const textMatch = findTextMatch(fullText, exactTextToHighlight);
-    
-    if (textMatch) {
-      const beforeQuote = highlightedFullText.substring(0, textMatch.index);
-      const quotePart = highlightedFullText.substring(textMatch.index, textMatch.index + textMatch.length);
-      const afterQuote = highlightedFullText.substring(textMatch.index + textMatch.length);
-      
+    const matchResult = findTextMatch(fullText, exactTextToHighlight, sections, currentQuote);
+
+    if (matchResult) {
+      const beforeQuote = highlightedFullText.substring(0, matchResult.index);
+      const quotePart = highlightedFullText.substring(matchResult.index, matchResult.index + matchResult.length);
+      const afterQuote = highlightedFullText.substring(matchResult.index + matchResult.length);
+
       // Simple yellow highlighting without confidence indicators
-      highlightedFullText = beforeQuote + 
-        `<mark class="highlighted-quote" id="highlighted-quote">${escapeHtml(quotePart)}</mark>` + 
+      highlightedFullText = beforeQuote +
+        `<mark class="highlighted-quote" id="highlighted-quote">${escapeHtml(quotePart)}</mark>` +
         afterQuote;
-      
+
       console.log('Quote successfully matched and highlighted');
     } else {
       console.warn('No match found for quote:', exactTextToHighlight);
     }
-    
-    // Convert page markers to simple page separators with anchors
+
+    // Convert page markers to simple page separators with anchors (handle both formats)
     highlightedFullText = highlightedFullText.replace(
-      /--- PAGE (\d+) ---/g, 
-      '<div class="page-separator" id="page-$1"></div>'
+      /(?:--- PAGE (\d+) ---|PAGE (\d+))/g,
+      (match, p1, p2) => `<div class="page-separator" id="page-${p1 || p2}"></div>`
     );
     
     // Escape HTML for the rest of the content (but preserve our highlights and page markers)
@@ -235,7 +312,7 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
           <p><strong>File:</strong> ${content.filename}</p>
           <p><strong>Total Pages:</strong> ${content.total_pages}</p>
           <p><strong>Quote Location:</strong> ${displayPageInfo}</p>
-          ${extendedQuote.exact_text ? `<p><strong>Exact Quote:</strong> "${escapeHtml(extendedQuote.exact_text)}"</p>` : ''}
+          ${matchResult?.isExactMatch && extendedQuote.exact_text ? `<p><strong>Exact Quote:</strong> "${escapeHtml(extendedQuote.exact_text)}"</p>` : ''}
         </div>
         <div class="full-document-content">
           ${escapedParts.join('')}

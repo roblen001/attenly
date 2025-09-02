@@ -218,46 +218,22 @@ RELEVANT CONTEXT FOR THIS QUESTION:
 
 """
         
-        return f"""
-You are an expert insurance-document extraction AI. Your task is to extract answers for ALL questions. Each question comes with its OWN relevant context block.
+        return f"""You are an expert data extraction AI analyzing insurance documents. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
 
 {questions_section}
 
-GLOBAL PRINCIPLES (apply to EVERY question unless the question text explicitly overrides):
-- Scope: Use ONLY the provided context block for that question. Do not use other questions’ context or outside knowledge.
-- No guessing: If the value is missing, illegible, or not stated, return one of:
-  - "Not found" = field is absent in the context
-  - "Not specified" = context references the field but gives no concrete value (e.g., “TBD”, “—”, “N/A”)
-- Precision: Extract exactly what the document states. Do not paraphrase labels, invent units, or expand abbreviations unless explicitly instructed.
-- Normalization defaults:
-  - Dates → use MM/DD/YYYY (or the exact format explicitly stated in the question).
-  - Numbers → keep digits only; include units ONLY if they appear next to the number in the context or if the question asks for units.
-  - Currency → if the question asks for “as printed”, keep symbols and punctuation; otherwise return digits with two decimals and NO symbols/commas.
-  - Percentages → return with "%" (e.g., "12.34%") if percent is explicitly shown; otherwise do not infer.
-  - Text → trim whitespace; collapse internal multiple spaces; remove trailing periods.
-- Multiple candidates in the SAME context block:
-  - Prefer the value explicitly labeled for the field (exact label match > partial match).
-  - If multiple values remain, choose the one marked "current", "effective", or the most recent by date.
-  - If still ambiguous, return "Not specified".
-- OCR artifacts: Correct obvious OCR errors (e.g., “Ioss”→“Loss”) only when unambiguous; otherwise treat as "Not specified".
-- Ignore placeholders and non-values such as "{{...}}", "example", "sample", "—", "TBD", "N/A" (unless the question asks to return them literally).
-- Computations: Only compute if ALL operands exist within the SAME question’s context; otherwise return "Not found".
-
-OUTPUT REQUIREMENTS (STRICT):
-- Respond with a SINGLE valid JSON object whose keys are the EXACT question IDs and whose values are STRINGS.
-- Do NOT include extra keys, comments, explanations, trailing commas, code fences, or backticks.
-- Escape any internal quotes to maintain valid JSON.
-- Every question ID MUST be present in the output.
-
-EXAMPLES (illustrative, not to be returned):
-- If the context shows “Effective: 07/01/2025” → "07/01/2025"
-- If the context shows “Premium: $12,345 (subject to audit)” and the question says “as printed” → "$12,345 (subject to audit)"
-- If the context shows “EBITDA 1.2M; Revenue 10M” and the question asks for EBITDA margin but no formula is allowed → "Not found"
+INSTRUCTIONS:
+1. For each question, analyze ONLY its specific relevant context section
+2. Extract the specific information requested for each question
+3. If information is not found in a question's context, respond with "Not specified" or "Not found"
+4. Be precise and factual - only extract information that is explicitly has support in the context
+5. For numerical values, include units when specified
+6. For dates, use a consistent format (MM/DD/YYYY or as stated in document)
+7. Directly answer each question
+8. Respond in the exact JSON format specified
 
 RESPONSE FORMAT:
-Return ONLY a valid JSON object mapping question IDs to string answers (no arrays/objects as values unless a question explicitly requests lists as text).
-"""
-
+You must respond with a valid JSON object containing answers for all questions using their IDs as keys."""
 
     def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> 'self.types.Schema':
         """Create JSON schema for structured batch response from questions with chunks"""

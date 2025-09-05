@@ -163,7 +163,9 @@ class LLMService:
         batch_prompt = self._create_batch_prompt_with_individual_contexts(
             questions_with_chunks, document_context
         )
-        
+        # Write the batch prompt to a text file for debugging
+        with open("batch_prompt_debug.txt", "w", encoding="utf-8") as f:
+            f.write(batch_prompt)
         try:
             # Configure for cost optimization and structured output
             config = self.types.GenerateContentConfig(
@@ -208,6 +210,8 @@ class LLMService:
             
             # Prepare individual context for this question
             context_text = self._prepare_context_from_chunks(relevant_chunks) if relevant_chunks else "No relevant context found"
+
+            
             
             questions_section += f"""
 === QUESTION {i} (ID: {question.placeholder}) ===
@@ -744,7 +748,7 @@ IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make 
             config = self.types.GenerateContentConfig(
                 thinking_config=self.types.ThinkingConfig(thinking_budget=0),  # No thinking needed for extraction
                 response_mime_type="application/json",
-                temperature=0.01,  # Low temperature for consistent extraction
+                temperature=0.0 ,  # Low temperature for consistent extraction
             )
             
             # Make LLM call for quote extraction

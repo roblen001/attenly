@@ -32,7 +32,7 @@ LLM_MODEL_NAME = "gemini-2.5-flash-lite"
 
 # Context and Token Limits
 LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = 4000 # Recommended: 4000-8000 for dev, 8000-12000 for prod
-LLM_TEMPERATURE = 0.01
+LLM_TEMPERATURE = 0.0
 
 # Processing Configuration
 LLM_THINKING_BUDGET = 0  # 0 for cost optimization

@@ -1,10 +1,10 @@
 /**
  * ReportActionsBar Component
- * 
+ *
  * Displays action buttons for the report, including download PDF functionality.
  * Provides a clean interface for report-related actions.
- * 
- * @param onDownloadPDF - Function to handle PDF download action
+ *
+ * @param onDownloadPDF - Function to handle PDF download action (shows modal)
  */
 
 import React from 'react';

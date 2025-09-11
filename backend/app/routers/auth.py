@@ -1,62 +1,23 @@
 # app/routers/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-import uuid
-
-from app.db import get_db
+from fastapi import APIRouter
 from app.core.deps import get_current_user
-from ..models import User
-from ..schemas import UserCreate, UserOut
-from ..security import hash_password # cant store passwords that are not hashed
+from fastapi import Depends
+import supabase
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-@router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def signup(user_in: UserCreate, request: Request, db: Session = Depends(get_db)):
-    # Normalize email to lowercase to avoid duplicates like Bob@X.com vs bob@x.com
-    email_norm = user_in.email.lower().strip()
+@router.get("/me")
+async def get_current_user_info(current_user = Depends(get_current_user)):
+    """Get current authenticated user information from Supabase"""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "user_metadata": current_user.user_metadata,
+        "created_at": current_user.created_at
+    }
 
-    # Build model
-    user = User(
-        id=str(uuid.uuid4()),
-        email=email_norm,
-        full_name=user_in.full_name,
-        hashed_password=hash_password(user_in.password),
-        is_active=True,
-        is_verified=False,
-    )
+@router.get("/users")
+async def get_users():
+    response = supabase.table("users").select("*").execute()
+    return response.data
 
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        # Unique constraint violation on email
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists.",
-        )
-
-    db.refresh(user)
-    
-    # Auto signin
-    request.session.clear()
-    request.session["user_id"] = user.id
-    
-    return user
-
-@router.get("/me", response_model=UserOut)
-def read_me(
-    response: Response,
-    current_user: User = Depends(get_current_user),
-):
-    # prevent caching of identity
-    response.headers["Cache-Control"] = "no-store"
-    return current_user
-
-@router.post("/logout")
-def logout(request: Request):
-    # Clear the session
-    request.session.clear()
-    return {"message": "Successfully logged out"}

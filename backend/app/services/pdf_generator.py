@@ -7,6 +7,7 @@ layouts, and visual elements exactly as they appear in the browser.
 """
 
 import logging
+import re
 from io import BytesIO
 from typing import Dict, Any
 from weasyprint import HTML, CSS
@@ -48,9 +49,11 @@ class WeasyPrintPDFGenerator:
             # Add reference section if requested
             if with_references:
                 populated_html = self._add_reference_section(populated_html, report_data)
-            
-            # Generate PDF using WeasyPrint - preserves ALL styling
-            pdf_bytes = HTML(string=populated_html).write_pdf()
+                        
+            pdf_bytes = HTML(string=populated_html).write_pdf(
+                presentational_hints=True,  # Respect HTML styling
+                optimize_images=True  # Optimize for smaller file size
+            )
             
             logger.info(f"Successfully generated pixel-perfect PDF report for agent: {agent.name}")
             return pdf_bytes
@@ -107,12 +110,20 @@ class WeasyPrintPDFGenerator:
         reference_counter = 1
         references_html = []
         answers = report_data.get('answers', {})
+        document_context = report_data.get('document_context', {})
+        documents = document_context.get('documents', {})
         
         for answer_data in answers.values():
             quotes = answer_data.get('quotes', [])
             for quote in quotes:
-                # Format reference entry
-                document_name = quote.get('document_filename', 'Unknown Document')
+                # Get document name using correct field mapping
+                document_id = quote.get('document_id', '')
+                document_name = 'Unknown Document'
+                
+                # Look up the actual filename from document context
+                if document_id and document_id in documents:
+                    document_name = documents[document_id].get('filename', 'Unknown Document')
+                
                 page_info = quote.get('page_range', 'Page N/A')
                 quote_text = quote.get('text', '')
                 

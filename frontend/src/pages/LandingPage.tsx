@@ -1,27 +1,15 @@
 import { useNavigate } from "react-router-dom";
 import "./LandingPage.css";
-import { api } from "../libs/https";
+import type { Session } from "@supabase/supabase-js";
 
-export default function LandingPage() {
+export default function LandingPage({ session }: { session: Session | null }) {
   const navigate = useNavigate();
 
   const handleGetStarted = async () => {
-    try {
-      const res = await api("/api/auth/signup", {
-        method: "POST",
-        body: JSON.stringify({
-          email: `guest+${crypto.randomUUID()}@example.com`,
-          password: "TempPass123!",
-          full_name: "Guest User",
-        }),
-      });
-
-      if (res.ok) {
-        navigate("/dashboard");
-      }
-    } catch (error) {
-      // Error handling is for the weak...
-      console.error("Signup failed:", error);
+    if (session) {
+      navigate("/dashboard");
+    } else {
+      navigate("/login");
     }
   };
 

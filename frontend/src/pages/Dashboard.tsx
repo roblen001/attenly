@@ -1,13 +1,28 @@
-import { useState, useEffect } from 'react';
-import type { PrebuiltAgentOut } from '../types';
-import PrebuiltAgentCard from '../components/dashboard/PrebuiltAgentCard';
-import './Dashboard.css';
+// src/pages/Dashboard.tsx
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../libs/https";
+import { useAuth } from "../feature/auth/useAuth";
+import type { Agent } from '../types';
+import './Dashboard.css';
+import PrebuiltAgentCard from '../components/dashboard/PrebuiltAgentCard';
 
+// TODO BEFORE LAUNCH: important to adjust supabase polecies to include email confirmation and what not
 export default function Dashboard() {
-  const [prebuiltAgents, setPrebuiltAgents] = useState<PrebuiltAgentOut[]>([]);
+  const { loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const [prebuiltAgents, setPrebuiltAgents] = useState<Agent[]>([]);
+
+  const handleExecuteAgent = (agent: Agent) => {
+    navigate(`/agent-execution/${agent.id}`);
+  };
 
   useEffect(() => {
+    // Wait for auth to be ready before making API calls
+    if (authLoading) {
+      return;
+    }
+
     const controller = new AbortController();
 
     async function loadPrebuiltAgents() {
@@ -25,8 +40,8 @@ export default function Dashboard() {
           return;
         }
 
-        const list = (await res.json()) as PrebuiltAgentOut[];    
-        const agents: PrebuiltAgentOut[] = list.map((a) => ({
+        const list = (await res.json()) as Agent[];    
+        const agents: Agent[] = list.map((a) => ({
           ...a,
         }));
 
@@ -41,7 +56,7 @@ export default function Dashboard() {
 
     loadPrebuiltAgents();
     return () => controller.abort();
-  }, []);
+  }, [authLoading]);
 
   return (
     <div className="modern-dashboard">
@@ -63,6 +78,7 @@ export default function Dashboard() {
               {prebuiltAgents.map((template) => (
                 <PrebuiltAgentCard
                   key={template.id}
+                  onSelectAgent={handleExecuteAgent}
                   agent={template}
                 />
               ))}

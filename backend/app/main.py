@@ -1,29 +1,37 @@
-
 # main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
-from app.db import Base, engine 
-from .routers import auth, agents
+from app.db import Base, engine
+from app.routers import auth, agents
 from pathlib import Path
+from app.config import SUPABASE_URL, validate_config, get_config_summary
+import logging
 
 app = FastAPI(title="Attenly", version="0.1.0")
+
+# Validate configuration on startup
+try:
+    validate_config()
+    config_summary = get_config_summary()
+    logging.info("Configuration validation successful")
+    logging.info(f"Configuration summary: {config_summary}")
+except ValueError as e:
+    logging.error(f"Configuration validation failed: {e}")
+    raise e
 
 # TODO: ONLLY FOR DEV MODE
 Base.metadata.create_all(bind=engine)
 
 
-# Add session middleware for authentication
-app.add_middleware(SessionMiddleware, secret_key="your-secret-key-change-in-production")
-
 # CORS, some browser security shit
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", SUPABASE_URL],
+    allow_credentials=False,  # Changed to False since we're using Bearer tokens
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 app.include_router(auth.router)
 app.include_router(agents.router)
@@ -32,6 +40,8 @@ app.include_router(agents.router)
 def health_check():
     return {"status": "healthy"}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

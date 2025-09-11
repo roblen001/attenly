@@ -183,7 +183,72 @@ The project is currently in the second development phase, focusing on building o
 
 ### Recently Completed Work
 
-1. **Backend Configuration Centralization System** ✅ **COMPLETED** (January 2025):
+1. **Double LLM Processing Elimination** ✅ **COMPLETED** (September 2025):
+   - **CRITICAL PERFORMANCE FIX**: Eliminated redundant LLM processing that was happening twice in the report generation flow
+   - **Problem Solved**: LLM inference was occurring both when clicking "Generate Report" AND when navigating to preview, causing unnecessary cost and delay
+   - **Root Cause**: 
+     - `/agents/{agent_id}/process` endpoint was doing LLM processing (correct)
+     - `/agents/{agent_id}/report` endpoint was ALSO doing LLM processing (incorrect - should only retrieve cached data)
+   - **Solution**: Modified the flow so LLM processing happens exactly once during report generation
+   - **Implementation**:
+     - **Modified `/agents/{agent_id}/process`**: Now does LLM processing AND caches the results immediately
+     - **Completely Rewrote `/agents/{agent_id}/report`**: Now ONLY retrieves cached data (no LLM processing)
+     - **Enhanced Error Handling**: Clear error message when trying to preview without generating report first
+     - **Maintained Cache System**: All existing caching functionality preserved for PDF downloads
+   - **New Flow**:
+     1. User clicks "Generate Report" → `/agents/{agent_id}/process` → LLM processing + caching
+     2. User navigates to preview → `/agents/{agent_id}/report` → retrieve cached data (instant)
+     3. User downloads PDF → `/agents/{agent_id}/pdf` → use cached data (instant)
+   - **Key Benefits**:
+     - **50% Cost Reduction**: LLM processing happens exactly once instead of twice
+     - **Faster Preview**: Preview page loads instantly using cached data
+     - **Consistent Performance**: All subsequent operations (preview, PDF) use cached data
+     - **Better UX**: Clear error messages guide users through proper workflow
+     - **Maintained Consistency**: PDF still exactly matches preview (both use same cached data)
+   - **Technical Details**:
+     - `/agents/{agent_id}/process` endpoint message: "Document processing completed successfully with real LLM inference and cached for preview"
+     - `/agents/{agent_id}/report` endpoint message: "Report retrieved from cache successfully"
+     - Error message: "No cached report data found. Please generate the report first by clicking 'Generate Report' button."
+     - Processing stats now include cache metadata (cached_at, document_ids, source: "cache")
+   - **Files Modified**:
+     - `backend/app/routers/agents.py`: Modified both `/process` and `/report` endpoints
+   - **Architecture Achievement**: This completes the optimization of the entire report generation pipeline - LLM processing occurs exactly once, with all subsequent operations using cached data
+
+2. **Report Caching System for PDF Download Efficiency** ✅ **COMPLETED** (September 2025):
+   - **MAJOR PERFORMANCE IMPROVEMENT**: Implemented comprehensive in-memory report caching to eliminate redundant LLM processing during PDF downloads
+   - **Problem Solved**: PDF downloads were regenerating answers and quotes via expensive LLM calls, causing inefficiency and potential inconsistency with previewed content
+   - **Solution**: Built complete report caching system that stores generated report data and reuses it for PDF downloads
+   - **Implementation**:
+     - **Backend Cache Storage**: Added `report_cache_storage = {}` - In-memory storage for cached report data by user and agent
+     - **Cache Helper Functions**: `get_cached_report()`, `cache_report()`, `clear_report_cache()` for complete cache management
+     - **Modified Report Generation**: `/agents/{agent_id}/report` endpoint now caches successful report data after LLM processing
+     - **Rewritten PDF Download**: `/agents/{agent_id}/pdf` endpoint **NEVER calls LLM** - exclusively uses cached data
+     - **Cache Invalidation**: Automatic cache clearing on file uploads, file clearing, and page navigation
+     - **Frontend Integration**: Added `useEffect` cleanup in `ReportView.tsx` to clear cache when user leaves preview page
+     - **New API Endpoint**: `DELETE /agents/reports/{agent_id}/cache` for page navigation cleanup
+   - **Key Benefits**:
+     - **Performance**: PDF downloads are now instant (no LLM processing)
+     - **Consistency**: Downloaded PDF exactly matches previewed content (uses identical cached data)
+     - **Cost Efficiency**: Eliminates redundant LLM API calls completely
+     - **Memory Management**: Cache automatically clears when user leaves page or uploads new files
+     - **User Experience**: Fast downloads with guaranteed consistency between preview and PDF
+   - **Complete Cache Lifecycle**:
+     1. User previews report → Generate & Cache data (LLM processing)
+     2. User downloads PDF → Use cached data (instant, no LLM)
+     3. User leaves preview page → Clear cache (automatic cleanup)
+     4. User uploads new files → Clear cache (data invalidation)
+   - **Error Handling**: PDF download without preview shows clear error: "Please preview the report first before downloading PDF"
+   - **Technical Details**:
+     - User-isolated cache storage with automatic cleanup
+     - Cache invalidation on data changes (file uploads/clearing)
+     - Frontend cleanup on component unmount (all navigation scenarios)
+     - Production-ready with comprehensive error handling and logging
+   - **Files Modified**:
+     - `backend/app/routers/agents.py`: Added cache storage, helper functions, modified endpoints
+     - `frontend/src/pages/ReportView.tsx`: Added useEffect cleanup for cache clearing on page navigation
+   - **Architecture Achievement**: This solves the core inefficiency problem completely - PDF downloads will never regenerate reports
+
+2. **Backend Configuration Centralization System** ✅ **COMPLETED** (January 2025):
    - **MAJOR INFRASTRUCTURE IMPROVEMENT**: Centralized all backend configuration variables into a single, comprehensive configuration system
    - **Problem Solved**: Hardcoded values scattered throughout services made tuning difficult and deployment inflexible
    - **Solution**: Created comprehensive `backend/app/config.py` with environment variable support and validation
@@ -391,6 +456,47 @@ The project is currently in the second development phase, focusing on building o
      - `frontend/src/types/index.ts`: Removed 'cancelled' from status union type
    - **Testing**: Verified that individual and batch cancellation properly removes files from UI
 
+### Recently Completed Work
+
+1. **Enhanced Professional PDF Generation System** ✅ **COMPLETED** (September 2025):
+   - **MAJOR IMPROVEMENT**: Completely rewrote PDF generation system to create professional-looking PDFs instead of raw HTML dumps
+   - **Problem Solved**: Previous PDF downloads were just dumping raw HTML into PDF files with poor formatting and unprofessional appearance
+   - **Solution**: Built comprehensive PDF generation system using ReportLab with proper HTML parsing and professional styling
+   - **Implementation**:
+     - **Enhanced PDF Generator Class**: Created `EnhancedPDFGenerator` with comprehensive HTML parsing using BeautifulSoup
+     - **Professional Styling System**: Added 10+ custom paragraph styles for different content types (titles, headers, body text, lists, tables, references)
+     - **HTML-to-PDF Conversion**: Proper conversion of HTML elements (headers, paragraphs, lists, tables, formatting) to ReportLab PDF elements
+     - **Advanced Reference System**: Professional reference section with document names, page numbers, and quote previews
+     - **Typography & Layout**: Professional margins, spacing, fonts, colors, and page layout with proper document structure
+     - **Table Support**: Professional table styling with headers, borders, and alternating row colors
+     - **List Processing**: Proper bullet points and numbered lists with correct indentation
+     - **Formatting Preservation**: Maintains bold, italic, underline, superscript, and subscript formatting from HTML
+   - **Key Features**:
+     - **Professional Document Title**: Centered title with agent name and generation timestamp
+     - **Section Headers**: Properly styled H1/H2 headers with consistent spacing and typography
+     - **Body Text**: Justified text with proper line spacing and professional font selection
+     - **Reference Formatting**: Square brackets [1] [2] for references mode, superscripts ¹ ² for regular mode
+     - **Quote Citations**: Italicized quote previews with document attribution in reference section
+     - **Page Layout**: Professional margins (72pt), proper spacing, and page breaks for references
+     - **Fallback System**: Multiple fallback strategies for HTML parsing failures
+   - **Technical Details**:
+     - Added `beautifulsoup4` and `lxml` dependencies for proper HTML parsing
+     - Created unique style names to avoid conflicts with ReportLab's default styles
+     - Comprehensive error handling with graceful fallbacks to text extraction
+     - Professional color scheme with subtle grays for headers and footers
+     - Proper document metadata including title and generation information
+   - **Benefits**:
+     - **Professional Appearance**: PDFs now look like professional business reports instead of raw HTML dumps
+     - **Proper Formatting**: Headers, paragraphs, lists, and tables are properly formatted and styled
+     - **Reference System**: Clean reference section with document attribution and quote previews
+     - **Typography**: Consistent, professional typography throughout the document
+     - **Reliability**: Robust error handling ensures PDFs generate even with malformed HTML
+     - **Maintainability**: Clean, well-documented code with comprehensive styling system
+   - **Files Modified**:
+     - `backend/app/services/pdf_generator.py`: Complete rewrite with professional PDF generation system
+     - `backend/requirements.txt`: Added beautifulsoup4 and lxml dependencies
+   - **Architecture Achievement**: This transforms the PDF download feature from a basic HTML dump into a professional document generation system suitable for business use
+
 ### Medium-term Goals
 1. **Custom Agent Creation**: UI for users to create their own agents
 2. **Batch Processing**: Handle multiple documents at once
@@ -398,10 +504,9 @@ The project is currently in the second development phase, focusing on building o
 4. **Template Marketplace**: Share and discover agent templates
 
 ### Technical Debt
-1. **Environment Configuration**: Move hardcoded values to environment variables
-2. **Database Migration**: Implement proper migration system for schema changes
-3. **API Documentation**: Generate and maintain API documentation
-4. **Testing Coverage**: Add comprehensive test suite
+1. **Database Migration**: Implement proper migration system for schema changes
+2. **API Documentation**: Generate and maintain API documentation
+3. **Testing Coverage**: Add comprehensive test suite
 
 ## Integration Points
 

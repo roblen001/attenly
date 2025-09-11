@@ -117,10 +117,7 @@ export default function AgentExecutionPage() {
     navigate(`/report/${agentId}`);
   };
 
-  const downloadReportAsPDF = () => {
-    // Placeholder for download functionality
-    console.log('Download PDF clicked');
-  };
+
 
   if (loading) {
     return (
@@ -240,15 +237,11 @@ export default function AgentExecutionPage() {
                   <div className="generation-complete">
                     <div className="complete-icon">✅</div>
                     <h3>Report Generated!</h3>
-                    <p>Your report has been successfully generated. You can preview and edit it, or download directly as PDF.</p>
+                    <p>Your report has been successfully generated. You can preview and edit it below.</p>
                     <div className="report-actions">
                       <button onClick={handlePreview} className="preview-btn">
                         <span className="btn-icon">👁️</span>
                         Preview & Edit
-                      </button>
-                      <button onClick={downloadReportAsPDF} className="download-btn">
-                        <span className="btn-icon">⬇️</span>
-                        Download PDF
                       </button>
                     </div>
                   </div>

@@ -48,3 +48,4 @@ chromadb
 tiktoken
 openai
 google-genai
+weasyprint

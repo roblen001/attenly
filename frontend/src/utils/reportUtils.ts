@@ -78,11 +78,11 @@ export const generateReportHTML = (
     let superscripts = '';
     if (answer.quotes && answer.quotes.length > 0) {
       const quoteNumbers = answer.quotes.map(() => quoteCounter++);
-      
+
       if (context === 'pdf') {
         superscripts = quoteNumbers.map(num => generateSuperscript(num)).join('');
       } else {
-        superscripts = quoteNumbers.map(num => 
+        superscripts = quoteNumbers.map(num =>
           `<sup class="quote-superscript" data-quote-index="${num - 1}">${generateSuperscript(num)}</sup>`
         ).join('');
       }

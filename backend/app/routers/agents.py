@@ -13,11 +13,15 @@ import uuid
 from app.services.document_processor import DocumentProcessor
 from app.services.vector_store import vector_store_manager # In user-based storage, we use a global manager for vector store operations
 from app.services.report_service import report_service
+from app.services.pdf_generator import pdf_generator
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 # In-memory storage for uploaded files (user-based)
 uploaded_files_storage = {}
+
+# In-memory storage for cached report data (user-based)
+report_cache_storage = {}
 
 # Initialize document processor
 document_processor = DocumentProcessor()
@@ -36,6 +40,48 @@ def find_duplicate_file(user_id: str, content_hash: str) -> dict:
             return file_record
     
     return None
+
+def get_cached_report(user_id: str, agent_id: str) -> dict:
+    """Retrieve cached report data for user and agent"""
+    if user_id not in report_cache_storage:
+        return None
+    
+    if agent_id not in report_cache_storage[user_id]:
+        return None
+    
+    cached_data = report_cache_storage[user_id][agent_id]
+    logging.info(f"Retrieved cached report for user {user_id}, agent {agent_id}")
+    return cached_data
+
+def cache_report(user_id: str, agent_id: str, report_data: dict) -> None:
+    """Store report data in cache for user and agent"""
+    if user_id not in report_cache_storage:
+        report_cache_storage[user_id] = {}
+    
+    # Store the complete report data
+    report_cache_storage[user_id][agent_id] = {
+        "report_data": report_data,
+        "cached_at": report_data.get("generated_at"),
+        "agent_id": agent_id,
+        "document_ids": report_data.get("document_context", {}).get("document_ids", [])
+    }
+    
+    logging.info(f"Cached report for user {user_id}, agent {agent_id}")
+
+def clear_report_cache(user_id: str, agent_id: str = None) -> None:
+    """Clear cached report data for user (specific agent or all agents)"""
+    if user_id not in report_cache_storage:
+        return
+    
+    if agent_id:
+        # Clear specific agent cache
+        if agent_id in report_cache_storage[user_id]:
+            del report_cache_storage[user_id][agent_id]
+            logging.info(f"Cleared cached report for user {user_id}, agent {agent_id}")
+    else:
+        # Clear all cached reports for user
+        del report_cache_storage[user_id]
+        logging.info(f"Cleared all cached reports for user {user_id}")
 
 @router.get("/prebuilt", response_model=list[Agent])
 def list_prebuilt_agents():
@@ -79,6 +125,9 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
     # Initialize user storage if not exists
     if user_id not in uploaded_files_storage:
         uploaded_files_storage[user_id] = {}
+    
+    # Clear report cache when new files are uploaded (data has changed)
+    clear_report_cache(user_id)
     
     # Get vector store for this user
     vector_store = vector_store_manager.get_store(user_id)
@@ -271,6 +320,10 @@ async def clear_all_files(current_user = Depends(get_current_user)):
         del uploaded_files_storage[user_id]
         logging.info(f"Cleared uploaded files storage for user {user_id}")
     
+    # Clear report cache when files are cleared (data has changed)
+    # good safety measure but might not be strictly necessary since vector store is cleared
+    clear_report_cache(user_id)
+    
     return {
         "message": "All files and vector store cleared successfully",
         "user_id": user_id,
@@ -412,7 +465,7 @@ async def get_document_content(document_id: str, current_user = Depends(get_curr
 
 @router.post("/{agent_id}/process")
 async def process_agent_documents(agent_id: str, current_user = Depends(get_current_user)):
-    """Process uploaded documents with specific agent for data extraction"""
+    """Process uploaded documents with specific agent for data extraction and cache results"""
     user_id = current_user.id
     
     # Get agent configuration
@@ -443,7 +496,7 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
         raise HTTPException(status_code=400, detail="No successfully uploaded documents available for agent processing")
     
     try:
-        # Generate report using report service (which now requires real LLM)
+        # Generate report using report service (LLM processing happens here)
         document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
         
         report_result = report_service.generate_report(
@@ -455,6 +508,10 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
         if not report_result["success"]:
             raise HTTPException(status_code=500, detail=f"Document processing failed: {report_result.get('error', 'Unknown error')}")
         
+        # Cache the report data immediately after generation
+        cache_report(user_id, agent_id, report_result["report_data"])
+        logging.info(f"Report generated and cached for user {user_id}, agent {agent_id}")
+        
         return {
             "success": True,
             "agent_id": agent_id,
@@ -463,7 +520,7 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
             "document_ids": document_ids,
             "processing_stats": report_result["processing_stats"],
             "status": "completed",
-            "message": "Document processing completed successfully with real LLM inference"
+            "message": "Document processing completed successfully with real LLM inference and cached for preview"
         }
         
     except ValueError as e:
@@ -476,7 +533,7 @@ async def process_agent_documents(agent_id: str, current_user = Depends(get_curr
 
 @router.get("/{agent_id}/report")
 async def get_agent_report(agent_id: str, current_user = Depends(get_current_user)):
-    """Generate and return complete report data for an agent"""
+    """Retrieve cached report data for an agent (no LLM processing)"""
     user_id = current_user.id
     
     # Get agent configuration
@@ -487,55 +544,111 @@ async def get_agent_report(agent_id: str, current_user = Depends(get_current_use
     except HTTPException as e:
         raise e
     
-    # Check if there are uploaded files for this user
-    if user_id not in uploaded_files_storage or not uploaded_files_storage[user_id]:
-        raise HTTPException(status_code=400, detail="No documents uploaded for report generation")
-    
-    # Get vector store for this user
-    vector_store = vector_store_manager.get_store(user_id)
-    
-    if not vector_store.available:
-        raise HTTPException(status_code=503, detail="Vector search not available - please ensure ChromaDB is installed")
-    
-    # Get list of successfully processed documents
-    successfully_uploaded_files = [
-        file_record for file_record in uploaded_files_storage[user_id].values()
-        if file_record["status"] == "uploaded"
-    ]
-    
-    if not successfully_uploaded_files:
-        raise HTTPException(status_code=400, detail="No successfully uploaded documents available for report generation")
-    
-    try:
-        # Get document IDs for report generation (these are the file IDs that were used as document_id in vector store)
-        document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
-        
-        # Generate report using report service
-        report_result = report_service.generate_report(
-            agent=agent,
-            vector_store=vector_store,
-            document_ids=document_ids
+    # Check for cached report data - this is the key change!
+    cached_report = get_cached_report(user_id, agent_id)
+    if not cached_report:
+        raise HTTPException(
+            status_code=400, 
+            detail="No cached report data found. Please generate the report first by clicking 'Generate Report' button."
         )
+
+    try:
+        # Use cached report data directly - NO LLM calls
+        report_data = cached_report["report_data"]
         
-        if not report_result["success"]:
-            raise HTTPException(status_code=500, detail=f"Report generation failed: {report_result.get('error', 'Unknown error')}")
+        logging.info(f"Retrieved cached report data for preview - user {user_id}, agent {agent_id}")
         
         return {
             "success": True,
-            "report_id": report_result["report_id"],
+            "report_id": f"cached_{agent_id}_{cached_report['cached_at']}",
             "agent_id": agent_id,
             "agent_name": agent.name,
-            "report_data": report_result["report_data"],
-            "processing_stats": report_result["processing_stats"],
-            "message": "Report generated successfully"
+            "report_data": report_data,
+            "processing_stats": {
+                "cached_at": cached_report["cached_at"],
+                "document_ids": cached_report["document_ids"],
+                "source": "cache"
+            },
+            "message": "Report retrieved from cache successfully"
         }
         
-    except ValueError as e:
-        # Handle service-level errors
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logging.error(f"Failed to generate report for agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+        logging.error(f"Failed to retrieve cached report for agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve cached report: {str(e)}")
+
+
+@router.get("/{agent_id}/pdf")
+async def download_agent_report_pdf(
+    agent_id: str,
+    with_references: bool = False,
+    current_user = Depends(get_current_user)
+):
+    """Download PDF report for an agent using cached data (no LLM regeneration)"""
+    from fastapi.responses import StreamingResponse
+    import io
+
+    user_id = current_user.id
+
+    # Get agent configuration
+    try:
+        agent_dict = get_agent_by_id(agent_id)
+        # Convert dictionary to Agent object for type safety
+        agent = Agent(**agent_dict)
+    except HTTPException as e:
+        raise e
+
+    # Check for cached report data - this is the key change!
+    cached_report = get_cached_report(user_id, agent_id)
+    if not cached_report:
+        raise HTTPException(
+            status_code=400, 
+            detail="No cached report data found. Please preview the report first before downloading PDF."
+        )
+
+    try:
+        # Use cached report data directly - NO LLM calls
+        report_data = cached_report["report_data"]
+        
+        logging.info(f"Using cached report data for PDF generation - user {user_id}, agent {agent_id}")
+
+        # Generate PDF from cached data
+        pdf_content = pdf_generator.generate_pdf_report(
+            agent=agent,
+            report_data=report_data,
+            with_references=with_references
+        )
+
+        # Create streaming response
+        pdf_buffer = io.BytesIO(pdf_content)
+
+        # Generate filename
+        references_suffix = "_with_references" if with_references else ""
+        filename = f"{agent.name.replace(' ', '_')}_report{references_suffix}.pdf"
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        logging.error(f"Failed to generate PDF from cached data for agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+
+@router.delete("/reports/{agent_id}/cache")
+async def clear_report_cache_for_agent(agent_id: str, current_user = Depends(get_current_user)):
+    """Clear cached report data for specific agent when user leaves preview"""
+    user_id = current_user.id
+    
+    # Clear the specific agent's cached report
+    clear_report_cache(user_id, agent_id)
+    
+    return {
+        "message": f"Cached report data cleared for agent {agent_id}",
+        "user_id": user_id,
+        "agent_id": agent_id
+    }
 
 
 @router.get("/{agent_id}", response_model=Agent)

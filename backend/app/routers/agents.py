@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 from typing import List
 import hashlib
-from app.schemas import Agent
+from app.schemas import Agent, SaveReportRequest, SavedReportOut, SavedReportDetailOut
 from app.core.deps import get_current_user
+from app.services.supabase_service import supabase_service
 import uuid
 
 # Import document processing services
@@ -694,3 +695,254 @@ def get_agent_by_id(agent_id: str):
     except Exception as e:
         logging.error(f"Error loading agent {agent_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to load agent")
+
+@router.post("/{agent_id}/reports/save")
+async def save_current_report(
+    agent_id: str, 
+    request: SaveReportRequest,
+    current_user = Depends(get_current_user)
+):
+    """Save currently cached report AND document content to Supabase"""
+    user_id = current_user.id
+    
+    # Get agent configuration
+    try:
+        agent_dict = get_agent_by_id(agent_id)
+        agent = Agent(**agent_dict)
+    except HTTPException as e:
+        raise e
+    
+    # Get cached report data
+    cached_report = get_cached_report(user_id, agent_id)
+    if not cached_report:
+        raise HTTPException(status_code=400, detail="No cached report to save. Please generate a report first.")
+    
+    # Get document content from uploaded_files_storage (CRITICAL for quote viewing!)
+    document_contents = {}
+    for doc_id in cached_report["document_ids"]:
+        if user_id in uploaded_files_storage and doc_id in uploaded_files_storage[user_id]:
+            # Get full document content (same as /agents/documents/{doc_id}/content)
+            file_record = uploaded_files_storage[user_id][doc_id]
+            content = file_record["content"]
+            
+            try:
+                # Process with PDF parser to get full text and pages
+                from app.services.pdf_parser import PDFProcessor
+                pdf_processor = PDFProcessor()
+                pdf_data = pdf_processor.process_pdf(content, file_record["name"])
+                
+                if not pdf_data or not pdf_data.get("pages"):
+                    logging.warning(f"Failed to process PDF content for document {doc_id}")
+                    continue
+                
+                # Build full document text with page markers (same as existing endpoint)
+                full_text = ""
+                pages_info = []
+                for page in pdf_data["pages"]:
+                    page_number = page["page_number"]
+                    page_content = page["markdown"]
+                    page_text = f"\n--- PAGE {page_number} ---\n{page_content}\n"
+                    full_text += page_text
+                    pages_info.append({
+                        "page_number": page_number,
+                        "start_position": len(full_text) - len(page_text),
+                        "end_position": len(full_text),
+                        "content_length": len(page_content)
+                    })
+                
+                document_contents[doc_id] = {
+                    "document_id": doc_id,
+                    "filename": file_record["name"],
+                    "full_text": full_text,
+                    "pages": pages_info,
+                    "total_pages": len(pdf_data["pages"]),
+                    "total_characters": len(full_text),
+                    "metadata": {
+                        "size": file_record["size"],
+                        "type": file_record["type"],
+                        "processing_stats": file_record.get("processing_stats", {})
+                    }
+                }
+                
+            except Exception as e:
+                logging.error(f"Failed to process document {doc_id} for saving: {e}")
+                continue
+    
+    if not document_contents:
+        raise HTTPException(status_code=400, detail="No document content available to save with report")
+    
+    try:
+        # Save to Supabase
+        report_id = supabase_service.save_report(
+            user_id=user_id,
+            agent_id=agent_id,
+            agent_name=agent.name,
+            report_name=request.report_name,
+            report_data=cached_report["report_data"],
+            document_contents=document_contents
+        )
+        
+        logging.info(f"Successfully saved report {report_id} for user {user_id}")
+        
+        return {
+            "success": True,
+            "report_id": report_id,
+            "message": f"Report '{request.report_name}' saved successfully"
+        }
+        
+    except Exception as e:
+        logging.error(f"Failed to save report: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save report: {str(e)}")
+
+@router.get("/reports/saved", response_model=List[SavedReportOut])
+async def list_saved_reports(current_user = Depends(get_current_user)):
+    """List user's saved reports"""
+    user_id = current_user.id
+    
+    try:
+        reports_data = supabase_service.get_user_reports(user_id)
+        
+        # Convert to response format
+        saved_reports = []
+        for report in reports_data:
+            saved_reports.append(SavedReportOut(
+                id=report["id"],
+                report_name=report["report_name"],
+                agent_name=report["agent_name"],
+                agent_id=report["agent_id"],
+                saved_at=report["saved_at"],
+                generated_at=report["generated_at"]
+            ))
+        
+        return saved_reports
+        
+    except Exception as e:
+        logging.error(f"Failed to fetch saved reports for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch saved reports")
+
+@router.get("/reports/saved/{report_id}", response_model=SavedReportDetailOut)
+async def get_saved_report(report_id: str, current_user = Depends(get_current_user)):
+    """Get a specific saved report with full data for viewing"""
+    user_id = current_user.id
+    
+    try:
+        report_data = supabase_service.get_saved_report(user_id, report_id)
+        
+        if not report_data:
+            raise HTTPException(status_code=404, detail="Saved report not found")
+        
+        return SavedReportDetailOut(
+            id=report_data["id"],
+            report_name=report_data["report_name"],
+            agent_name=report_data["agent_name"],
+            agent_id=report_data["agent_id"],
+            report_data=report_data["report_data"],
+            saved_at=report_data["saved_at"],
+            generated_at=report_data["generated_at"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to fetch saved report {report_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch saved report")
+
+@router.get("/reports/saved/{report_id}/documents/{document_id}/content")
+async def get_saved_document_content(
+    report_id: str, 
+    document_id: str, 
+    current_user = Depends(get_current_user)
+):
+    """Get document content for saved report (for DocumentViewer)"""
+    user_id = current_user.id
+    
+    try:
+        document_content = supabase_service.get_saved_document_content(user_id, report_id, document_id)
+        
+        if not document_content:
+            raise HTTPException(status_code=404, detail="Document content not found for saved report")
+        
+        return document_content
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to fetch document content for saved report: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch document content")
+
+@router.delete("/reports/saved/{report_id}")
+async def delete_saved_report(report_id: str, current_user = Depends(get_current_user)):
+    """Delete a saved report and its associated documents"""
+    user_id = current_user.id
+    
+    try:
+        success = supabase_service.delete_saved_report(user_id, report_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Saved report not found or access denied")
+        
+        return {
+            "success": True,
+            "message": "Saved report deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to delete saved report {report_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete saved report")
+
+@router.get("/reports/saved/{report_id}/pdf")
+async def download_saved_report_pdf(
+    report_id: str,
+    with_references: bool = False,
+    current_user = Depends(get_current_user)
+):
+    """Download PDF of saved report"""
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    user_id = current_user.id
+    
+    try:
+        # Get saved report data
+        report_data = supabase_service.get_saved_report(user_id, report_id)
+        
+        if not report_data:
+            raise HTTPException(status_code=404, detail="Saved report not found")
+        
+        # Create Agent object for PDF generation
+        agent = Agent(
+            id=report_data["agent_id"],
+            name=report_data["agent_name"],
+            description="",
+            reportTemplate="",
+            questions=[]
+        )
+        
+        # Generate PDF from saved data
+        pdf_content = pdf_generator.generate_pdf_report(
+            agent=agent,
+            report_data=report_data["report_data"],
+            with_references=with_references
+        )
+        
+        # Create streaming response
+        pdf_buffer = io.BytesIO(pdf_content)
+        
+        # Generate filename
+        references_suffix = "_with_references" if with_references else ""
+        safe_report_name = report_data["report_name"].replace(" ", "_")
+        filename = f"{safe_report_name}{references_suffix}.pdf"
+        
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to generate PDF for saved report {report_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate PDF")

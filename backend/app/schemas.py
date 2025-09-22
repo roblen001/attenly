@@ -33,3 +33,28 @@ class AgentOut(BaseAgentOut):
     updatedAt: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# Schemas for saved reports functionality
+class SaveReportRequest(BaseModel):
+    report_name: str
+
+class SavedReportOut(BaseModel):
+    id: str
+    report_name: str
+    agent_name: str
+    agent_id: str
+    saved_at: datetime
+    generated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class SavedReportDetailOut(BaseModel):
+    id: str
+    report_name: str
+    agent_name: str
+    agent_id: str
+    report_data: dict  # Complete ReportData structure
+    saved_at: datetime
+    generated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

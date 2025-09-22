@@ -226,6 +226,17 @@ App
 - **AI Service Integration**: Modular design for AI provider switching
 - **File Processing**: Pluggable document processing services
 - **Report Generation**: Template engine for flexible output formats
+- **Supabase Integration**: External database and authentication service
+  - Row Level Security (RLS) for user data isolation
+  - JWT token validation for API security
+  - Real-time capabilities for future features
+
+### Historical Reports Storage Pattern
+- **Data Persistence**: Complete report data preservation in Supabase
+- **User Isolation**: RLS policies ensure secure data separation
+- **Seamless Integration**: Historical reports use same preview interface
+- **Performance Optimization**: Efficient querying with proper indexing
+- **Document Relationships**: Preserved document-to-report associations for quote functionality
 
 ## Scalability Patterns
 

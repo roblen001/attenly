@@ -17,6 +17,7 @@ import ReportInstructions from '../components/report/ReportInstructions';
 import ReportContent from '../components/report/ReportContent';
 import EditAnswerModal from '../components/report/EditAnswerModal';
 import DownloadModal from '../components/report/DownloadModal';
+import SaveReportModal from '../components/report/SaveReportModal';
 import { useReportData } from '../hooks/useReportData';
 import { useAnswerEditing } from '../hooks/useAnswerEditing';
 import { useQuoteInteraction } from '../hooks/useQuoteInteraction';
@@ -30,6 +31,8 @@ export default function ReportView() {
   // Modal state
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Custom hooks for data and state management
   const { reportData, setReportData, loading, error } = useReportData(agentId);
@@ -169,6 +172,50 @@ export default function ReportView() {
     }
   };
 
+  // Show save modal
+  const handleSaveReport = () => {
+    setShowSaveModal(true);
+  };
+
+  // Handle save report
+  const handleSaveReportSubmit = async (reportName: string) => {
+    if (!agentId) return;
+    
+    setIsSaving(true);
+    try {
+      const response = await api(`/agents/${agentId}/reports/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ report_name: reportName }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save report');
+      }
+
+      const result = await response.json();
+      console.log('Report saved successfully:', result);
+      
+      // Show success message (you could add a toast notification here)
+      alert(`Report "${reportName}" saved successfully!`);
+      
+    } catch (error) {
+      console.error('Save failed:', error);
+      throw error; // Re-throw to let the modal handle the error
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Close save modal
+  const handleCloseSaveModal = () => {
+    if (!isSaving) {
+      setShowSaveModal(false);
+    }
+  };
+
   // Show loading state
   if (loading) {
     return <LoadingState />;
@@ -194,7 +241,7 @@ export default function ReportView() {
     <div className="report-view-page">
       <ReportHeader reportData={reportData} onBack={handleBack} />
       
-      <ReportActionsBar onDownloadPDF={handleDownloadPDF} />
+      <ReportActionsBar onDownloadPDF={handleDownloadPDF} onSaveReport={handleSaveReport} />
 
       <div className="report-main">
         <div className="report-container">
@@ -221,6 +268,13 @@ export default function ReportView() {
         onDownloadWithReferences={handleDownloadWithReferences}
         onDownloadWithoutReferences={handleDownloadWithoutReferences}
         isDownloading={isDownloading}
+      />
+
+      <SaveReportModal
+        isOpen={showSaveModal}
+        onClose={handleCloseSaveModal}
+        onSave={handleSaveReportSubmit}
+        isSaving={isSaving}
       />
     </div>
   );

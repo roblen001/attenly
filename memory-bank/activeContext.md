@@ -51,7 +51,39 @@ The project is currently in the second development phase, focusing on building o
   - **Intelligent Fallbacks**: Multiple fallback strategies for quote highlighting and content display
   - **Professional UI**: Enhanced CSS with loading states, error handling, and document metadata display
 
-#### 3. Agent Execution Pipeline 🔄 **IN PROGRESS**
+#### 3. Historical Reports Storage System ✅ **COMPLETED** (September 2025)
+- **Current State**: Complete historical reports storage and management system implemented
+- **Key Components**:
+  - `backend/app/services/supabase_service.py`: Comprehensive Supabase service for report storage operations
+  - `SaveReportModal.tsx`: Modal component for saving reports with custom names
+  - `SavedReportCard.tsx`: Dashboard component for displaying saved reports
+  - Enhanced `ReportActionsBar.tsx` with save functionality
+  - Dashboard integration with "My Saved Reports" section
+- **Advanced Features**:
+  - **Complete Data Preservation**: Saves entire ReportData structure including filled HTML templates
+  - **Document Content Storage**: Stores full document content for quote highlighting functionality
+  - **Dashboard Integration**: Scrollable grid of saved reports with download/delete actions
+  - **Seamless User Experience**: Click saved reports to view with identical functionality to current reports
+  - **Quote Viewing Support**: All quote clicking and document viewing works for saved reports
+  - **PDF Downloads**: Direct PDF downloads from dashboard or saved report view
+- **API Integration**:
+  - `POST /agents/{agent_id}/reports/save` - Save current cached report with document content
+  - `GET /agents/reports/saved` - List user's saved reports
+  - `GET /agents/reports/saved/{report_id}` - Get specific saved report
+  - `DELETE /agents/reports/saved/{report_id}` - Delete saved report
+  - `GET /agents/reports/saved/{report_id}/documents/{document_id}/content` - Document content for quote viewing
+  - `GET /agents/reports/saved/{report_id}/pdf` - Download PDF of saved report
+- **Data Architecture**:
+  - **Supabase Tables**: `saved_reports` and `saved_report_documents` with RLS policies
+  - **Complete Preservation**: All report data, quotes, document context, and full document content stored
+  - **User Isolation**: Row Level Security ensures users only access their own reports
+- **Benefits**:
+  - **Historical Access**: Users can build a library of analyzed documents and revisit work anytime
+  - **Full Functionality**: Saved reports have identical capabilities to current reports (editing, quote viewing, PDF downloads)
+  - **Professional Workflow**: Transform from one-time processing tool to comprehensive report management system
+  - **Data Integrity**: Document snapshots ensure reports remain accurate over time
+
+#### 4. Agent Execution Pipeline 🔄 **IN PROGRESS**
 - **Current State**: Frontend UI for agent execution is implemented with file upload system
 - **Active Work**: Building the actual AI processing backend that connects uploaded files to agent templates
 - **Key Component**: `frontend/src/pages/AgentExecution.tsx` handles file upload and processing initiation

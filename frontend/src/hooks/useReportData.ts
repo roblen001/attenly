@@ -15,7 +15,7 @@ import { api } from '../libs/https';
 import { useAuth } from '../feature/auth/useAuth';
 
 export const useReportData = (agentId: string | undefined) => {
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading, session } = useAuth();
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +28,8 @@ export const useReportData = (agentId: string | undefined) => {
         return;
       }
 
-      // Wait for auth to be ready before making API calls
-      if (authLoading) {
+      // Wait for auth to be ready AND session to exist before making API calls
+      if (authLoading || !session) {
         return;
       }
 
@@ -59,7 +59,7 @@ export const useReportData = (agentId: string | undefined) => {
     };
 
     fetchReportData();
-  }, [agentId, authLoading]);
+  }, [agentId, authLoading, session]);
 
   return {
     reportData,

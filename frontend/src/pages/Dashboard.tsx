@@ -10,7 +10,7 @@ import SavedReportCard from '../components/dashboard/SavedReportCard';
 
 // TODO BEFORE LAUNCH: important to adjust supabase polecies to include email confirmation and what not
 export default function Dashboard() {
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading, session } = useAuth();
   const navigate = useNavigate();
   const [prebuiltAgents, setPrebuiltAgents] = useState<Agent[]>([]);
   const [savedReports, setSavedReports] = useState<any[]>([]);
@@ -80,8 +80,8 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    // Wait for auth to be ready before making API calls
-    if (authLoading) {
+    // Wait for auth to be ready AND session to exist before making API calls
+    if (authLoading || !session) {
       return;
     }
 
@@ -123,6 +123,7 @@ export default function Dashboard() {
           method: "GET",
           headers: { Accept: "application/json" },
           signal: controller.signal,
+          nonCritical: true, // Don't sign out user if this API call fails
         });
 
         if (!res.ok) {
@@ -147,7 +148,7 @@ export default function Dashboard() {
     loadPrebuiltAgents();
     loadSavedReports();
     return () => controller.abort();
-  }, [authLoading]);
+  }, [authLoading, session]);
 
   return (
     <div className="modern-dashboard">

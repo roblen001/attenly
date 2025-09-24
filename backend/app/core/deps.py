@@ -19,6 +19,8 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     Raises:
         HTTPException: If token is missing, invalid, or user not found
     """
+    print("===============HERE================")
+    print(authorization)
     if not authorization:
         logger.warning("Authentication attempt without authorization header")
         raise HTTPException(

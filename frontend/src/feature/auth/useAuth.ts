@@ -8,13 +8,18 @@ export function useAuth() {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        console.warn('Initial session retrieval error:', error);
+      }
+      console.log('Initial session loaded:', data.session ? 'Session exists' : 'No session');
       setSession(data.session);
       setLoading(false);
     });
 
     // Listen for auth state changes
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
+      console.log('Auth state change:', event, sess ? 'Session exists' : 'No session');
       setSession(sess);
       setLoading(false);
     });

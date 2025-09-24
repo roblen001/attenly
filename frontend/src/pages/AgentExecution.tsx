@@ -7,7 +7,7 @@ import { useAuth } from '../feature/auth/useAuth';
 import './AgentExecution.css';
 
 export default function AgentExecutionPage() {
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading, session } = useAuth();
   const { agentId } = useParams<{ agentId: string }>();
   const navigate = useNavigate();
   const [agent, setAgent] = useState<Agent | null>(null);
@@ -20,6 +20,11 @@ export default function AgentExecutionPage() {
   // Clear vector store and files when entering this page, only if files exist
   useEffect(() => {
     const clearFilesOnEntry = async () => {
+      // Wait for auth to be ready AND session to exist before making API calls
+      if (authLoading || !session) {
+        return;
+      }
+
       try {
         const filesResponse = await api('/agents/files');
         const filesData = await filesResponse.json();
@@ -34,7 +39,7 @@ export default function AgentExecutionPage() {
     };
 
     clearFilesOnEntry();
-  }, []); // Empty dependency array = runs once on component mount
+  }, [authLoading, session]); // Wait for auth and session to be ready
 
   useEffect(() => {
     const fetchAgent = async () => {
@@ -44,8 +49,8 @@ export default function AgentExecutionPage() {
         return;
       }
 
-      // Wait for auth to be ready before making API calls
-      if (authLoading) {
+      // Wait for auth to be ready AND session to exist before making API calls
+      if (authLoading || !session) {
         return;
       }
 
@@ -65,7 +70,7 @@ export default function AgentExecutionPage() {
     };
 
     fetchAgent();
-  }, [agentId, authLoading]);
+  }, [agentId, authLoading, session]);
 
   const handleBack = () => {
     navigate('/dashboard');

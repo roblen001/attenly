@@ -280,8 +280,6 @@ You must respond with a valid JSON object containing answers for all questions u
                         "source_chunks": self._get_source_chunks_for_question(relevant_chunks, answer, question.prompt),
                         "word_count": len(answer.split()) if answer else 0
                     }
-                    print("===================================================")
-                    print(results[placeholder]['source_chunks'])
                 else:
                     # Question missing from response - create empty result
                     logger.warning(f"Question {placeholder} missing from batch response")

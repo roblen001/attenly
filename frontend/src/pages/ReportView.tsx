@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import DocumentViewer from '../components/report/DocumentViewer';
 import LoadingState from '../components/report/LoadingState';
 import ErrorState from '../components/report/ErrorState';
@@ -25,8 +25,13 @@ import { api } from '../libs/https';
 import './ReportView.css';
 
 export default function ReportView() {
-  const { agentId } = useParams<{ agentId: string }>();
+  const { agentId, reportId } = useParams<{ agentId?: string; reportId?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Determine report type and parameters
+  const isSavedReport = location.pathname.includes('/report/saved/');
+  const reportParams = isSavedReport ? { reportId } : { agentId };
 
   // Modal state
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -35,7 +40,7 @@ export default function ReportView() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Custom hooks for data and state management
-  const { reportData, setReportData, loading, error } = useReportData(agentId);
+  const { reportData, setReportData, loading, error, reportType, reportInfo } = useReportData(reportParams);
   const {
     editingAnswer,
     editedAnswerText,
@@ -51,11 +56,11 @@ export default function ReportView() {
     handleCloseDocumentViewer
   } = useQuoteInteraction(reportData);
 
-  // Clear report cache when user leaves the page (tab close, refresh, or navigation away)
+  // Clear report cache when user leaves the page (only for current reports)
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // This runs when user closes tab, refreshes, or navigates away from the site
-      if (agentId) {
+      // Only clear cache for current reports, not saved reports
+      if (reportType === 'current' && agentId) {
         // Use sendBeacon for reliable cleanup during page unload
         const url = `/agents/reports/${agentId}/cache`;
         if (navigator.sendBeacon) {
@@ -74,12 +79,12 @@ export default function ReportView() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [agentId]);
+  }, [reportType, agentId]);
 
   // Navigate back to dashboard
   const handleBack = () => {
-    // Clear cache when explicitly navigating back
-    if (agentId) {
+    // Clear cache when explicitly navigating back (only for current reports)
+    if (reportType === 'current' && agentId) {
       api(`/agents/reports/${agentId}/cache`, { method: 'DELETE' })
         .catch(err => console.warn('Cache cleanup failed:', err));
     }
@@ -95,7 +100,14 @@ export default function ReportView() {
   const handleDownloadWithReferences = async () => {
     setIsDownloading(true);
     try {
-      const response = await api(`/agents/${agentId}/pdf?with_references=true`);
+      let response;
+      if (reportType === 'saved' && reportId) {
+        response = await api(`/agents/reports/saved/${reportId}/pdf?with_references=true`);
+      } else if (reportType === 'current' && agentId) {
+        response = await api(`/agents/${agentId}/pdf?with_references=true`);
+      } else {
+        throw new Error('Invalid report configuration');
+      }
 
       // Create blob and download
       const blob = await response.blob();
@@ -132,7 +144,14 @@ export default function ReportView() {
   const handleDownloadWithoutReferences = async () => {
     setIsDownloading(true);
     try {
-      const response = await api(`/agents/${agentId}/pdf?with_references=false`);
+      let response;
+      if (reportType === 'saved' && reportId) {
+        response = await api(`/agents/reports/saved/${reportId}/pdf?with_references=false`);
+      } else if (reportType === 'current' && agentId) {
+        response = await api(`/agents/${agentId}/pdf?with_references=false`);
+      } else {
+        throw new Error('Invalid report configuration');
+      }
 
       // Create blob and download
       const blob = await response.blob();
@@ -172,14 +191,16 @@ export default function ReportView() {
     }
   };
 
-  // Show save modal
+  // Show save modal (only for current reports)
   const handleSaveReport = () => {
-    setShowSaveModal(true);
+    if (reportType === 'current') {
+      setShowSaveModal(true);
+    }
   };
 
-  // Handle save report
+  // Handle save report (only for current reports)
   const handleSaveReportSubmit = async (reportName: string) => {
-    if (!agentId) return;
+    if (reportType !== 'current' || !agentId) return;
     
     setIsSaving(true);
     try {
@@ -232,6 +253,9 @@ export default function ReportView() {
       <DocumentViewer
         quote={selectedQuote}
         onClose={handleCloseDocumentViewer}
+        reportType={reportType || 'current'}
+        reportId={reportId}
+        agentId={agentId}
       />
     );
   }
@@ -241,7 +265,11 @@ export default function ReportView() {
     <div className="report-view-page">
       <ReportHeader reportData={reportData} onBack={handleBack} />
       
-      <ReportActionsBar onDownloadPDF={handleDownloadPDF} onSaveReport={handleSaveReport} />
+      <ReportActionsBar 
+        onDownloadPDF={handleDownloadPDF} 
+        onSaveReport={handleSaveReport}
+        showSaveButton={reportType === 'current'}
+      />
 
       <div className="report-main">
         <div className="report-container">

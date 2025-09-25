@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def get_current_user(authorization: Optional[str] = Header(None, alias="Authorization")):
     """
     Dependency to get the current authenticated user from Supabase JWT token.
     
@@ -19,8 +19,6 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     Raises:
         HTTPException: If token is missing, invalid, or user not found
     """
-    print("===============HERE================")
-    print(authorization)
     if not authorization:
         logger.warning("Authentication attempt without authorization header")
         raise HTTPException(

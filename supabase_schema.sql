@@ -1,62 +1,121 @@
--- Supabase Schema for Saved Reports
--- Run this in your Supabase SQL editor to create the required tables
+-- Enable extension for gen_random_uuid (safe if already enabled)
+create extension if not exists pgcrypto;
 
 -- Main table for saved reports
-CREATE TABLE saved_reports (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    agent_id TEXT NOT NULL,
-    agent_name TEXT NOT NULL,
-    report_name TEXT NOT NULL,
-    
-    -- Complete report data (everything needed for preview)
-    report_data JSONB NOT NULL,  -- Full ReportData structure with quotes
-    
-    generated_at TIMESTAMPTZ NOT NULL,
-    saved_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Index for efficient querying
-    CONSTRAINT saved_reports_user_idx UNIQUE (user_id, saved_at DESC)
+create table if not exists saved_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,                  -- match auth.uid() type
+  agent_id text not null,
+  agent_name text not null,
+  report_name text not null,
+
+  -- Complete report data (everything needed for preview)
+  report_data jsonb not null,             -- Full ReportData structure with quotes
+
+  generated_at timestamptz not null default now(),
+  saved_at timestamptz not null default now()
 );
 
 -- Critical table for document content (needed for quote viewing)
-CREATE TABLE saved_report_documents (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    report_id UUID REFERENCES saved_reports(id) ON DELETE CASCADE,
-    document_id TEXT NOT NULL,  -- Original document ID from processing
-    filename TEXT NOT NULL,
-    
-    -- Full document content (needed for DocumentViewer)
-    full_text TEXT NOT NULL,           -- Complete document text with page markers
-    pages_info JSONB NOT NULL,         -- PageInfo[] for navigation
-    total_pages INTEGER NOT NULL,
-    total_characters INTEGER NOT NULL,
-    metadata JSONB NOT NULL,           -- File size, type, processing stats
-    
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Ensure one record per document per report
-    CONSTRAINT unique_document_per_report UNIQUE (report_id, document_id)
+create table if not exists saved_report_documents (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references saved_reports(id) on delete cascade,
+  document_id text not null,              -- Original document ID from processing
+  filename text not null,
+
+  -- Full document content (needed for DocumentViewer)
+  full_text text not null,                -- Complete document text with page markers
+  pages_info jsonb not null,              -- PageInfo[] for navigation
+  total_pages integer not null,
+  total_characters integer not null,
+  metadata jsonb not null,                -- File size, type, processing stats
+
+  created_at timestamptz not null default now(),
+
+  -- Ensure one record per document per report
+  constraint unique_document_per_report unique (report_id, document_id)
 );
 
 -- Enable Row Level Security
-ALTER TABLE saved_reports ENABLE ROW LEVEL SECURITY;
-ALTER TABLE saved_report_documents ENABLE ROW LEVEL SECURITY;
+alter table saved_reports enable row level security;
+alter table saved_report_documents enable row level security;
 
--- RLS Policies for security
-CREATE POLICY "Users can only access their own saved reports" ON saved_reports
-    FOR ALL USING (auth.uid()::text = user_id);
+-- RLS: saved_reports (separate policies for clarity)
+drop policy if exists "sr_select_own" on saved_reports;
+create policy "sr_select_own" on saved_reports
+  for select using (user_id = auth.uid());
 
-CREATE POLICY "Users can only access documents from their own reports" ON saved_report_documents
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM saved_reports 
-            WHERE saved_reports.id = saved_report_documents.report_id 
-            AND saved_reports.user_id = auth.uid()::text
-        )
-    );
+drop policy if exists "sr_insert_own" on saved_reports;
+create policy "sr_insert_own" on saved_reports
+  for insert with check (user_id = auth.uid());
 
--- Create indexes for better performance
-CREATE INDEX idx_saved_reports_user_date ON saved_reports(user_id, saved_at DESC);
-CREATE INDEX idx_saved_report_documents_report ON saved_report_documents(report_id);
-CREATE INDEX idx_saved_report_documents_doc_id ON saved_report_documents(document_id);
+drop policy if exists "sr_update_own" on saved_reports;
+create policy "sr_update_own" on saved_reports
+  for update using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "sr_delete_own" on saved_reports;
+create policy "sr_delete_own" on saved_reports
+  for delete using (user_id = auth.uid());
+
+-- RLS: saved_report_documents
+drop policy if exists "srd_select_own" on saved_report_documents;
+create policy "srd_select_own" on saved_report_documents
+  for select using (
+    exists (
+      select 1 from saved_reports r
+      where r.id = saved_report_documents.report_id
+        and r.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "srd_insert_own" on saved_report_documents;
+create policy "srd_insert_own" on saved_report_documents
+  for insert with check (
+    exists (
+      select 1 from saved_reports r
+      where r.id = report_id
+        and r.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "srd_update_own" on saved_report_documents;
+create policy "srd_update_own" on saved_report_documents
+  for update using (
+    exists (
+      select 1 from saved_reports r
+      where r.id = saved_report_documents.report_id
+        and r.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from saved_reports r
+      where r.id = report_id
+        and r.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "srd_delete_own" on saved_report_documents;
+create policy "srd_delete_own" on saved_report_documents
+  for delete using (
+    exists (
+      select 1 from saved_reports r
+      where r.id = saved_report_documents.report_id
+        and r.user_id = auth.uid()
+    )
+  );
+
+-- Indexes (ordered for common queries)
+create index if not exists idx_saved_reports_user_date
+  on saved_reports(user_id, saved_at desc);
+
+create index if not exists idx_saved_report_documents_report
+  on saved_report_documents(report_id);
+
+create index if not exists idx_saved_report_documents_doc_id
+  on saved_report_documents(document_id);
+
+-- Optional: if you plan to filter inside report_data or metadata often
+-- create index if not exists idx_saved_reports_report_data_gin on saved_reports using gin (report_data);
+-- create index if not exists idx_saved_report_documents_metadata_gin on saved_report_documents using gin (metadata);

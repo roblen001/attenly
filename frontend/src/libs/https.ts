@@ -31,7 +31,6 @@ export async function api(path: string, init: ApiOptions = {}) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
-  
   const headers: HeadersInit = {
     ...(init.headers as Record<string, string> || {}),
   };
@@ -50,8 +49,8 @@ export async function api(path: string, init: ApiOptions = {}) {
   }
   
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers,
     ...requestInit,
+    headers,
   });
   
   // Handle authentication errors
@@ -88,7 +87,6 @@ export async function api(path: string, init: ApiOptions = {}) {
     // Throw error with clear message
     throw new Error('Authentication failed. Please log in again.');
   }
-  
   if (!res.ok)
     throw new Error(`${res.status} ${await res.text().catch(() => "")}`);
   return res;

@@ -93,6 +93,17 @@ export default function App() {
           }
         />
 
+        <Route 
+          path="/report/saved/:reportId" 
+          element={
+            session ? (
+              <ReportView />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
       </Routes>
     </Router>
   );

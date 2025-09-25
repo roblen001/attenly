@@ -1,12 +1,12 @@
 // src/pages/Dashboard.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../libs/https";
 import { useAuth } from "../feature/auth/useAuth";
 import type { Agent } from '../types';
 import './Dashboard.css';
 import PrebuiltAgentCard from '../components/dashboard/PrebuiltAgentCard';
-import SavedReportCard from '../components/dashboard/SavedReportCard';
+import CompactReportList from '../components/dashboard/CompactReportList';
 
 // TODO BEFORE LAUNCH: important to adjust supabase polecies to include email confirmation and what not
 export default function Dashboard() {
@@ -15,6 +15,9 @@ export default function Dashboard() {
   const [prebuiltAgents, setPrebuiltAgents] = useState<Agent[]>([]);
   const [savedReports, setSavedReports] = useState<any[]>([]);
   const [loadingSavedReports, setLoadingSavedReports] = useState(false);
+  
+  // Ref to track if API calls have been initiated to prevent duplicates
+  const apiCallsInitiated = useRef(false);
 
   const handleExecuteAgent = (agent: Agent) => {
     navigate(`/agent-execution/${agent.id}`);
@@ -79,12 +82,23 @@ export default function Dashboard() {
     }
   };
 
+  // Reset API calls flag when auth state changes
+  useEffect(() => {
+    apiCallsInitiated.current = false;
+  }, [authLoading, session]);
+
   useEffect(() => {
     // Wait for auth to be ready AND session to exist before making API calls
     if (authLoading || !session) {
       return;
     }
 
+    // Prevent duplicate API calls from React StrictMode or multiple auth state changes
+    if (apiCallsInitiated.current) {
+      return;
+    }
+
+    apiCallsInitiated.current = true;
     const controller = new AbortController();
 
     async function loadPrebuiltAgents() {
@@ -147,7 +161,11 @@ export default function Dashboard() {
 
     loadPrebuiltAgents();
     loadSavedReports();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      // Reset flag on cleanup to allow fresh calls if component remounts
+      apiCallsInitiated.current = false;
+    };
   }, [authLoading, session]);
 
   return (
@@ -193,23 +211,13 @@ export default function Dashboard() {
               <div className="loading-state">
                 <p>Loading saved reports...</p>
               </div>
-            ) : savedReports.length > 0 ? (
-              <div className="saved-reports-grid">
-                {savedReports.map((report) => (
-                  <SavedReportCard
-                    key={report.id}
-                    report={report}
-                    onDelete={handleDeleteSavedReport}
-                    onDownload={handleDownloadSavedReport}
-                    onClick={() => handleViewSavedReport(report.id)}
-                  />
-                ))}
-              </div>
             ) : (
-              <div className="saved-reports-empty">
-                <h3>No saved reports yet</h3>
-                <p>Generate and save reports to see them here</p>
-              </div>
+              <CompactReportList
+                reports={savedReports}
+                onView={handleViewSavedReport}
+                onDelete={handleDeleteSavedReport}
+                onDownload={handleDownloadSavedReport}
+              />
             )}
           </div>
         </div>

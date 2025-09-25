@@ -1,9 +1,9 @@
 import logging
-from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Depends, Header
 from fastapi.responses import JSONResponse
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import hashlib
 from app.schemas import Agent, SaveReportRequest, SavedReportOut, SavedReportDetailOut
 from app.core.deps import get_current_user
@@ -26,6 +26,16 @@ report_cache_storage = {}
 
 # Initialize document processor
 document_processor = DocumentProcessor()
+
+def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authorization")) -> str:
+    """Extract JWT token from Authorization header"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    return authorization.split(" ")[1]
 
 def calculate_content_hash(content: bytes) -> str:
     """Calculate SHA-256 hash of file content for duplicate detection"""
@@ -700,7 +710,8 @@ def get_agent_by_id(agent_id: str):
 async def save_current_report(
     agent_id: str, 
     request: SaveReportRequest,
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
 ):
     """Save currently cached report AND document content to Supabase"""
     user_id = current_user.id
@@ -774,6 +785,7 @@ async def save_current_report(
     try:
         # Save to Supabase
         report_id = supabase_service.save_report(
+            user_jwt=jwt_token,
             user_id=user_id,
             agent_id=agent_id,
             agent_name=agent.name,
@@ -795,12 +807,15 @@ async def save_current_report(
         raise HTTPException(status_code=500, detail=f"Failed to save report: {str(e)}")
 
 @router.get("/reports/saved", response_model=List[SavedReportOut])
-async def list_saved_reports(current_user = Depends(get_current_user)):
+async def list_saved_reports(
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
     """List user's saved reports"""
     user_id = current_user.id
     
     try:
-        reports_data = supabase_service.get_user_reports(user_id)
+        reports_data = supabase_service.get_user_reports(jwt_token, user_id)
         
         # Convert to response format
         saved_reports = []
@@ -821,12 +836,16 @@ async def list_saved_reports(current_user = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to fetch saved reports")
 
 @router.get("/reports/saved/{report_id}", response_model=SavedReportDetailOut)
-async def get_saved_report(report_id: str, current_user = Depends(get_current_user)):
+async def get_saved_report(
+    report_id: str, 
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
     """Get a specific saved report with full data for viewing"""
     user_id = current_user.id
     
     try:
-        report_data = supabase_service.get_saved_report(user_id, report_id)
+        report_data = supabase_service.get_saved_report(jwt_token, user_id, report_id)
         
         if not report_data:
             raise HTTPException(status_code=404, detail="Saved report not found")
@@ -851,13 +870,14 @@ async def get_saved_report(report_id: str, current_user = Depends(get_current_us
 async def get_saved_document_content(
     report_id: str, 
     document_id: str, 
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
 ):
     """Get document content for saved report (for DocumentViewer)"""
     user_id = current_user.id
     
     try:
-        document_content = supabase_service.get_saved_document_content(user_id, report_id, document_id)
+        document_content = supabase_service.get_saved_document_content(jwt_token, user_id, report_id, document_id)
         
         if not document_content:
             raise HTTPException(status_code=404, detail="Document content not found for saved report")
@@ -871,12 +891,16 @@ async def get_saved_document_content(
         raise HTTPException(status_code=500, detail="Failed to fetch document content")
 
 @router.delete("/reports/saved/{report_id}")
-async def delete_saved_report(report_id: str, current_user = Depends(get_current_user)):
+async def delete_saved_report(
+    report_id: str, 
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
     """Delete a saved report and its associated documents"""
     user_id = current_user.id
     
     try:
-        success = supabase_service.delete_saved_report(user_id, report_id)
+        success = supabase_service.delete_saved_report(jwt_token, user_id, report_id)
         
         if not success:
             raise HTTPException(status_code=404, detail="Saved report not found or access denied")
@@ -896,7 +920,8 @@ async def delete_saved_report(report_id: str, current_user = Depends(get_current
 async def download_saved_report_pdf(
     report_id: str,
     with_references: bool = False,
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
 ):
     """Download PDF of saved report"""
     from fastapi.responses import StreamingResponse
@@ -906,7 +931,7 @@ async def download_saved_report_pdf(
     
     try:
         # Get saved report data
-        report_data = supabase_service.get_saved_report(user_id, report_id)
+        report_data = supabase_service.get_saved_report(jwt_token, user_id, report_id)
         
         if not report_data:
             raise HTTPException(status_code=404, detail="Saved report not found")

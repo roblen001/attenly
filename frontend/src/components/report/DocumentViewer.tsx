@@ -12,9 +12,18 @@ import './DocumentViewer.css';
 interface DocumentViewerProps {
   quote: Quote;
   onClose: () => void;
+  reportType?: 'current' | 'saved';
+  reportId?: string;
+  agentId?: string;
 }
 
-export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) {
+export default function DocumentViewer({ 
+  quote, 
+  onClose, 
+  reportType = 'current',
+  reportId,
+  agentId 
+}: DocumentViewerProps) {
   const [processedContent, setProcessedContent] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -33,8 +42,16 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
         setLoading(true);
         setError(null);
         
-        console.log('Fetching document content for ID:', quote.document_id);  
-        const response = await api(`/agents/documents/${quote.document_id}/content`);
+        console.log('Fetching document content for ID:', quote.document_id, 'Report type:', reportType);
+        
+        let response;
+        if (reportType === 'saved' && reportId) {
+          // Use saved report document endpoint
+          response = await api(`/agents/reports/saved/${reportId}/documents/${quote.document_id}/content`);
+        } else {
+          // Use current report document endpoint (default)
+          response = await api(`/agents/documents/${quote.document_id}/content`);
+        }
 
         if (!response.ok) {
           throw new Error(`Failed to fetch document content: ${response.status}`);
@@ -67,7 +84,7 @@ export default function DocumentViewer({ quote, onClose }: DocumentViewerProps) 
     };
 
     fetchDocumentContent();
-  }, [quote]);
+  }, [quote, reportType, reportId]);
 
   const processFullDocumentContent = (content: DocumentContent, currentQuote: Quote) => {
     const fullText = content.full_text;

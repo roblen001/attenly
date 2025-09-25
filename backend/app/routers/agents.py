@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import List, Optional
 import hashlib
-from app.schemas import Agent, SaveReportRequest, SavedReportOut, SavedReportDetailOut
+from app.schemas import Agent, SaveReportRequest, SavedReportOut, SavedReportDetailOut, UpdateSavedReportRequest, UpdateCachedReportRequest
 from app.core.deps import get_current_user
 from app.services.supabase_service import supabase_service
 import uuid
@@ -647,6 +647,30 @@ async def download_agent_report_pdf(
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
+@router.put("/reports/{agent_id}/cache")
+async def update_report_cache_for_agent(
+    agent_id: str,
+    payload: UpdateCachedReportRequest,
+    current_user = Depends(get_current_user)
+):
+    """Update cached report data for specific agent (persist UI edits before saving)"""
+    user_id = current_user.id
+
+    # Validate there is an existing cached report
+    if user_id not in report_cache_storage or agent_id not in report_cache_storage[user_id]:
+        raise HTTPException(status_code=404, detail="No cached report found to update")
+
+    try:
+        report_cache_storage[user_id][agent_id]["report_data"] = payload.report_data
+        logging.info(f"Updated cached report data for user {user_id}, agent {agent_id}")
+        return {
+            "success": True,
+            "message": "Cached report data updated successfully"
+        }
+    except Exception as e:
+        logging.error(f"Failed to update cached report for user {user_id}, agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update cached report data")
+
 @router.delete("/reports/{agent_id}/cache")
 async def clear_report_cache_for_agent(agent_id: str, current_user = Depends(get_current_user)):
     """Clear cached report data for specific agent when user leaves preview"""
@@ -915,6 +939,36 @@ async def delete_saved_report(
     except Exception as e:
         logging.error(f"Failed to delete saved report {report_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete saved report")
+
+@router.patch("/reports/saved/{report_id}")
+async def update_saved_report(
+    report_id: str,
+    request: UpdateSavedReportRequest,
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
+    """Update a saved report's content and/or name"""
+    user_id = current_user.id
+    try:
+        success = supabase_service.update_saved_report(
+            user_jwt=jwt_token,
+            user_id=user_id,
+            report_id=report_id,
+            report_data=request.report_data,
+            report_name=request.report_name
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Saved report not found or update failed")
+
+        return {
+            "success": True,
+            "message": "Saved report updated successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to update saved report {report_id} for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update saved report")
 
 @router.get("/reports/saved/{report_id}/pdf")
 async def download_saved_report_pdf(

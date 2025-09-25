@@ -191,19 +191,57 @@ export default function ReportView() {
     }
   };
 
-  // Show save modal (only for current reports)
-  const handleSaveReport = () => {
-    if (reportType === 'current') {
-      setShowSaveModal(true);
+  // Save action for both current and saved reports
+  const handleSaveReport = async () => {
+    try {
+      if (reportType === 'saved' && reportId) {
+        // Persist edits directly to the saved report
+        setIsSaving(true);
+        if (!reportData) {
+          throw new Error('No report data to save');
+        }
+        const response = await api(`/agents/reports/saved/${reportId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ report_data: reportData }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to update saved report');
+        }
+        alert('Saved changes to report successfully!');
+      } else if (reportType === 'current') {
+        // Open naming modal for saving a new report
+        setShowSaveModal(true);
+      } else {
+        alert('Invalid report configuration. Cannot save.');
+      }
+    } catch (error) {
+      console.error('Save failed:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save changes');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  // Handle save report (only for current reports)
+  // Handle save report (only for current reports) - persist edits to cache first
   const handleSaveReportSubmit = async (reportName: string) => {
     if (reportType !== 'current' || !agentId) return;
     
     setIsSaving(true);
     try {
+      if (!reportData) {
+        throw new Error('No report data to save');
+      }
+
+      // First, update the cached report with the latest edited data
+      const cacheUpdate = await api(`/agents/reports/${agentId}/cache`, {
+        method: 'PUT',
+        body: JSON.stringify({ report_data: reportData }),
+      });
+      if (!cacheUpdate.ok) {
+        throw new Error('Failed to update cached report before saving');
+      }
+
+      // Then, save the cached report to Supabase with the provided name
       const response = await api(`/agents/${agentId}/reports/save`, {
         method: 'POST',
         headers: {
@@ -268,7 +306,7 @@ export default function ReportView() {
       <ReportActionsBar 
         onDownloadPDF={handleDownloadPDF} 
         onSaveReport={handleSaveReport}
-        showSaveButton={reportType === 'current'}
+        showSaveButton={true}
       />
 
       <div className="report-main">

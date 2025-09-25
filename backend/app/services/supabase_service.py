@@ -159,6 +159,37 @@ class SupabaseService:
             logging.error(f"Error fetching document content: {e}")
             return None
 
+    def update_saved_report(self, user_jwt: str, user_id: str, report_id: str, report_data: Optional[Dict[str, Any]] = None, report_name: Optional[str] = None) -> bool:
+        """Update a saved report's data and/or name using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            update_fields: Dict[str, Any] = {}
+            if report_data is not None:
+                update_fields["report_data"] = report_data
+            if report_name is not None:
+                update_fields["report_name"] = report_name
+
+            if not update_fields:
+                logging.info("No fields provided to update for saved report")
+                return False
+
+            result = user_client.table("saved_reports")\
+                .update(update_fields)\
+                .eq("id", report_id)\
+                .eq("user_id", user_id)\
+                .execute()
+
+            if result.data:
+                logging.info(f"Updated saved report {report_id} for user {user_id}")
+                return True
+            else:
+                logging.warning(f"Update affected 0 rows for report {report_id} and user {user_id}")
+                return False
+
+        except Exception as e:
+            logging.error(f"Error updating saved report {report_id}: {e}")
+            return False
+
     def delete_saved_report(self, user_jwt: str, user_id: str, report_id: str) -> bool:
         """Delete a saved report and its associated documents using user JWT"""
         try:

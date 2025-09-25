@@ -58,3 +58,12 @@ class SavedReportDetailOut(BaseModel):
     generated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# Update payloads
+class UpdateSavedReportRequest(BaseModel):
+    report_data: Optional[dict] = None
+    report_name: Optional[str] = None
+
+# for now there is no save as options when updating cached reports (from saved reports)
+class UpdateCachedReportRequest(BaseModel):
+    report_data: dict

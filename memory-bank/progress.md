@@ -28,7 +28,7 @@
 
 ### ✅ Agent System Foundation
 - **Agent Models**: Database schema for agents and questions
-- **Prebuilt Templates**: Two complete agent templates (Account Summary, Loss History)
+- **Prebuilt Templates**: Two complete agent templates (Executive Comppany Summary, Loss History)
 - **Template Structure**: HTML templates with placeholder system
 - **Agent API**: CRUD operations for agent management
 

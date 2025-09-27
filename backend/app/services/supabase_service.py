@@ -213,5 +213,170 @@ class SupabaseService:
             logging.error(f"Error deleting saved report {report_id}: {e}")
             return False
 
+    # Custom Agent CRUD Operations
+    
+    def create_custom_agent(self, user_jwt: str, user_id: str, created_by_name: str, 
+                           name: str, description: str, report_template: str, 
+                           questions: List[Dict[str, str]]) -> str:
+        """Create a new custom agent with questions using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # Insert agent record
+            agent_insert = {
+                "name": name,
+                "description": description,
+                "report_template": report_template,
+                "user_id": user_id,
+                "is_custom": True,
+                "created_by_name": created_by_name
+            }
+            
+            result = user_client.table("agents").insert(agent_insert).execute()
+            
+            if not result.data:
+                raise Exception("Failed to insert agent record")
+            
+            agent_id = result.data[0]["id"]
+            logging.info(f"Created custom agent with ID: {agent_id} for user: {user_id}")
+            
+            # Insert questions
+            if questions:
+                question_inserts = []
+                for question in questions:
+                    question_inserts.append({
+                        "agent_id": agent_id,
+                        "placeholder": question["placeholder"],
+                        "prompt": question["prompt"]
+                    })
+                
+                questions_result = user_client.table("agent_questions").insert(question_inserts).execute()
+                
+                if not questions_result.data:
+                    logging.warning(f"Failed to insert questions for agent {agent_id}")
+                else:
+                    logging.info(f"Created {len(questions_result.data)} questions for agent {agent_id}")
+            
+            return str(agent_id)
+            
+        except Exception as e:
+            logging.error(f"Error creating custom agent: {e}")
+            raise
+
+    def get_user_custom_agents(self, user_jwt: str, user_id: str) -> List[Dict[str, Any]]:
+        """Get user's custom agents with questions using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # Get agents with their questions
+            result = user_client.table("agents")\
+                .select("*, agent_questions(*)")\
+                .eq("user_id", user_id)\
+                .eq("is_custom", True)\
+                .order("created_at", desc=True)\
+                .execute()
+            
+            return result.data or []
+            
+        except Exception as e:
+            logging.error(f"Error fetching user custom agents: {e}")
+            raise
+
+    def get_agent_by_id(self, user_jwt: str, user_id: str, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific agent by ID with questions using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            result = user_client.table("agents")\
+                .select("*, agent_questions(*)")\
+                .eq("id", agent_id)\
+                .single()\
+                .execute()
+            
+            return result.data
+            
+        except Exception as e:
+            logging.error(f"Error fetching agent {agent_id}: {e}")
+            return None
+
+    def update_custom_agent(self, user_jwt: str, user_id: str, agent_id: str,
+                           name: Optional[str] = None, description: Optional[str] = None,
+                           report_template: Optional[str] = None, 
+                           questions: Optional[List[Dict[str, str]]] = None) -> bool:
+        """Update a custom agent and optionally its questions using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # Update agent fields
+            update_fields = {"updated_at": datetime.now().isoformat()}
+            if name is not None:
+                update_fields["name"] = name
+            if description is not None:
+                update_fields["description"] = description
+            if report_template is not None:
+                update_fields["report_template"] = report_template
+            
+            result = user_client.table("agents")\
+                .update(update_fields)\
+                .eq("id", agent_id)\
+                .eq("user_id", user_id)\
+                .eq("is_custom", True)\
+                .execute()
+            
+            if not result.data:
+                logging.warning(f"Agent {agent_id} not found or not owned by user {user_id}")
+                return False
+            
+            # Update questions if provided
+            if questions is not None:
+                # Delete existing questions
+                user_client.table("agent_questions")\
+                    .delete()\
+                    .eq("agent_id", agent_id)\
+                    .execute()
+                
+                # Insert new questions
+                if questions:
+                    question_inserts = []
+                    for question in questions:
+                        question_inserts.append({
+                            "agent_id": agent_id,
+                            "placeholder": question["placeholder"],
+                            "prompt": question["prompt"]
+                        })
+                    
+                    user_client.table("agent_questions").insert(question_inserts).execute()
+            
+            logging.info(f"Updated custom agent {agent_id} for user {user_id}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error updating custom agent {agent_id}: {e}")
+            return False
+
+    def delete_custom_agent(self, user_jwt: str, user_id: str, agent_id: str) -> bool:
+        """Delete a custom agent and its questions using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # Delete agent (questions will be deleted by cascade)
+            result = user_client.table("agents")\
+                .delete()\
+                .eq("id", agent_id)\
+                .eq("user_id", user_id)\
+                .eq("is_custom", True)\
+                .execute()
+            
+            if result.data:
+                logging.info(f"Deleted custom agent {agent_id}")
+                return True
+            else:
+                logging.warning(f"Agent {agent_id} not found or not owned by user {user_id}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error deleting custom agent {agent_id}: {e}")
+            return False
+
 # Global instance
 supabase_service = SupabaseService()

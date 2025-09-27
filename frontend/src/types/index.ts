@@ -2,6 +2,8 @@ export interface Question {
   id: string;
   placeholder: string; // tag that will be replaced with the LLM answer
   prompt: string;
+  exampleAnswer?: string; // Example answer from testing
+  exampleQuotes?: Quote[]; // Example quotes from testing
 }
 
 export interface Agent {

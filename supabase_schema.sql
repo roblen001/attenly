@@ -1,6 +1,128 @@
 -- Enable extension for gen_random_uuid (safe if already enabled)
 create extension if not exists pgcrypto;
 
+-- Agents table for both prebuilt and custom agents
+create table if not exists agents (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  report_template text,
+  
+  -- Custom agent fields
+  user_id uuid,                           -- Links custom agents to their creators (null for prebuilt agents)
+  is_custom boolean not null default false, -- Distinguishes custom from prebuilt agents
+  created_by_name text,                   -- User's display name for agent attribution
+  
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Agent questions table
+create table if not exists agent_questions (
+  id uuid primary key default gen_random_uuid(),
+  agent_id uuid not null references agents(id) on delete cascade,
+  placeholder text not null,
+  prompt text not null,
+  
+  -- Ensure each placeholder is unique per agent
+  constraint unique_placeholder_per_agent unique (agent_id, placeholder)
+);
+
+-- Enable Row Level Security for agents
+alter table agents enable row level security;
+alter table agent_questions enable row level security;
+
+-- RLS: agents (users can see prebuilt agents and their own custom agents)
+drop policy if exists "agents_select" on agents;
+create policy "agents_select" on agents
+  for select using (
+    is_custom = false OR user_id = auth.uid()
+  );
+
+drop policy if exists "agents_insert_own" on agents;
+create policy "agents_insert_own" on agents
+  for insert with check (
+    is_custom = true AND user_id = auth.uid()
+  );
+
+drop policy if exists "agents_update_own" on agents;
+create policy "agents_update_own" on agents
+  for update using (
+    is_custom = true AND user_id = auth.uid()
+  )
+  with check (
+    is_custom = true AND user_id = auth.uid()
+  );
+
+drop policy if exists "agents_delete_own" on agents;
+create policy "agents_delete_own" on agents
+  for delete using (
+    is_custom = true AND user_id = auth.uid()
+  );
+
+-- RLS: agent_questions (users can see questions for agents they can access)
+drop policy if exists "agent_questions_select" on agent_questions;
+create policy "agent_questions_select" on agent_questions
+  for select using (
+    exists (
+      select 1 from agents a
+      where a.id = agent_questions.agent_id
+        and (a.is_custom = false OR a.user_id = auth.uid())
+    )
+  );
+
+drop policy if exists "agent_questions_insert_own" on agent_questions;
+create policy "agent_questions_insert_own" on agent_questions
+  for insert with check (
+    exists (
+      select 1 from agents a
+      where a.id = agent_id
+        and a.is_custom = true
+        and a.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "agent_questions_update_own" on agent_questions;
+create policy "agent_questions_update_own" on agent_questions
+  for update using (
+    exists (
+      select 1 from agents a
+      where a.id = agent_questions.agent_id
+        and a.is_custom = true
+        and a.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from agents a
+      where a.id = agent_id
+        and a.is_custom = true
+        and a.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "agent_questions_delete_own" on agent_questions;
+create policy "agent_questions_delete_own" on agent_questions
+  for delete using (
+    exists (
+      select 1 from agents a
+      where a.id = agent_questions.agent_id
+        and a.is_custom = true
+        and a.user_id = auth.uid()
+    )
+  );
+
+-- Indexes for agents
+create index if not exists idx_agents_user_custom
+  on agents(user_id, is_custom) where is_custom = true;
+
+create index if not exists idx_agents_is_custom
+  on agents(is_custom);
+
+-- Indexes for agent_questions
+create index if not exists idx_agent_questions_agent_id
+  on agent_questions(agent_id);
+
 -- Main table for saved reports
 create table if not exists saved_reports (
   id uuid primary key default gen_random_uuid(),

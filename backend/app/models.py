@@ -1,6 +1,6 @@
 """Database tables. How the data will be stored in the database."""
 # models.py
-from sqlalchemy import Column, String, DateTime, Text, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, String, DateTime, Text, UniqueConstraint, ForeignKey, Boolean
 from datetime import datetime, timezone
 from uuid import uuid4
 from .db import Base
@@ -19,6 +19,11 @@ class Agent(Base):
 
     # The report template HTML
     report_template = Column(Text, nullable=True)
+    
+    # Custom agent fields
+    user_id = Column(String, nullable=True)  # Links custom agents to their creators (nullable for prebuilt agents)
+    is_custom = Column(Boolean, nullable=False, default=False)  # Distinguishes custom from prebuilt agents
+    created_by_name = Column(String, nullable=True)  # User's display name for agent attribution
     
     # For user-created agents
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)

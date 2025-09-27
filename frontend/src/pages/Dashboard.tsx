@@ -6,6 +6,7 @@ import { useAuth } from "../feature/auth/useAuth";
 import type { Agent } from '../types';
 import './Dashboard.css';
 import PrebuiltAgentCard from '../components/dashboard/PrebuiltAgentCard';
+import CustomAgentCard from '../components/dashboard/CustomAgentCard';
 import CompactReportList from '../components/dashboard/CompactReportList';
 
 // TODO BEFORE LAUNCH: important to adjust supabase polecies to include email confirmation and what not
@@ -13,6 +14,8 @@ export default function Dashboard() {
   const { loading: authLoading, session } = useAuth();
   const navigate = useNavigate();
   const [prebuiltAgents, setPrebuiltAgents] = useState<Agent[]>([]);
+  const [customAgents, setCustomAgents] = useState<any[]>([]);
+  const [loadingCustomAgents, setLoadingCustomAgents] = useState(false);
   const [savedReports, setSavedReports] = useState<any[]>([]);
   const [loadingSavedReports, setLoadingSavedReports] = useState(false);
   
@@ -21,6 +24,29 @@ export default function Dashboard() {
 
   const handleExecuteAgent = (agent: Agent) => {
     navigate(`/agent-execution/${agent.id}`);
+  };
+
+  const handleExecuteCustomAgent = (agent: any) => {
+    navigate(`/agent-execution/${agent.id}`);
+  };
+
+  const handleDeleteCustomAgent = async (agentId: string) => {
+    try {
+      const response = await api(`/agents/custom/${agentId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete custom agent');
+      }
+
+      // Remove from local state
+      setCustomAgents(prev => prev.filter(agent => agent.id !== agentId));
+      console.log('Custom agent deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete custom agent:', error);
+      alert('Failed to delete custom agent. Please try again.');
+    }
   };
 
   const handleViewSavedReport = (reportId: string) => {
@@ -130,6 +156,35 @@ export default function Dashboard() {
       }
     }
 
+    async function loadCustomAgents() {
+      try {
+        setLoadingCustomAgents(true);
+        const res = await api("/agents/list_user_custom_agents", {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+          nonCritical: true, // Don't sign out user if this API call fails
+        });
+        
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          console.error("Failed to load custom agents:", res.status, msg);
+          setCustomAgents([]);
+          return;
+        }
+
+        const agents = await res.json();
+        setCustomAgents(agents);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.error("Error loading custom agents:", err);
+          setCustomAgents([]);
+        }
+      } finally {
+        setLoadingCustomAgents(false);
+      }
+    }
+
     async function loadSavedReports() {
       try {
         setLoadingSavedReports(true);
@@ -160,6 +215,7 @@ export default function Dashboard() {
     }
 
     loadPrebuiltAgents();
+    loadCustomAgents();
     loadSavedReports();
     return () => {
       controller.abort();
@@ -182,6 +238,13 @@ export default function Dashboard() {
               <p className="section-subtitle">
                 Start with these proven agents, then customize to your needs
               </p>
+              <button 
+                className="create-agent-button"
+                onClick={() => navigate('/create-agent')}
+              >
+                <span className="button-icon">🤖</span>
+                Create Custom Agent
+              </button>
             </div>
 
             <div className="templates-grid">
@@ -193,6 +256,53 @@ export default function Dashboard() {
                 />
               ))}
             </div>
+          </div>
+
+          {/* Custom Agents Section */}
+          <div className="custom-agents-section">
+            <div className="section-header">
+              <h2 className="section-title">
+                <span className="section-icon">🛠️</span>
+                My Custom Agents
+              </h2>
+              <p className="section-subtitle">
+                Your personalized agents tailored to your specific needs
+              </p>
+            </div>
+
+            {loadingCustomAgents ? (
+              <div className="loading-state">
+                <p>Loading custom agents...</p>
+              </div>
+            ) : customAgents.length > 0 ? (
+              <div className="custom-agents-grid">
+                {customAgents.map((agent) => (
+                  <CustomAgentCard
+                    key={agent.id}
+                    agent={agent}
+                    onExecute={handleExecuteCustomAgent}
+                    onDelete={handleDeleteCustomAgent}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <div className="empty-state-content">
+                  <div className="empty-state-icon">🤖</div>
+                  <h3 className="empty-state-title">No Custom Agents Yet</h3>
+                  <p className="empty-state-description">
+                    Create your first custom agent to get started with personalized document processing
+                  </p>
+                  <button 
+                    className="create-agent-button"
+                    onClick={() => navigate('/create-agent')}
+                  >
+                    <span className="button-icon">🤖</span>
+                    Create Your First Agent
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Saved Reports Section */}

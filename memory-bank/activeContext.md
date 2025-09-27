@@ -91,7 +91,7 @@ The project is currently in the second development phase, focusing on building o
 
 #### 4. Template System Expansion
 - **Current State**: Two prebuilt agents defined in JSON format
-  - Account Summary Report (27 data points)
+  - Executive Comppany Summary Report (27 data points)
   - Loss History Snapshot (28 data points)
 - **Active Work**: Making the template system more flexible and user-configurable
 - **Future**: Custom agent creation interface

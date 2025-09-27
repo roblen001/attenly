@@ -94,7 +94,7 @@ export const generateReportHTML = (
     } else {
       answerHTML = `
         <span class="editable-answer" data-answer-id="${answer.id}">
-          <span class="answer-content">${answer.answer}</span>${superscripts}
+          ${answer.answer}${superscripts}
         </span>
       `;
     }

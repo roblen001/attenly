@@ -1,152 +1,225 @@
-# Implementation Plan: Authentication Loop Bug Fix
+# Implementation Plan
 
 ## Overview
-Fix the authentication redirect loop bug where users get bounced between Landing → Login → Dashboard → Landing → Login after successful authentication. The issue is caused by session state synchronization problems between the frontend Supabase authentication and backend JWT validation.
+Add custom agent creation functionality to Attenly, allowing users to create their own AI-powered document processing agents. Users will upload example documents, create professional report templates using a rich text editor, and define AI extraction points through an interactive modal system.
 
-The root cause is a race condition where the frontend attempts to make authenticated API calls before the Supabase session is fully established, causing the backend to return 401 errors which trigger automatic redirects back to the login page. This creates an infinite loop that prevents users from accessing the dashboard after successful login.
+The implementation extends the existing agent system architecture by adding user-created agents alongside prebuilt ones. Custom agents follow the same execution flow as prebuilt agents but store questions in the database instead of JSON seed files. The feature integrates seamlessly with existing file processing, vector store, LLM services, and authentication systems.
 
 ## Types
-Session state management and authentication flow improvements.
+Database model extensions for custom agent support.
 
-**Enhanced Session State Interface:**
+**Extended Agent Model Fields:**
+- `user_id: UUID` - Links custom agents to their creators (nullable for prebuilt agents)
+- `is_custom: Boolean` - Distinguishes custom from prebuilt agents (default: False)
+- `created_by_name: String` - User's display name for agent attribution (nullable)
+
+**New TypeScript Interfaces:**
 ```typescript
-interface AuthState {
-  session: Session | null;
-  loading: boolean;
-  isAuthenticated: boolean;
-  sessionReady: boolean; // NEW: indicates session is fully loaded and ready for API calls
-  user: User | null;
+interface CustomAgent extends Agent {
+  user_id: string;
+  is_custom: boolean;
+  created_by_name?: string;
+  can_delete: boolean; // Frontend computed property
+}
+
+interface AgentCreationStep {
+  step: 'upload' | 'editor' | 'naming';
+  data: {
+    uploadedFiles?: UploadedFile[];
+    reportTemplate?: string;
+    questions?: AgentQuestion[];
+    agentName?: string;
+    agentDescription?: string;
+  };
+}
+
+interface AIQuestionModal {
+  isOpen: boolean;
+  question: string;
+  answer?: string;
+  quotes?: Quote[];
+  isLoading: boolean;
+  cursorPosition?: number;
 }
 ```
-
-**API Call State Interface:**
-```typescript
-interface ApiCallState {
-  sessionRetryCount: number;
-  maxRetries: number;
-  retryDelay: number;
-  sessionReadyTimeout: number;
-}
-```
-
-**Authentication Event Types:**
-- `INITIAL_SESSION` - Session loaded on app start
-- `SIGNED_IN` - User successfully signed in
-- `SIGNED_OUT` - User signed out
-- `TOKEN_REFRESHED` - Session token refreshed
-- `SESSION_READY` - Session fully established and ready for API calls
 
 ## Files
-Frontend authentication and API integration fixes.
+File modifications and new file creation for custom agent functionality.
 
-**Modified Files:**
-- `frontend/src/feature/auth/useAuth.ts` - Enhanced session state management with sessionReady flag and better state change handling
-- `frontend/src/libs/https.ts` - Improved session retrieval with better retry logic and session readiness checks
-- `frontend/src/hooks/useReportData.ts` - Enhanced authentication dependency with sessionReady checks
-- `frontend/src/App.tsx` - Improved route protection with better loading states
+**New Files to Create:**
+- `frontend/src/pages/CreateAgent.tsx` - Multi-step agent creation wizard
+- `frontend/src/pages/CreateAgent.css` - Styling for agent creation pages
+- `frontend/src/components/agent-creation/FileUploadStep.tsx` - File upload step with instructions
+- `frontend/src/components/agent-creation/EditorStep.tsx` - TinyMCE editor with AI modal
+- `frontend/src/components/agent-creation/NamingStep.tsx` - Agent naming and finalization
+- `frontend/src/components/agent-creation/AIQuestionModal.tsx` - Interactive AI question modal
+- `frontend/src/components/agent-creation/AIQuestionModal.css` - Modal styling
+- `frontend/src/components/dashboard/CustomAgentCard.tsx` - Custom agent card with delete
+- `frontend/src/components/dashboard/CustomAgentCard.css` - Custom agent card styling
 
-**No New Files Required** - All fixes are modifications to existing authentication infrastructure
+**Files to Modify:**
+- `backend/app/models.py` - Add user_id, is_custom, created_by_name fields to Agent model
+- `backend/app/schemas.py` - Add CustomAgentOut schema and creation request schemas
+- `backend/app/routers/agents.py` - Add custom agent CRUD endpoints
+- `frontend/src/pages/Dashboard.tsx` - Add "Create Agent" button and custom agent section
+- `frontend/src/pages/Dashboard.css` - Styling for custom agent section
+- `frontend/src/components/dashboard/PrebuiltAgentCard.tsx` - Add delete functionality for custom agents
+- `frontend/package.json` - Add TinyMCE dependencies
+- `backend/requirements.txt` - No new dependencies needed
 
 **Configuration Updates:**
-- Enhanced session timeout handling
-- Improved retry logic parameters
-- Better error boundary configuration
+- Database migration for new Agent model fields
+- Router registration for new custom agent endpoints
 
 ## Functions
-Authentication state management and API call timing improvements.
+Function modifications and new function creation.
 
-**Modified Functions:**
+**New Backend Functions:**
+- `create_custom_agent(agent_data: CreateCustomAgentRequest, current_user)` - Create new custom agent in database
+- `get_user_custom_agents(user_id: str)` - Retrieve user's custom agents
+- `delete_custom_agent(agent_id: str, user_id: str)` - Delete user's custom agent with validation
+- `update_custom_agent(agent_id: str, agent_data: UpdateCustomAgentRequest, user_id: str)` - Update custom agent
+- `validate_agent_ownership(agent_id: str, user_id: str)` - Verify user owns the custom agent
 
-**`useAuth` hook (`frontend/src/feature/auth/useAuth.ts`):**
-- `useEffect` session initialization - Add sessionReady state management
-- `onAuthStateChange` handler - Enhanced event handling with proper session ready detection
-- Add `waitForSessionReady()` - New function to ensure session is fully established
-- Enhanced error handling for session retrieval failures
+**New Frontend Functions:**
+- `useAgentCreation()` - Custom hook for managing agent creation state
+- `useTinyMCE()` - Custom hook for TinyMCE editor integration
+- `useAIQuestionModal()` - Custom hook for AI question modal state
+- `insertAIPlaceholder(editor, placeholder: string)` - Insert AI placeholder at cursor
+- `handleAIQuestionSubmit(question: string, uploadedFiles: UploadedFile[])` - Process AI question
+- `saveCustomAgent(agentData: AgentCreationStep)` - Save completed custom agent
+- `deleteCustomAgent(agentId: string)` - Delete custom agent with confirmation
 
-**`api` function (`frontend/src/libs/https.ts`):**
-- Enhanced session retrieval logic with sessionReady checks
-- Improved retry mechanism with exponential backoff
-- Better error handling to prevent infinite redirect loops
-- Add session readiness validation before making API calls
+**Modified Backend Functions:**
+- `list_prebuilt_agents()` - Rename to `list_agents()` and include custom agents with user filtering
+- `get_agent_by_id()` - Add custom agent support with ownership validation
+- Agent model constructor - Handle new fields with proper defaults
 
-**`useReportData` hook (`frontend/src/hooks/useReportData.ts`):**
-- Enhanced dependency array to include sessionReady state
-- Improved timing for API calls to wait for full session establishment
-- Better error handling for authentication failures
-
-**App routing logic (`frontend/src/App.tsx`):**
-- Enhanced loading state management during session establishment
-- Improved route protection with sessionReady checks
-- Better handling of authentication state transitions
+**Modified Frontend Functions:**
+- Dashboard component - Add custom agent section and create button
+- Agent execution flow - Handle both prebuilt and custom agents seamlessly
 
 ## Classes
-No new classes required - leveraging existing Supabase client and React hook patterns.
+Class modifications and new class creation.
 
-**Enhanced Existing Patterns:**
-- `useAuth` hook pattern - Enhanced with sessionReady state management
-- API client pattern - Improved session handling and retry logic
-- Route protection pattern - Enhanced with better loading states
+**Extended Classes:**
+- `Agent` (SQLAlchemy model) - Add user_id, is_custom, created_by_name fields with proper relationships
+- `AgentQuestion` (SQLAlchemy model) - No changes needed, existing foreign key relationship works
+
+**New React Components (Functional):**
+- `CreateAgent` - Main wizard component with step management
+- `FileUploadStep` - File upload with clear example document instructions
+- `EditorStep` - TinyMCE integration with AI question modal
+- `NamingStep` - Agent naming and description form
+- `AIQuestionModal` - Interactive modal for AI question processing
+- `CustomAgentCard` - Agent card with delete functionality
+
+**New Custom Hooks:**
+- `useAgentCreation` - Manages multi-step creation state
+- `useTinyMCE` - Handles TinyMCE editor lifecycle
+- `useAIQuestionModal` - Manages AI question modal state and processing
 
 ## Dependencies
-No new dependencies required.
+New package dependencies and integration requirements.
 
-**Existing Dependencies Used:**
-- `@supabase/supabase-js` - Enhanced usage of session management features
-- `react-router-dom` - Improved navigation handling during auth state changes
-- React hooks - Enhanced state management patterns
+**Frontend Dependencies (package.json):**
+```json
+{
+  "@tinymce/tinymce-react": "^4.3.2",
+  "tinymce": "^6.8.2"
+}
+```
+
+**TinyMCE Configuration:**
+- Full Microsoft Word-like functionality (tables, formatting, fonts, colors)
+- Custom toolbar with "Add AI Ability" button
+- Cursor position tracking for placeholder insertion
+- Rich text output compatible with existing report system
+
+**Backend Dependencies:**
+- No new dependencies required
+- Utilizes existing FastAPI, SQLAlchemy, and authentication systems
+
+**Integration Requirements:**
+- TinyMCE CDN integration for editor assets
+- Existing vector store and LLM services for AI question processing
+- Existing file upload and document processing pipeline
+- Existing authentication and user management system
 
 ## Testing
-Authentication flow validation and session state testing.
+Testing approach and validation strategies.
 
-**Test Scenarios:**
-1. **Login Flow Testing** - Verify smooth transition from login to dashboard without redirects
-2. **Session Persistence Testing** - Ensure session persists across page refreshes and navigation
-3. **API Call Timing Testing** - Verify API calls only happen when session is ready
-4. **Error Handling Testing** - Test graceful handling of authentication failures
-5. **Race Condition Testing** - Verify no race conditions between session establishment and API calls
+**Unit Testing:**
+- Custom agent CRUD operations with user ownership validation
+- TinyMCE editor integration and placeholder insertion
+- AI question modal functionality and state management
+- Database model extensions and migrations
 
-**Manual Testing Steps:**
-1. Clear browser storage and cookies
-2. Navigate to landing page → click "Get Started" → login → verify direct access to dashboard
-3. Refresh dashboard page → verify no redirect loop
-4. Navigate between protected routes → verify session persistence
-5. Test with network delays → verify retry logic works properly
+**Integration Testing:**
+- Complete agent creation workflow from file upload to dashboard
+- Custom agent execution flow matching prebuilt agent behavior
+- File upload integration with existing document processing pipeline
+- AI question processing using existing LLM and vector store services
 
-**Browser Console Validation:**
-- No "Auth state change: INITIAL_SESSION No session" errors after successful login
-- No "Authentication attempt without authorization header" backend errors
-- Proper session state logging showing successful authentication flow
+**User Acceptance Testing:**
+- Multi-step wizard navigation and state persistence
+- TinyMCE editor functionality and user experience
+- AI question modal with live preview and reference viewing
+- Custom agent management (create, execute, delete) from dashboard
+
+**Validation Strategies:**
+- Custom agent ownership validation on all operations
+- File upload validation using existing document classification
+- Template HTML validation and placeholder syntax checking
+- Database constraint validation for agent-question relationships
 
 ## Implementation Order
-Sequential fixes to resolve authentication timing and state management issues.
+Logical sequence of implementation to minimize conflicts and ensure successful integration.
 
-**Step 1: Enhanced Session State Management**
-- Modify `useAuth` hook to add sessionReady state
-- Implement proper session readiness detection
-- Add waitForSessionReady utility function
+**Step 1: Database and Backend Foundation**
+- Extend Agent model with new fields (user_id, is_custom, created_by_name)
+- Create database migration for new fields
+- Add custom agent schemas (CreateCustomAgentRequest, CustomAgentOut)
+- Implement custom agent CRUD endpoints in agents router
+- Add ownership validation and user filtering logic
 
-**Step 2: Improved API Call Timing**
-- Update `api` function with enhanced session retrieval
-- Implement better retry logic with sessionReady checks
-- Add session validation before API calls
+**Step 2: Frontend Dependencies and Base Components**
+- Add TinyMCE dependencies to package.json
+- Create base CreateAgent page with routing
+- Implement useAgentCreation hook for state management
+- Create FileUploadStep component reusing existing FileUpload logic
+- Add "Create Agent" button to Dashboard with navigation
 
-**Step 3: Enhanced Hook Dependencies**
-- Update `useReportData` hook to depend on sessionReady state
-- Ensure API calls only trigger when session is fully established
-- Improve error handling for authentication failures
+**Step 3: TinyMCE Editor Integration**
+- Implement EditorStep component with TinyMCE integration
+- Create useTinyMCE hook for editor lifecycle management
+- Add custom toolbar with "Add AI Ability" button
+- Implement cursor position tracking and placeholder insertion
+- Style editor to match existing application design
 
-**Step 4: Route Protection Improvements**
-- Update App.tsx with better loading state management
-- Implement sessionReady checks in route protection
-- Enhance navigation handling during auth state changes
+**Step 4: AI Question Modal System**
+- Create AIQuestionModal component with form and preview
+- Implement useAIQuestionModal hook for state management
+- Integrate with existing LLM service for question processing
+- Add DocumentViewer integration for reference clicking
+- Implement answer insertion and placeholder generation
 
-**Step 5: Testing and Validation**
-- Test complete authentication flow end-to-end
-- Verify no redirect loops occur after login
-- Validate session persistence across navigation
-- Confirm backend receives proper authorization headers
+**Step 5: Agent Creation Completion**
+- Implement NamingStep component for agent finalization
+- Add agent creation API integration and error handling
+- Implement navigation back to dashboard after creation
+- Add success/error feedback and validation messages
 
-**Step 6: Error Handling and Logging**
-- Add comprehensive error logging for debugging
-- Implement graceful fallbacks for authentication failures
-- Add user-friendly error messages for auth issues
+**Step 6: Dashboard Integration and Management**
+- Create CustomAgentCard component with delete functionality
+- Add custom agent section to Dashboard
+- Implement custom agent filtering and display logic
+- Add delete confirmation modal and API integration
+- Update existing agent execution flow to handle custom agents
+
+**Step 7: Testing and Polish**
+- Comprehensive testing of complete workflow
+- UI/UX refinements and responsive design
+- Error handling and edge case validation
+- Performance optimization and code cleanup
+- Documentation updates and deployment preparation

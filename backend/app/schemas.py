@@ -34,6 +34,28 @@ class AgentOut(BaseAgentOut):
 
     model_config = ConfigDict(from_attributes=True)
 
+# Custom agent schemas
+class CustomAgentOut(AgentOut):
+    """Schema for custom agents with additional fields"""
+    user_id: str
+    is_custom: bool
+    created_by_name: Optional[str] = None
+    can_delete: bool = True  # Frontend computed property
+
+    model_config = ConfigDict(from_attributes=True)
+
+class CreateCustomAgentRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    report_template: str
+    questions: List[QuestionOut]  # Use existing QuestionOut schema
+
+class UpdateCustomAgentRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    report_template: Optional[str] = None
+    questions: Optional[List[QuestionOut]] = None  # Use existing QuestionOut schema
+
 # Schemas for saved reports functionality
 class SaveReportRequest(BaseModel):
     report_name: str

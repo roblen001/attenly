@@ -1,5 +1,5 @@
 // CreateAgent.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './CreateAgent.css';
 import './AgentExecution.css';
@@ -8,6 +8,7 @@ import FileUpload from '../components/AgentExecution/FileUpload';
 import { api } from '../libs/https';
 import type { UploadedFile } from '../types';
 import { transformCustomAgentData, addProfessionalStyling } from '../utils/agentTransform';
+import { useAuth } from '../feature/auth/useAuth';
 
 // Types matching backend schemas
 interface QuestionOut {
@@ -44,12 +45,36 @@ const L = {
 const ids = (qs?: QuestionOut[]) => (qs ?? []).map(q => q.id);
 
 const CreateAgent: React.FC = () => {
+  const { loading: authLoading, session } = useAuth();
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<AgentCreationStep>({
     step: 'upload',
     data: {}
   });
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+
+  // Clear vector store and files when leaving this page (same as AgentExecution)
+  useEffect(() => {
+    return () => {
+      // Cleanup function runs when component unmounts (navigation away, cancel, etc.)
+      const clearFilesOnExit = async () => {
+        // Wait for auth to be ready AND session to exist before making API calls
+        if (authLoading || !session) {
+          return;
+        }
+
+        try {
+          await api('/agents/files/clear', { method: 'DELETE' });
+          console.log('Files cleared on leaving agent creation page');
+        } catch (error) {
+          console.error('Failed to clear files on exit:', error);
+          // Don't block navigation on cleanup failure
+        }
+      };
+
+      clearFilesOnExit();
+    };
+  }, [authLoading, session]); // Dependencies to ensure auth is ready
 
   const handleStepChange = (
     newStep: 'upload' | 'editor' | 'naming',

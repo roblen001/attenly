@@ -7,10 +7,8 @@ import {
 } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
+import Login from "./pages/Login";
 import { useAuth } from "./feature/auth/useAuth";
-import { Auth } from "@supabase/auth-ui-react";
-import { ThemeSupa } from "@supabase/auth-ui-shared";
-import { supabase } from "./libs/supabase";
 import AgentExecutionPage from "./pages/AgentExecution";
 import ReportView from "./pages/ReportView";
 import CreateAgent from "./pages/CreateAgent";
@@ -52,11 +50,7 @@ export default function App() {
             session ? (
               <Navigate to="/dashboard" replace />
             ) : (
-              <Auth
-                supabaseClient={supabase}
-                appearance={{ theme: ThemeSupa }}
-                providers={[]}
-              />
+              <Login />
             )
           }
         />

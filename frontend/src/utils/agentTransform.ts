@@ -156,7 +156,6 @@ export function addProfessionalStyling(template: string): string {
     h1 {
       font-size: 18pt;
       color: #1a365d;
-      border-bottom: 2px solid #2196f3;
       padding-bottom: 8px;
       margin-bottom: 20px;
     }

@@ -11,7 +11,7 @@ import CompactReportList from '../components/dashboard/CompactReportList';
 
 // TODO BEFORE LAUNCH: important to adjust supabase polecies to include email confirmation and what not
 export default function Dashboard() {
-  const { loading: authLoading, session } = useAuth();
+  const { loading: authLoading, session, signOut } = useAuth();
   const navigate = useNavigate();
   const [prebuiltAgents, setPrebuiltAgents] = useState<Agent[]>([]);
   const [customAgents, setCustomAgents] = useState<any[]>([]);
@@ -226,6 +226,34 @@ export default function Dashboard() {
 
   return (
     <div className="modern-dashboard">
+      {/* Dashboard Header */}
+      <header className="dashboard-header">
+        <div className="header-container">
+          <div className="header-left">
+            <h1 className="dashboard-brand">Attenly</h1>
+          </div>
+          <div className="header-right">
+            <div className="user-info">
+              <span className="user-email">{session?.user?.email}</span>
+            </div>
+            <button 
+              className="logout-button"
+              onClick={async () => {
+                try {
+                  await signOut();
+                  navigate('/login');
+                } catch (error) {
+                  console.error('Logout failed:', error);
+                }
+              }}
+            >
+              <span className="logout-icon">🚪</span>
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
       <main className="dashboard-main">
         <div className="dashboard-container">
           {/* Featured Templates Section */}

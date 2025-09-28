@@ -222,7 +222,7 @@ RELEVANT CONTEXT FOR THIS QUESTION:
 
 """
         
-        return f"""You are an expert data extraction AI analyzing insurance documents. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
+        return f"""You are an expert data extraction AI. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
 
 {questions_section}
 
@@ -280,8 +280,6 @@ You must respond with a valid JSON object containing answers for all questions u
                         "source_chunks": self._get_source_chunks_for_question(relevant_chunks, answer, question.prompt),
                         "word_count": len(answer.split()) if answer else 0
                     }
-                    print("===================================================")
-                    print(results[placeholder]['source_chunks'])
                 else:
                     # Question missing from response - create empty result
                     logger.warning(f"Question {placeholder} missing from batch response")

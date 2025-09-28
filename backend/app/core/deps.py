@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def get_current_user(authorization: Optional[str] = Header(None, alias="Authorization")):
     """
     Dependency to get the current authenticated user from Supabase JWT token.
     

@@ -7,12 +7,11 @@ import {
 } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
+import Login from "./pages/Login";
 import { useAuth } from "./feature/auth/useAuth";
-import { Auth } from "@supabase/auth-ui-react";
-import { ThemeSupa } from "@supabase/auth-ui-shared";
-import { supabase } from "./libs/supabase";
 import AgentExecutionPage from "./pages/AgentExecution";
 import ReportView from "./pages/ReportView";
+import CreateAgent from "./pages/CreateAgent";
 
 export default function App() {
   const { session, loading } = useAuth();
@@ -51,11 +50,7 @@ export default function App() {
             session ? (
               <Navigate to="/dashboard" replace />
             ) : (
-              <Auth
-                supabaseClient={supabase}
-                appearance={{ theme: ThemeSupa }}
-                providers={[]}
-              />
+              <Login />
             )
           }
         />
@@ -87,6 +82,39 @@ export default function App() {
           element={
             session ? (
               <ReportView />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+        <Route 
+          path="/report/saved/:reportId" 
+          element={
+            session ? (
+              <ReportView />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+        <Route 
+          path="/create-agent" 
+          element={
+            session ? (
+              <CreateAgent />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+        <Route 
+          path="/create-agent/:agentId" 
+          element={
+            session ? (
+              <CreateAgent />
             ) : (
               <Navigate to="/" replace />
             )

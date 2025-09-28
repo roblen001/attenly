@@ -18,7 +18,8 @@ load_dotenv()
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")  # Service role key
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")  # Public anon key for user operations
 
 # Gemini API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -135,6 +136,8 @@ def validate_config():
         errors.append("SUPABASE_URL is required")
     if not SUPABASE_KEY:
         errors.append("SUPABASE_KEY is required")
+    if not SUPABASE_ANON_KEY:
+        errors.append("SUPABASE_ANON_KEY is required for user operations")
     if not GEMINI_API_KEY:
         errors.append("GEMINI_API_KEY is required for LLM functionality")
     

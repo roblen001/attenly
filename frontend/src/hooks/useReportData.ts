@@ -3,10 +3,10 @@
  * 
  * Custom hook for managing report data fetching and state management.
  * Handles loading states, error handling, and authentication checks
- * when fetching report data from the API.
+ * when fetching report data from the API. Supports both current and saved reports.
  * 
- * @param agentId - The ID of the agent to fetch report data for
- * @returns Object containing reportData, setReportData, loading, and error states
+ * @param params - Object containing either agentId (for current reports) or reportId (for saved reports)
+ * @returns Object containing reportData, setReportData, loading, error states, and report type info
  */
 
 import { useState, useEffect } from 'react';
@@ -14,39 +14,70 @@ import type { ReportData } from '../types';
 import { api } from '../libs/https';
 import { useAuth } from '../feature/auth/useAuth';
 
-export const useReportData = (agentId: string | undefined) => {
-  const { loading: authLoading } = useAuth();
+interface UseReportDataParams {
+  agentId?: string;
+  reportId?: string;
+}
+
+export const useReportData = (params: UseReportDataParams) => {
+  const { loading: authLoading, session } = useAuth();
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reportType, setReportType] = useState<'current' | 'saved' | null>(null);
+  const [reportInfo, setReportInfo] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     const fetchReportData = async () => {
-      if (!agentId) {
-        setError('No agent ID provided');
+      const { agentId, reportId } = params;
+      
+      if (!agentId && !reportId) {
+        setError('No agent ID or report ID provided');
         setLoading(false);
         return;
       }
 
-      // Wait for auth to be ready before making API calls
-      if (authLoading) {
+      // Wait for auth to be ready AND session to exist before making API calls
+      if (authLoading || !session) {
         return;
       }
 
       try {
-        const response = await api(`/agents/${agentId}/report`);
+        let response;
+        let result;
         
-        if (!response.ok) {
-          throw new Error(`Failed to fetch report: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        
-        if (result.success) {
+        if (reportId) {
+          // Fetch saved report
+          setReportType('saved');
+          response = await api(`/agents/reports/saved/${reportId}`);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch saved report: ${response.statusText}`);
+          }
+          
+          result = await response.json();
           setReportData(result.report_data);
-        } else {
-          throw new Error(result.error || 'Failed to generate report');
+          setReportInfo({ id: result.id, name: result.report_name });
+          
+        } else if (agentId) {
+          // Fetch current report
+          setReportType('current');
+          response = await api(`/agents/${agentId}/report`);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch report: ${response.statusText}`);
+          }
+          
+          result = await response.json();
+          
+          if (result.success) {
+            setReportData(result.report_data);
+            setReportInfo({ id: result.agent_id, name: result.agent_name });
+          } else {
+            throw new Error(result.error || 'Failed to generate report');
+          }
         }
+        
       } catch (err) {
         if (err instanceof Error && err.message.includes('Authentication failed')) {
           // Auth error will be handled by the api() function (redirect to login)
@@ -59,12 +90,14 @@ export const useReportData = (agentId: string | undefined) => {
     };
 
     fetchReportData();
-  }, [agentId, authLoading]);
+  }, [params.agentId, params.reportId, authLoading, session]);
 
   return {
     reportData,
     setReportData,
     loading,
-    error
+    error,
+    reportType,
+    reportInfo
   };
 };

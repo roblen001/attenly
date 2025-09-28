@@ -1,225 +1,121 @@
 # Implementation Plan
 
 ## Overview
-Add custom agent creation functionality to Attenly, allowing users to create their own AI-powered document processing agents. Users will upload example documents, create professional report templates using a rich text editor, and define AI extraction points through an interactive modal system.
+Add the ability to edit custom built agents by extending the existing CreateAgent flow to support both create and edit modes, ensuring all existing schemas and components are reused to avoid duplication.
 
-The implementation extends the existing agent system architecture by adding user-created agents alongside prebuilt ones. Custom agents follow the same execution flow as prebuilt agents but store questions in the database instead of JSON seed files. The feature integrates seamlessly with existing file processing, vector store, LLM services, and authentication systems.
+This implementation will leverage the existing 3-step agent creation flow (Upload Examples → Create Template → Name & Save) for editing, with all fields pre-populated from the existing agent data. Users will need to reupload example documents during editing, and the AI testing modal will be enhanced to pre-populate existing question data when clicking placeholders in both create and edit modes.
 
 ## Types
-Database model extensions for custom agent support.
+Extend existing TypeScript interfaces to support edit mode detection and agent data pre-population.
 
-**Extended Agent Model Fields:**
-- `user_id: UUID` - Links custom agents to their creators (nullable for prebuilt agents)
-- `is_custom: Boolean` - Distinguishes custom from prebuilt agents (default: False)
-- `created_by_name: String` - User's display name for agent attribution (nullable)
+**Extended Types:**
+- `AgentCreationStep` interface: Add optional `editingAgent` field to track edit mode
+- `AITestingModalProps` interface: Add optional `existingQuestion` field for pre-population
+- `CustomAgentCardProps` interface: Add `onEdit` callback function for edit navigation
+- Route parameters: Add `agentId?` optional parameter for URL-based edit mode detection
 
-**New TypeScript Interfaces:**
+**New Type Definitions:**
 ```typescript
-interface CustomAgent extends Agent {
-  user_id: string;
-  is_custom: boolean;
-  created_by_name?: string;
-  can_delete: boolean; // Frontend computed property
+interface EditModeContext {
+  isEditing: boolean;
+  agentId?: string;
+  originalAgent?: CustomAgent;
 }
 
-interface AgentCreationStep {
-  step: 'upload' | 'editor' | 'naming';
-  data: {
-    uploadedFiles?: UploadedFile[];
-    reportTemplate?: string;
-    questions?: AgentQuestion[];
-    agentName?: string;
-    agentDescription?: string;
-  };
-}
-
-interface AIQuestionModal {
-  isOpen: boolean;
-  question: string;
-  answer?: string;
-  quotes?: Quote[];
-  isLoading: boolean;
-  cursorPosition?: number;
+interface PrePopulatedAIModal {
+  existingQuestion?: Question;
+  questionText?: string;
+  existingAnswer?: string;
+  existingQuotes?: Quote[];
 }
 ```
 
 ## Files
-File modifications and new file creation for custom agent functionality.
-
-**New Files to Create:**
-- `frontend/src/pages/CreateAgent.tsx` - Multi-step agent creation wizard
-- `frontend/src/pages/CreateAgent.css` - Styling for agent creation pages
-- `frontend/src/components/agent-creation/FileUploadStep.tsx` - File upload step with instructions
-- `frontend/src/components/agent-creation/EditorStep.tsx` - TinyMCE editor with AI modal
-- `frontend/src/components/agent-creation/NamingStep.tsx` - Agent naming and finalization
-- `frontend/src/components/agent-creation/AIQuestionModal.tsx` - Interactive AI question modal
-- `frontend/src/components/agent-creation/AIQuestionModal.css` - Modal styling
-- `frontend/src/components/dashboard/CustomAgentCard.tsx` - Custom agent card with delete
-- `frontend/src/components/dashboard/CustomAgentCard.css` - Custom agent card styling
+Modify existing files to add edit functionality without creating new components.
 
 **Files to Modify:**
-- `backend/app/models.py` - Add user_id, is_custom, created_by_name fields to Agent model
-- `backend/app/schemas.py` - Add CustomAgentOut schema and creation request schemas
-- `backend/app/routers/agents.py` - Add custom agent CRUD endpoints
-- `frontend/src/pages/Dashboard.tsx` - Add "Create Agent" button and custom agent section
-- `frontend/src/pages/Dashboard.css` - Styling for custom agent section
-- `frontend/src/components/dashboard/PrebuiltAgentCard.tsx` - Add delete functionality for custom agents
-- `frontend/package.json` - Add TinyMCE dependencies
-- `backend/requirements.txt` - No new dependencies needed
+- `frontend/src/components/dashboard/CustomAgentCard.tsx`: Add edit button and navigation handler
+- `frontend/src/pages/CreateAgent.tsx`: Add edit mode detection, agent data fetching, and pre-population logic
+- `frontend/src/components/agent-creation/EditorStep.tsx`: Handle pre-population of existing template and questions
+- `frontend/src/components/agent-creation/AITestingModal.tsx`: Add pre-population support for existing questions
+- `frontend/src/App.tsx`: Add new route with optional agentId parameter for edit mode
 
-**Configuration Updates:**
-- Database migration for new Agent model fields
-- Router registration for new custom agent endpoints
+**No New Files Created:** All functionality implemented by extending existing components
+
+**Configuration Changes:**
+- Router configuration: Update CreateAgent route to accept optional `/:agentId` parameter
 
 ## Functions
-Function modifications and new function creation.
+Extend existing functions and add new helper functions for edit mode support.
 
-**New Backend Functions:**
-- `create_custom_agent(agent_data: CreateCustomAgentRequest, current_user)` - Create new custom agent in database
-- `get_user_custom_agents(user_id: str)` - Retrieve user's custom agents
-- `delete_custom_agent(agent_id: str, user_id: str)` - Delete user's custom agent with validation
-- `update_custom_agent(agent_id: str, agent_data: UpdateCustomAgentRequest, user_id: str)` - Update custom agent
-- `validate_agent_ownership(agent_id: str, user_id: str)` - Verify user owns the custom agent
+**New Functions:**
+- `CreateAgent.fetchAgentForEditing(agentId: string)`: Fetch existing agent data for edit mode
+- `CreateAgent.isEditMode()`: Detect if component is in edit vs create mode based on URL
+- `CustomAgentCard.handleEditClick()`: Navigate to edit mode with agent ID
+- `AITestingModal.populateFromExisting()`: Pre-fill modal with existing question data
+- `EditorStep.populateExistingTemplate()`: Load existing template and questions into editor
 
-**New Frontend Functions:**
-- `useAgentCreation()` - Custom hook for managing agent creation state
-- `useTinyMCE()` - Custom hook for TinyMCE editor integration
-- `useAIQuestionModal()` - Custom hook for AI question modal state
-- `insertAIPlaceholder(editor, placeholder: string)` - Insert AI placeholder at cursor
-- `handleAIQuestionSubmit(question: string, uploadedFiles: UploadedFile[])` - Process AI question
-- `saveCustomAgent(agentData: AgentCreationStep)` - Save completed custom agent
-- `deleteCustomAgent(agentId: string)` - Delete custom agent with confirmation
-
-**Modified Backend Functions:**
-- `list_prebuilt_agents()` - Rename to `list_agents()` and include custom agents with user filtering
-- `get_agent_by_id()` - Add custom agent support with ownership validation
-- Agent model constructor - Handle new fields with proper defaults
-
-**Modified Frontend Functions:**
-- Dashboard component - Add custom agent section and create button
-- Agent execution flow - Handle both prebuilt and custom agents seamlessly
+**Modified Functions:**
+- `CreateAgent.handleCreateAgent()`: Use PUT request for updates vs POST for creation
+- `CreateAgent.handleStepChange()`: Preserve existing agent data during step navigation
+- `EditorStep.handleEditQuestion()`: Pass existing question data to AI testing modal
+- `AITestingModal.handleAddToTemplate()`: Support both add new and update existing question flows
 
 ## Classes
-Class modifications and new class creation.
+No new classes required - all functionality implemented through functional component extensions.
 
-**Extended Classes:**
-- `Agent` (SQLAlchemy model) - Add user_id, is_custom, created_by_name fields with proper relationships
-- `AgentQuestion` (SQLAlchemy model) - No changes needed, existing foreign key relationship works
+**Modified Components:**
+- `CreateAgent`: Extended to support dual create/edit modes with conditional logic
+- `CustomAgentCard`: Enhanced with edit button and navigation handling
+- `EditorStep`: Updated to handle pre-populated template and question data
+- `AITestingModal`: Enhanced with pre-population support for existing questions
 
-**New React Components (Functional):**
-- `CreateAgent` - Main wizard component with step management
-- `FileUploadStep` - File upload with clear example document instructions
-- `EditorStep` - TinyMCE integration with AI question modal
-- `NamingStep` - Agent naming and description form
-- `AIQuestionModal` - Interactive modal for AI question processing
-- `CustomAgentCard` - Agent card with delete functionality
-
-**New Custom Hooks:**
-- `useAgentCreation` - Manages multi-step creation state
-- `useTinyMCE` - Handles TinyMCE editor lifecycle
-- `useAIQuestionModal` - Manages AI question modal state and processing
+**Component State Extensions:**
+- `CreateAgent`: Add `editMode` state and `originalAgent` state for tracking
+- `AITestingModal`: Add state for pre-populated form values
+- All components maintain existing functionality while adding edit capabilities
 
 ## Dependencies
-New package dependencies and integration requirements.
+No new dependencies required - all functionality implemented using existing libraries and APIs.
 
-**Frontend Dependencies (package.json):**
-```json
-{
-  "@tinymce/tinymce-react": "^4.3.2",
-  "tinymce": "^6.8.2"
-}
-```
+**Existing Dependencies Utilized:**
+- React Router: Use existing `useParams()` hook for agentId extraction
+- Existing API utilities: Reuse `api()` function for agent fetching
+- Backend APIs: Use existing `GET /agents/{agent_id}` and `PATCH /agents/custom/{agent_id}` endpoints
+- TinyMCE Editor: Leverage existing editor configuration and event handlers
 
-**TinyMCE Configuration:**
-- Full Microsoft Word-like functionality (tables, formatting, fonts, colors)
-- Custom toolbar with "Add AI Ability" button
-- Cursor position tracking for placeholder insertion
-- Rich text output compatible with existing report system
-
-**Backend Dependencies:**
-- No new dependencies required
-- Utilizes existing FastAPI, SQLAlchemy, and authentication systems
-
-**Integration Requirements:**
-- TinyMCE CDN integration for editor assets
-- Existing vector store and LLM services for AI question processing
-- Existing file upload and document processing pipeline
-- Existing authentication and user management system
+**API Integration:**
+- GET `/agents/{agent_id}`: Fetch existing agent data for editing
+- PUT `/agents/custom/{agent_id}`: Update existing agent (backend endpoint already exists)
+- All file upload and AI testing endpoints remain unchanged
 
 ## Testing
-Testing approach and validation strategies.
+Extend existing testing approach to cover edit mode functionality.
 
-**Unit Testing:**
-- Custom agent CRUD operations with user ownership validation
-- TinyMCE editor integration and placeholder insertion
-- AI question modal functionality and state management
-- Database model extensions and migrations
+**Test Scenarios:**
+- Edit mode detection and agent data fetching
+- Pre-population of all form fields during edit flow
+- AI testing modal pre-population with existing question data
+- Template editor handling of existing questions and placeholders
+- Update API calls vs create API calls based on mode
+- Navigation between edit and create modes
 
-**Integration Testing:**
-- Complete agent creation workflow from file upload to dashboard
-- Custom agent execution flow matching prebuilt agent behavior
-- File upload integration with existing document processing pipeline
-- AI question processing using existing LLM and vector store services
-
-**User Acceptance Testing:**
-- Multi-step wizard navigation and state persistence
-- TinyMCE editor functionality and user experience
-- AI question modal with live preview and reference viewing
-- Custom agent management (create, execute, delete) from dashboard
-
-**Validation Strategies:**
-- Custom agent ownership validation on all operations
-- File upload validation using existing document classification
-- Template HTML validation and placeholder syntax checking
-- Database constraint validation for agent-question relationships
+**Testing Strategy:**
+- Manual testing through UI for all edit flow scenarios
+- Verify pre-population works correctly for all agent fields
+- Test AI modal enhancement in both create and edit contexts
+- Ensure existing create flow remains unaffected
 
 ## Implementation Order
-Logical sequence of implementation to minimize conflicts and ensure successful integration.
+Implement changes in dependency order to minimize conflicts and ensure successful integration.
 
-**Step 1: Database and Backend Foundation**
-- Extend Agent model with new fields (user_id, is_custom, created_by_name)
-- Create database migration for new fields
-- Add custom agent schemas (CreateCustomAgentRequest, CustomAgentOut)
-- Implement custom agent CRUD endpoints in agents router
-- Add ownership validation and user filtering logic
-
-**Step 2: Frontend Dependencies and Base Components**
-- Add TinyMCE dependencies to package.json
-- Create base CreateAgent page with routing
-- Implement useAgentCreation hook for state management
-- Create FileUploadStep component reusing existing FileUpload logic
-- Add "Create Agent" button to Dashboard with navigation
-
-**Step 3: TinyMCE Editor Integration**
-- Implement EditorStep component with TinyMCE integration
-- Create useTinyMCE hook for editor lifecycle management
-- Add custom toolbar with "Add AI Ability" button
-- Implement cursor position tracking and placeholder insertion
-- Style editor to match existing application design
-
-**Step 4: AI Question Modal System**
-- Create AIQuestionModal component with form and preview
-- Implement useAIQuestionModal hook for state management
-- Integrate with existing LLM service for question processing
-- Add DocumentViewer integration for reference clicking
-- Implement answer insertion and placeholder generation
-
-**Step 5: Agent Creation Completion**
-- Implement NamingStep component for agent finalization
-- Add agent creation API integration and error handling
-- Implement navigation back to dashboard after creation
-- Add success/error feedback and validation messages
-
-**Step 6: Dashboard Integration and Management**
-- Create CustomAgentCard component with delete functionality
-- Add custom agent section to Dashboard
-- Implement custom agent filtering and display logic
-- Add delete confirmation modal and API integration
-- Update existing agent execution flow to handle custom agents
-
-**Step 7: Testing and Polish**
-- Comprehensive testing of complete workflow
-- UI/UX refinements and responsive design
-- Error handling and edge case validation
-- Performance optimization and code cleanup
-- Documentation updates and deployment preparation
+1. **Add Edit Button to CustomAgentCard**: Implement edit button UI and navigation handler to establish entry point
+2. **Extend CreateAgent for Edit Mode Detection**: Add URL parameter parsing and edit mode state management
+3. **Add Agent Data Fetching**: Implement API call to fetch existing agent data when in edit mode
+4. **Implement Field Pre-population**: Pre-fill agent name, description, and step data from fetched agent
+5. **Enhance EditorStep for Template Loading**: Load existing template and questions into TinyMCE editor
+6. **Extend AITestingModal Pre-population**: Add support for pre-filling modal with existing question data
+7. **Update API Integration**: Modify save handler to use PUT requests for updates vs POST for creation
+8. **Add Route Configuration**: Update App.tsx routing to support optional agentId parameter
+9. **Testing and Validation**: Comprehensive testing of edit flow and existing functionality preservation
+10. **Documentation and Refinement**: Final polish and edge case handling

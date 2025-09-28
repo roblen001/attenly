@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Quote } from '../../types';
 import { api } from '../../libs/https';
 import DocumentViewer from '../report/DocumentViewer';
@@ -9,6 +9,9 @@ interface AITestingModalProps {
   onClose: () => void;
   onAddToTemplate: (question: string, answer: string, quotes: Quote[]) => void;
   agentId?: string;
+  existingQuestion?: string;
+  existingAnswer?: string;
+  existingQuotes?: Quote[];
 }
 
 interface TestResult {
@@ -27,7 +30,10 @@ const AITestingModal: React.FC<AITestingModalProps> = ({
   isOpen,
   onClose,
   onAddToTemplate,
-  agentId = 'test-agent'
+  agentId = 'test-agent',
+  existingQuestion,
+  existingAnswer,
+  existingQuotes
 }) => {
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -37,6 +43,28 @@ const AITestingModal: React.FC<AITestingModalProps> = ({
   // Document viewer state
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
+
+  // Pre-populate form when modal opens with existing data
+  useEffect(() => {
+    if (isOpen && existingQuestion) {
+      setCurrentQuestion(existingQuestion);
+      
+      // If we have existing answer and quotes, show them as test results
+      if (existingAnswer) {
+        setTestResult({
+          question: existingQuestion,
+          answer: existingAnswer,
+          quotes: existingQuotes || [],
+          documentContext: {
+            total_documents: 0,
+            document_ids: [],
+            chunks_searched: 0,
+            filenames: []
+          }
+        });
+      }
+    }
+  }, [isOpen, existingQuestion, existingAnswer, existingQuotes]);
 
   const handleTestQuestion = async () => {
     if (!currentQuestion.trim()) return;

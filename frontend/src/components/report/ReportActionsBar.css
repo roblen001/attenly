@@ -1,0 +1,70 @@
+/**
+ * ReportActionsBar Component Styles
+ * 
+ * Styles for the actions bar containing report action buttons
+ * like download PDF, with responsive design.
+ */
+
+.report-actions-bar {
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--border-light);
+  padding: var(--spacing-lg) var(--spacing-2xl);
+}
+
+.actions-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-green) 0%, var(--secondary-mint) 100%);
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-icon {
+  font-size: var(--font-size-md);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .report-actions-bar {
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+  
+  .actions-content {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .report-actions-bar {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  
+  .btn {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-xs);
+  }
+}

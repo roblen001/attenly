@@ -1,0 +1,57 @@
+/**
+ * ReportInstructions Component Styles
+ * 
+ * Styles for the instruction card that shows users how to interact
+ * with the report, including responsive design.
+ */
+
+.report-instructions {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.instruction-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  background: var(--primary-green-light);
+  border: 1px solid var(--primary-green);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.instruction-icon {
+  font-size: var(--font-size-xl);
+  flex-shrink: 0;
+}
+
+.instruction-content h4 {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-xs);
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.instruction-content p {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .instruction-card {
+    flex-direction: column;
+    text-align: center;
+    gap: var(--spacing-sm);
+  }
+  
+  .instruction-content h4 {
+    font-size: var(--font-size-sm);
+  }
+  
+  .instruction-content p {
+    font-size: var(--font-size-xs);
+  }
+}

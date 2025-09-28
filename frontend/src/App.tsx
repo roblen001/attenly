@@ -4,38 +4,32 @@ import {
   Routes,
   Route,
   Navigate,
-  useNavigate,
 } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
-import { useState, useEffect } from "react";
-import { supabase } from "./libs/supabase";
+import { useAuth } from "./feature/auth/useAuth";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
-import type { Session } from "@supabase/supabase-js";
+import { supabase } from "./libs/supabase";
+import AgentExecutionPage from "./pages/AgentExecution";
+import ReportView from "./pages/ReportView";
 
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { session, loading } = useAuth();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-      }
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '1.2rem'
+      }}>
+        Loading...
+      </div>
     );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
-  }, []);
-
-  if (loading) return null; // TODO add loading screen ring
+  }
 
   return (
     <Router>
@@ -70,12 +64,35 @@ export default function App() {
           path="/dashboard"
           element={
             session ? (
-              <Dashboard session={session} />
+              <Dashboard />
             ) : (
               <Navigate to="/" replace />
             )
           }
         />
+
+        <Route 
+          path="/agent-execution/:agentId" 
+          element={
+            session ? (
+              <AgentExecutionPage />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+        <Route 
+          path="/report/:agentId" 
+          element={
+            session ? (
+              <ReportView />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
       </Routes>
     </Router>
   );

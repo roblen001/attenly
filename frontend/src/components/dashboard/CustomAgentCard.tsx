@@ -25,12 +25,14 @@ interface CustomAgentCardProps {
   agent: CustomAgent;
   onExecute: (agent: CustomAgent) => void;
   onDelete: (agentId: string) => void;
+  onEdit: (agentId: string) => void;
 }
 
 const CustomAgentCard: React.FC<CustomAgentCardProps> = ({
   agent,
   onExecute,
-  onDelete
+  onDelete,
+  onEdit
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -51,6 +53,11 @@ const CustomAgentCard: React.FC<CustomAgentCardProps> = ({
 
   const handleCancelDelete = () => {
     setShowDeleteConfirm(false);
+  };
+
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit(agent.id);
   };
 
   const formatDate = (dateString: string) => {
@@ -98,7 +105,15 @@ const CustomAgentCard: React.FC<CustomAgentCardProps> = ({
         </div>
 
         <div className="card-actions">
-
+          {agent.can_delete && (
+            <button 
+              className="btn-edit"
+              onClick={handleEditClick}
+              title="Edit custom agent"
+            >
+              <span className="btn-icon">✏️</span>
+            </button>
+          )}
           
           {agent.can_delete && (
             <button 

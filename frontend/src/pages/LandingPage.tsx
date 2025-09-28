@@ -24,18 +24,15 @@ export default function LandingPage({ session }: { session: Session | null }) {
         <div className="hero-content">
           <div className="hero-badge">
             <span className="badge-icon">🏢</span>
-            <span>Built for Underwriters</span>
+            <span>Built for Professionals</span>
           </div>
           <h1 className="hero-title">
             AI Extracts the Data,
             <span className="title-highlight"> You Design the Reports</span>
           </h1>
-          <p className="hero-description">
-            Streamline underwriting workflows with intelligent data extraction
-            from policy documents, loss runs, and submissions. AI finds the
-            information, you customize how it's presented in professional
-            reports.
-          </p>
+            <p className="hero-description">
+            Streamline corporate workflows with intelligent data extraction from complex documents. AI finds the information, you customize how it's presented in professional reports.
+            </p>
 
           <div className="hero-features">
             <div className="feature-grid">
@@ -43,8 +40,7 @@ export default function LandingPage({ session }: { session: Session | null }) {
                 <div className="feature-icon">🔍</div>
                 <h3>Attenly for Intelligent Data Extraction</h3>
                 <p>
-                  AI automatically finds policy numbers, loss amounts, coverage
-                  details, and key underwriting data
+                  AI automatically finds important details, figures, and key data from your documents
                 </p>
               </div>
               <div className="feature-item">
@@ -59,7 +55,7 @@ export default function LandingPage({ session }: { session: Session | null }) {
                 <div className="feature-icon">📋</div>
                 <h3>Professional Output</h3>
                 <p>
-                  Generate polished underwriting reports that match your
+                  Generate polished reports that match your
                   workflow and branding standards
                 </p>
               </div>
@@ -73,7 +69,7 @@ export default function LandingPage({ session }: { session: Session | null }) {
               <span className="cta-arrow">→</span>
             </button>
             <p className="cta-subtitle">
-              Transform your underwriting workflow in minutes
+              Transform your workflow in minutes
             </p>
           </div>
         </div>

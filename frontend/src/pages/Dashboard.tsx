@@ -49,6 +49,10 @@ export default function Dashboard() {
     }
   };
 
+  const handleEditCustomAgent = (agentId: string) => {
+    navigate(`/create-agent/${agentId}`);
+  };
+
   const handleViewSavedReport = (reportId: string) => {
     navigate(`/report/saved/${reportId}`);
   };
@@ -266,13 +270,6 @@ export default function Dashboard() {
               <p className="section-subtitle">
                 Start with these proven agents, then customize to your needs
               </p>
-              <button 
-                className="create-agent-button"
-                onClick={() => navigate('/create-agent')}
-              >
-                <span className="button-icon">🤖</span>
-                Create Custom Agent
-              </button>
             </div>
 
             <div className="templates-grid">
@@ -296,7 +293,15 @@ export default function Dashboard() {
               <p className="section-subtitle">
                 Your personalized agents tailored to your specific needs
               </p>
+                          <button 
+                className="create-agent-button"
+                onClick={() => navigate('/create-agent')}
+              >
+                <span className="button-icon">🤖</span>
+                Create Custom Agent
+              </button>
             </div>
+            
 
             {loadingCustomAgents ? (
               <div className="loading-state">
@@ -310,6 +315,7 @@ export default function Dashboard() {
                     agent={agent}
                     onExecute={handleExecuteCustomAgent}
                     onDelete={handleDeleteCustomAgent}
+                    onEdit={handleEditCustomAgent}
                   />
                 ))}
               </div>

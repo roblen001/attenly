@@ -1,6 +1,6 @@
 // CreateAgent.tsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import './CreateAgent.css';
 import './AgentExecution.css';
 import EditorStep from '../components/agent-creation/EditorStep';
@@ -21,6 +21,20 @@ interface CreateCustomAgentRequest {
   description?: string;
   report_template: string;
   questions: QuestionOut[];
+}
+
+interface CustomAgent {
+  id: string;
+  name: string;
+  description: string;
+  reportTemplate: string;
+  questions: QuestionOut[];
+  user_id: string;
+  is_custom: boolean;
+  created_by_name?: string;
+  createdAt: string;
+  updatedAt: string;
+  can_delete: boolean;
 }
 
 interface AgentCreationStep {
@@ -45,11 +59,62 @@ const ids = (qs?: QuestionOut[]) => (qs ?? []).map(q => q.id);
 
 const CreateAgent: React.FC = () => {
   const navigate = useNavigate();
+  const { agentId } = useParams<{ agentId?: string }>();
+  const isEditMode = Boolean(agentId);
+  
   const [currentStep, setCurrentStep] = useState<AgentCreationStep>({
     step: 'upload',
     data: {}
   });
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [originalAgent, setOriginalAgent] = useState<CustomAgent | null>(null);
+  const [loadingAgent, setLoadingAgent] = useState(isEditMode);
+
+  // Fetch agent data for edit mode
+  useEffect(() => {
+    const fetchAgentForEditing = async () => {
+      if (!isEditMode || !agentId) {
+        return;
+      }
+
+      try {
+        setLoadingAgent(true);
+        const response = await api(`/agents/${agentId}`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch agent for editing');
+        }
+
+        const agent = await response.json();
+        setOriginalAgent(agent);
+        
+        // Pre-populate all form fields
+        setCurrentStep({
+          step: 'upload',
+          data: {
+            agentName: agent.name,
+            agentDescription: agent.description,
+            reportTemplate: agent.reportTemplate,
+            questions: agent.questions
+          }
+        });
+
+        console.log('Agent loaded for editing:', agent.name);
+
+      } catch (error) {
+        console.error('Error fetching agent for editing:', error);
+        alert('Failed to load agent for editing. Please try again.');
+        navigate('/dashboard');
+      } finally {
+        setLoadingAgent(false);
+      }
+    };
+
+    fetchAgentForEditing();
+  }, [isEditMode, agentId, navigate]);
 
   // Clear files only on actual page unload, not on auth state changes
   useEffect(() => {
@@ -132,7 +197,7 @@ const CreateAgent: React.FC = () => {
         questions: cleanQuestions
       };
 
-      L.group('handleCreateAgent');
+      L.group(isEditMode ? 'handleUpdateAgent' : 'handleCreateAgent');
       L.log('Original template length:', reportTemplate.length);
       L.log('Transformed template length:', styledTemplate.length);
       L.log('Original questions:', questions.map(q => ({ id: q.id, placeholder: q.placeholder })));
@@ -146,35 +211,39 @@ const CreateAgent: React.FC = () => {
       });
       L.end();
 
-      const response = await api('/agents/create_custom_agent', {
-        method: 'POST',
+      // Use PUT for updates, POST for creation
+      const endpoint = isEditMode ? `/agents/custom/${agentId}` : '/agents/create_custom_agent';
+      const method = isEditMode ? 'PUT' : 'POST';
+      
+      const response = await api(endpoint, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to create custom agent');
+        throw new Error(errorData.detail || `Failed to ${isEditMode ? 'update' : 'create'} custom agent`);
       }
 
-      const createdAgent = await response.json();
-      console.log('Custom agent created successfully:', createdAgent);
+      const resultAgent = await response.json();
+      console.log(`Custom agent ${isEditMode ? 'updated' : 'created'} successfully:`, resultAgent);
 
-      // Clear files after successful agent creation
+      // Clear files after successful operation
       try {
         await api('/agents/files/clear', { method: 'DELETE' });
-        console.log('Files cleared after successful agent creation');
+        console.log(`Files cleared after successful agent ${isEditMode ? 'update' : 'creation'}`);
       } catch (error) {
-        console.error('Failed to clear files after agent creation:', error);
+        console.error(`Failed to clear files after agent ${isEditMode ? 'update' : 'creation'}:`, error);
         // Don't block success flow on cleanup failure
       }
 
-      alert(`Custom agent "${agentName}" created successfully!`);
+      alert(`Custom agent "${agentName}" ${isEditMode ? 'updated' : 'created'} successfully!`);
       navigate('/dashboard');
 
     } catch (error) {
-      console.error('Error creating custom agent:', error);
-      alert(`Failed to create custom agent: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(`Error ${isEditMode ? 'updating' : 'creating'} custom agent:`, error);
+      alert(`Failed to ${isEditMode ? 'update' : 'create'} custom agent: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -301,7 +370,7 @@ const CreateAgent: React.FC = () => {
                 disabled={!currentStep.data.agentName}
                 onClick={handleCreateAgent}
               >
-                Create Agent
+                {isEditMode ? 'Update Agent' : 'Create Agent'}
               </button>
             </div>
           </div>
@@ -321,10 +390,26 @@ const CreateAgent: React.FC = () => {
     L.end();
   }, [currentStep]);
 
+  // Show loading state while fetching agent data for editing
+  if (loadingAgent) {
+    return (
+      <div className="create-agent-page">
+        <div className="create-agent-header">
+          <h1>Edit Custom Agent</h1>
+        </div>
+        <div className="create-agent-content">
+          <div className="loading-state">
+            <p>Loading agent data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="create-agent-page">
       <div className="create-agent-header">
-        <h1>Create Custom Agent</h1>
+        <h1>{isEditMode ? 'Edit Custom Agent' : 'Create Custom Agent'}</h1>
         {renderStepIndicator()}
       </div>
 

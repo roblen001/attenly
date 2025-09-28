@@ -110,6 +110,17 @@ export default function App() {
           }
         />
 
+        <Route 
+          path="/create-agent/:agentId" 
+          element={
+            session ? (
+              <CreateAgent />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
       </Routes>
     </Router>
   );

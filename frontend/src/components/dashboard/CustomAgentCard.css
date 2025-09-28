@@ -127,6 +127,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 38px;
+  width: 55px;
+}
+
+.btn-edit{
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%);
+  border: 1px solid #8b5cf6;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  width: 55px;
 }
 
 .btn-delete:hover {

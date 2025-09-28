@@ -1235,6 +1235,76 @@ async def list_user_custom_agents(
         logging.error(f"Failed to fetch custom agents: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch custom agents")
 
+@router.put("/custom/{agent_id}", response_model=CustomAgentOut)
+async def update_custom_agent(
+    agent_id: str,
+    request: UpdateCustomAgentRequest,
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
+    """Update a custom agent"""
+    user_id = current_user.id
+    
+    try:
+        # Extract questions data for Supabase service
+        questions_data = None
+        if request.questions is not None:
+            questions_data = []
+            for question in request.questions:
+                questions_data.append({
+                    "placeholder": question.placeholder,
+                    "prompt": question.prompt
+                })
+        
+        # Update the agent using the existing service method
+        success = supabase_service.update_custom_agent(
+            user_jwt=jwt_token,
+            user_id=user_id,
+            agent_id=agent_id,
+            name=request.name,
+            description=request.description,
+            report_template=request.report_template,
+            questions=questions_data
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Custom agent not found or access denied")
+        
+        # Get the updated agent to return
+        agent_data = supabase_service.get_agent_by_id(jwt_token, user_id, agent_id)
+        
+        if not agent_data:
+            raise HTTPException(status_code=500, detail="Failed to retrieve updated agent")
+        
+        # Transform to CustomAgentOut format
+        questions_out = []
+        for q in agent_data.get("agent_questions", []):
+            questions_out.append({
+                "id": str(q["id"]),
+                "placeholder": q["placeholder"],
+                "prompt": q["prompt"]
+            })
+        
+        return CustomAgentOut(
+            id=str(agent_data["id"]),
+            name=agent_data["name"],
+            description=agent_data["description"],
+            reportTemplate=agent_data["report_template"],
+            questions=questions_out,
+            user_id=agent_data["user_id"],
+            is_custom=agent_data["is_custom"],
+            created_by_name=agent_data["created_by_name"],
+            createdAt=agent_data["created_at"],
+            updatedAt=agent_data["updated_at"],
+            can_delete=True
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to update custom agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update custom agent: {str(e)}")
+
 @router.delete("/custom/{agent_id}")
 async def delete_custom_agent(
     agent_id: str,

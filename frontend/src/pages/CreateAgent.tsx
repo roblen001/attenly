@@ -8,7 +8,6 @@ import FileUpload from '../components/AgentExecution/FileUpload';
 import { api } from '../libs/https';
 import type { UploadedFile } from '../types';
 import { transformCustomAgentData, addProfessionalStyling } from '../utils/agentTransform';
-import { useAuth } from '../feature/auth/useAuth';
 
 // Types matching backend schemas
 interface QuestionOut {
@@ -45,7 +44,6 @@ const L = {
 const ids = (qs?: QuestionOut[]) => (qs ?? []).map(q => q.id);
 
 const CreateAgent: React.FC = () => {
-  const { loading: authLoading, session } = useAuth();
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<AgentCreationStep>({
     step: 'upload',
@@ -53,28 +51,23 @@ const CreateAgent: React.FC = () => {
   });
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
-  // Clear vector store and files when leaving this page (same as AgentExecution)
+  // Clear files only on actual page unload, not on auth state changes
   useEffect(() => {
-    return () => {
-      // Cleanup function runs when component unmounts (navigation away, cancel, etc.)
-      const clearFilesOnExit = async () => {
-        // Wait for auth to be ready AND session to exist before making API calls
-        if (authLoading || !session) {
-          return;
-        }
-
-        try {
-          await api('/agents/files/clear', { method: 'DELETE' });
-          console.log('Files cleared on leaving agent creation page');
-        } catch (error) {
-          console.error('Failed to clear files on exit:', error);
-          // Don't block navigation on cleanup failure
-        }
-      };
-
-      clearFilesOnExit();
+    const handleBeforeUnload = async () => {
+      try {
+        await api('/agents/files/clear', { method: 'DELETE' });
+        console.log('Files cleared on leaving agent creation page');
+      } catch (error) {
+        console.error('Failed to clear files on exit:', error);
+      }
     };
-  }, [authLoading, session]); // Dependencies to ensure auth is ready
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []); // No dependencies - only clear on actual page unload
 
   const handleStepChange = (
     newStep: 'upload' | 'editor' | 'naming',
@@ -104,7 +97,15 @@ const CreateAgent: React.FC = () => {
     });
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
+    // Clear files when user explicitly cancels agent creation
+    try {
+      await api('/agents/files/clear', { method: 'DELETE' });
+      console.log('Files cleared on agent creation cancellation');
+    } catch (error) {
+      console.error('Failed to clear files on cancellation:', error);
+      // Don't block navigation on cleanup failure
+    }
     navigate('/dashboard');
   };
 
@@ -159,6 +160,15 @@ const CreateAgent: React.FC = () => {
       const createdAgent = await response.json();
       console.log('Custom agent created successfully:', createdAgent);
 
+      // Clear files after successful agent creation
+      try {
+        await api('/agents/files/clear', { method: 'DELETE' });
+        console.log('Files cleared after successful agent creation');
+      } catch (error) {
+        console.error('Failed to clear files after agent creation:', error);
+        // Don't block success flow on cleanup failure
+      }
+
       alert(`Custom agent "${agentName}" created successfully!`);
       navigate('/dashboard');
 
@@ -181,10 +191,10 @@ const CreateAgent: React.FC = () => {
           <div key={step.key} className="step-indicator-item">
             <div
               className={`step-circle ${currentStep.step === step.key ? 'active' : ''} ${
-                steps.findIndex(s => s.key === currentStep.step) > index ? 'completed' : ''
+              steps.findIndex(s => s.key === currentStep.step) > index ? 'completed' : ''
               }`}
             >
-              {step.number}
+              {steps.findIndex(s => s.key === currentStep.step) <= index ? step.number : null}
             </div>
             <span className="step-label">{step.label}</span>
             {index < steps.length - 1 && <div className="step-connector" />}

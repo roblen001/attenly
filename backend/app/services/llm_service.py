@@ -222,7 +222,7 @@ RELEVANT CONTEXT FOR THIS QUESTION:
 
 """
         
-        return f"""You are an expert data extraction AI analyzing insurance documents. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
+        return f"""You are an expert data extraction AI. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
 
 {questions_section}
 

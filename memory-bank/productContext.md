@@ -54,7 +54,7 @@ Registration → Authentication → Dashboard Access → Agent Selection → Doc
 - **One-Click Export**: Instant PDF generation for sharing
 
 ### Success Scenarios
-1. **Underwriter**: Uploads policy documents, generates account summary in 3 minutes
+1. **Underwriter**: Uploads policy documents, generates Executive Comppany Summary in 3 minutes
 2. **Broker**: Processes loss history documents, creates client-ready report
 3. **Risk Analyst**: Batch processes multiple documents with consistent formatting
 

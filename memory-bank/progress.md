@@ -28,7 +28,7 @@
 
 ### ✅ Agent System Foundation
 - **Agent Models**: Database schema for agents and questions
-- **Prebuilt Templates**: Two complete agent templates (Account Summary, Loss History)
+- **Prebuilt Templates**: Two complete agent templates (Executive Comppany Summary, Loss History)
 - **Template Structure**: HTML templates with placeholder system
 - **Agent API**: CRUD operations for agent management
 
@@ -97,11 +97,16 @@
 - **Error Handling**: ✅ Robust loading states and error management throughout
 - **Authentication Integration**: ✅ Proper Supabase JWT validation for all report operations
 
-### ❌ Report Export & History
-**Priority: Medium**
-- **PDF Export**: Generate professional PDF reports from HTML templates
-- **Report History**: Save and retrieve previously generated reports
-- **Report Sharing**: Share reports with other users or external stakeholders
+### ✅ Historical Reports Storage System
+**Status: Completed (September 2025)**
+- **Report Saving**: ✅ Save generated reports with custom names from preview screen
+- **Report History**: ✅ Complete dashboard section showing all saved reports with metadata
+- **Data Preservation**: ✅ Full preservation of report data, documents, and quote highlighting functionality
+- **User Isolation**: ✅ Supabase RLS policies ensure users only see their own reports
+- **Report Management**: ✅ View, download, and delete saved reports from dashboard
+- **Seamless Integration**: ✅ Historical reports open in same preview interface with full editing capabilities
+- **PDF Export**: ✅ Generate professional PDF reports from both cached and saved reports
+- **Database Architecture**: ✅ Optimized Supabase schema with proper indexing and relationships
 
 ### ❌ Advanced Agent Features
 **Priority: Medium**

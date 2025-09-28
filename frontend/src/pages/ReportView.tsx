@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import DocumentViewer from '../components/report/DocumentViewer';
 import LoadingState from '../components/report/LoadingState';
 import ErrorState from '../components/report/ErrorState';
@@ -17,6 +17,7 @@ import ReportInstructions from '../components/report/ReportInstructions';
 import ReportContent from '../components/report/ReportContent';
 import EditAnswerModal from '../components/report/EditAnswerModal';
 import DownloadModal from '../components/report/DownloadModal';
+import SaveReportModal from '../components/report/SaveReportModal';
 import { useReportData } from '../hooks/useReportData';
 import { useAnswerEditing } from '../hooks/useAnswerEditing';
 import { useQuoteInteraction } from '../hooks/useQuoteInteraction';
@@ -24,15 +25,22 @@ import { api } from '../libs/https';
 import './ReportView.css';
 
 export default function ReportView() {
-  const { agentId } = useParams<{ agentId: string }>();
+  const { agentId, reportId } = useParams<{ agentId?: string; reportId?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Determine report type and parameters
+  const isSavedReport = location.pathname.includes('/report/saved/');
+  const reportParams = isSavedReport ? { reportId } : { agentId };
 
   // Modal state
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Custom hooks for data and state management
-  const { reportData, setReportData, loading, error } = useReportData(agentId);
+  const { reportData, setReportData, loading, error, reportType, reportInfo } = useReportData(reportParams);
   const {
     editingAnswer,
     editedAnswerText,
@@ -48,11 +56,11 @@ export default function ReportView() {
     handleCloseDocumentViewer
   } = useQuoteInteraction(reportData);
 
-  // Clear report cache when user leaves the page (tab close, refresh, or navigation away)
+  // Clear report cache when user leaves the page (only for current reports)
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // This runs when user closes tab, refreshes, or navigates away from the site
-      if (agentId) {
+      // Only clear cache for current reports, not saved reports
+      if (reportType === 'current' && agentId) {
         // Use sendBeacon for reliable cleanup during page unload
         const url = `/agents/reports/${agentId}/cache`;
         if (navigator.sendBeacon) {
@@ -71,12 +79,12 @@ export default function ReportView() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [agentId]);
+  }, [reportType, agentId]);
 
   // Navigate back to dashboard
   const handleBack = () => {
-    // Clear cache when explicitly navigating back
-    if (agentId) {
+    // Clear cache when explicitly navigating back (only for current reports)
+    if (reportType === 'current' && agentId) {
       api(`/agents/reports/${agentId}/cache`, { method: 'DELETE' })
         .catch(err => console.warn('Cache cleanup failed:', err));
     }
@@ -92,7 +100,14 @@ export default function ReportView() {
   const handleDownloadWithReferences = async () => {
     setIsDownloading(true);
     try {
-      const response = await api(`/agents/${agentId}/pdf?with_references=true`);
+      let response;
+      if (reportType === 'saved' && reportId) {
+        response = await api(`/agents/reports/saved/${reportId}/pdf?with_references=true`);
+      } else if (reportType === 'current' && agentId) {
+        response = await api(`/agents/${agentId}/pdf?with_references=true`);
+      } else {
+        throw new Error('Invalid report configuration');
+      }
 
       // Create blob and download
       const blob = await response.blob();
@@ -129,7 +144,14 @@ export default function ReportView() {
   const handleDownloadWithoutReferences = async () => {
     setIsDownloading(true);
     try {
-      const response = await api(`/agents/${agentId}/pdf?with_references=false`);
+      let response;
+      if (reportType === 'saved' && reportId) {
+        response = await api(`/agents/reports/saved/${reportId}/pdf?with_references=false`);
+      } else if (reportType === 'current' && agentId) {
+        response = await api(`/agents/${agentId}/pdf?with_references=false`);
+      } else {
+        throw new Error('Invalid report configuration');
+      }
 
       // Create blob and download
       const blob = await response.blob();
@@ -169,6 +191,90 @@ export default function ReportView() {
     }
   };
 
+  // Save action for both current and saved reports
+  const handleSaveReport = async () => {
+    try {
+      if (reportType === 'saved' && reportId) {
+        // Persist edits directly to the saved report
+        setIsSaving(true);
+        if (!reportData) {
+          throw new Error('No report data to save');
+        }
+        const response = await api(`/agents/reports/saved/${reportId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ report_data: reportData }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to update saved report');
+        }
+        alert('Saved changes to report successfully!');
+      } else if (reportType === 'current') {
+        // Open naming modal for saving a new report
+        setShowSaveModal(true);
+      } else {
+        alert('Invalid report configuration. Cannot save.');
+      }
+    } catch (error) {
+      console.error('Save failed:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save changes');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle save report (only for current reports) - persist edits to cache first
+  const handleSaveReportSubmit = async (reportName: string) => {
+    if (reportType !== 'current' || !agentId) return;
+    
+    setIsSaving(true);
+    try {
+      if (!reportData) {
+        throw new Error('No report data to save');
+      }
+
+      // First, update the cached report with the latest edited data
+      const cacheUpdate = await api(`/agents/reports/${agentId}/cache`, {
+        method: 'PUT',
+        body: JSON.stringify({ report_data: reportData }),
+      });
+      if (!cacheUpdate.ok) {
+        throw new Error('Failed to update cached report before saving');
+      }
+
+      // Then, save the cached report to Supabase with the provided name
+      const response = await api(`/agents/${agentId}/reports/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ report_name: reportName }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save report');
+      }
+
+      const result = await response.json();
+      console.log('Report saved successfully:', result);
+      
+      // Show success message (you could add a toast notification here)
+      alert(`Report "${reportName}" saved successfully!`);
+      
+    } catch (error) {
+      console.error('Save failed:', error);
+      throw error; // Re-throw to let the modal handle the error
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Close save modal
+  const handleCloseSaveModal = () => {
+    if (!isSaving) {
+      setShowSaveModal(false);
+    }
+  };
+
   // Show loading state
   if (loading) {
     return <LoadingState />;
@@ -185,6 +291,9 @@ export default function ReportView() {
       <DocumentViewer
         quote={selectedQuote}
         onClose={handleCloseDocumentViewer}
+        reportType={reportType || 'current'}
+        reportId={reportId}
+        agentId={agentId}
       />
     );
   }
@@ -194,7 +303,11 @@ export default function ReportView() {
     <div className="report-view-page">
       <ReportHeader reportData={reportData} onBack={handleBack} />
       
-      <ReportActionsBar onDownloadPDF={handleDownloadPDF} />
+      <ReportActionsBar 
+        onDownloadPDF={handleDownloadPDF} 
+        onSaveReport={handleSaveReport}
+        showSaveButton={true}
+      />
 
       <div className="report-main">
         <div className="report-container">
@@ -221,6 +334,13 @@ export default function ReportView() {
         onDownloadWithReferences={handleDownloadWithReferences}
         onDownloadWithoutReferences={handleDownloadWithoutReferences}
         isDownloading={isDownloading}
+      />
+
+      <SaveReportModal
+        isOpen={showSaveModal}
+        onClose={handleCloseSaveModal}
+        onSave={handleSaveReportSubmit}
+        isSaving={isSaving}
       />
     </div>
   );

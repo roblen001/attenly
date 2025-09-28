@@ -1,0 +1,88 @@
+/**
+ * ReportContent Component Styles
+ * 
+ * Styles for the main report content area including the HTML report display
+ * and interactive elements styling.
+ */
+
+.report-main {
+  flex: 1;
+  padding: var(--spacing-2xl);
+}
+
+.report-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.report-content {
+  background: var(--background-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.report-html {
+  padding: var(--spacing-2xl);
+  min-height: 400px;
+}
+
+/* Editable Answer Styles - Override utility styles for better integration */
+.report-content .editable-answer {
+  position: relative;
+  display: inline;
+  background: var(--primary-green-light);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.report-content .editable-answer:hover {
+  background: var(--primary-green-light);
+  border-color: var(--primary-green);
+}
+
+.report-content .answer-content {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.report-content .quote-superscript {
+  font-size: 0.7em;
+  vertical-align: super;
+  color: #2196f3;
+  font-weight: bold;
+  margin-left: 2px;
+  cursor: pointer;
+}
+
+.report-content .quote-superscript:hover {
+  background-color: #e3f2fd;
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .report-main {
+    padding: var(--spacing-lg);
+  }
+  
+  .report-html {
+    padding: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .report-main {
+    padding: var(--spacing-md);
+  }
+  
+  .report-html {
+    padding: var(--spacing-md);
+    min-height: 300px;
+  }
+}

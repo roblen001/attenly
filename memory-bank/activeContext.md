@@ -7,6 +7,23 @@
 
 The project is currently in the second development phase, focusing on building out the core AI processing capabilities and expanding the template system beyond the initial proof-of-concept.
 
+### Recently Completed Bug Fix (September 2025)
+**File Upload Clearing Issue Resolution** ✅ **COMPLETED**
+- **Problem**: Users reported uploaded files being cleared when they tabbed out of the browser to reference other documents
+- **Root Cause**: React useEffect hooks were triggering file clearing on browser focus/blur events and auth state changes
+- **Impact**: Users lost work when multitasking, causing poor user experience and workflow interruption
+- **Solution Implemented**:
+  - **AgentExecution.tsx**: Added single-clear protection with `hasCleared` flag to prevent multiple file clears on auth state changes
+  - **CreateAgent.tsx**: Replaced cleanup useEffect with more precise navigation detection using `beforeunload` and visibility state
+  - **Explicit Navigation Cleanup**: Added proper file clearing on actual user navigation (Back buttons, Cancel actions, successful completions)
+  - **Security Maintained**: All existing security boundaries preserved (user isolation, session management, data minimization)
+- **Technical Changes**:
+  - Removed auth dependencies from cleanup effects that caused false triggers
+  - Added explicit file clearing on legitimate navigation events
+  - Preserved file clearing for security boundaries (different agents, user actions)
+  - Enhanced error handling for cleanup failures
+- **Result**: Files now persist during browser tab switching while maintaining proper cleanup on actual navigation
+
 ### Active Development Areas
 
 #### 1. Document Classification & Processing System ✅ **COMPLETED**

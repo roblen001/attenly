@@ -8,7 +8,7 @@ interface ApiOptions extends RequestInit {
 }
 
 export async function api(path: string, init: ApiOptions = {}) {
-  const { nonCritical = false, timeout = 30000, retries = 2, ...requestInit } = init;
+  const { nonCritical = false, timeout = 300000, retries = 2, ...requestInit } = init;
   
   // Get the current session token with basic retry logic
   let session = null;

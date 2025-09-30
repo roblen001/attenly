@@ -42,12 +42,15 @@ def calculate_content_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 def find_duplicate_file(user_id: str, content_hash: str) -> dict:
-    """Find existing file with same content hash in user's session"""
+    """Find existing file with same content hash in user's session (excluding failed files)"""
     if user_id not in uploaded_files_storage:
         return None
     
     for file_id, file_record in uploaded_files_storage[user_id].items():
         if file_record.get("content_hash") == content_hash:
+            # Allow reprocessing of files that failed - don't treat them as duplicates
+            if file_record.get("status") == "failed":
+                continue
             return file_record
     
     return None

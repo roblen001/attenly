@@ -85,7 +85,7 @@ export default function Login() {
               Welcome to <span className="title-highlight">Attenly</span>
             </h1>
             <p className="brand-description">
-              AI-powered data extraction for professional underwriting reports
+              AI-powered data extraction for professional reports
             </p>
           </div>
 

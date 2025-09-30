@@ -11,6 +11,7 @@ from app.routes import health
 from app.config import validate_config, get_config_summary
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.correlation_id import CorrelationIDMiddleware
+from app.middleware.request_size import RequestSizeLimitMiddleware, get_request_size_limit
 from app.limits.slowapi import limiter, rate_limit_handler
 
 import logging
@@ -52,6 +53,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # Add security middlewares (order matters!)
+app.add_middleware(RequestSizeLimitMiddleware, max_upload_size=get_request_size_limit())
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CorrelationIDMiddleware)
 

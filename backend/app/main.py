@@ -57,37 +57,34 @@ app.add_middleware(RequestSizeLimitMiddleware, max_upload_size=get_request_size_
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CorrelationIDMiddleware)
 
-# CORS configuration - hardened for production
-cors_origins = os.getenv("CORS_ORIGINS", "https://app.attently.ca").split(",")
-cors_origins = [origin.strip() for origin in cors_origins]
+# CORS configuration 
+cors_origins = os.getenv("CORS_ORIGINS",
+    "https://app.attenly.ca,https://attenly.ca,https://www.attenly.ca"
+).split(",")
+cors_origins = [o.strip() for o in cors_origins]
 
-# Add development origins if not in production
+# dev extras…
 if os.getenv("ENV") != "production":
-    cors_origins.extend([
-        "http://127.0.0.1:5173", 
+    cors_origins += [
+        "http://127.0.0.1:5173",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
-        "http://localhost:3000"
-    ])
-
-logger.info(f"CORS origins configured: {cors_origins}")
+        "http://localhost:3000",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=False,  # Using Bearer tokens, not cookies
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_credentials=False,   # you’re using bearer tokens
+    allow_methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS"],
     allow_headers=[
-        "Authorization", 
-        "Content-Type", 
-        "X-Correlation-ID", 
-        "Idempotency-Key",
-        "Accept",
-        "Origin",
-        "User-Agent"
+        "Authorization","Content-Type","X-Correlation-ID","Idempotency-Key",
+        "Accept","Origin","User-Agent","Apikey","X-Client-Info","Prefer","Range"
     ],
-    max_age=86400,  # 24 hours preflight cache
+    expose_headers=["Content-Range","X-Content-Range"],
+    max_age=86400,
 )
+
 
 # Global exception handler for security
 @app.exception_handler(Exception)

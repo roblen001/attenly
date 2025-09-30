@@ -40,12 +40,26 @@ typing_extensions==4.14.1
 uvicorn==0.35.0
 websockets==15.0.1
 
-uvicorn
-python-multipart
-sqlalchemy
+# Additional security and monitoring dependencies
+slowapi>=0.1.9
+redis>=5.0.0
+reportlab>=4.0.4
+python-magic>=0.4.27
+
+# File type detection (alternative to python-magic on some systems)
+python-magic-bin>=0.4.14
+
+# Document processing
 PyMuPDF
+weasyprint
+
+# AI and ML
 chromadb
 tiktoken
 openai
 google-genai
-weasyprint
+
+# Web framework
+uvicorn[standard]
+python-multipart
+sqlalchemy

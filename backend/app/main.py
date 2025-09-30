@@ -1,47 +1,140 @@
 # main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from app.db import Base, engine
 from app.routers import auth, agents
-from pathlib import Path
-from app.config import SUPABASE_URL, validate_config, get_config_summary
-import logging
+from app.routes import health
+from app.config import validate_config, get_config_summary
+from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.middleware.correlation_id import CorrelationIDMiddleware
+from app.limits.slowapi import limiter, rate_limit_handler
 
-app = FastAPI(title="Attenly", version="0.1.0")
+import logging
+import os
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="Attenly", 
+    version="1.0.0",
+    description="AI-powered document processing and report generation platform",
+    docs_url="/docs" if os.getenv("ENV") != "production" else None,
+    redoc_url="/redoc" if os.getenv("ENV") != "production" else None
+)
 
 # Validate configuration on startup
 try:
     validate_config()
     config_summary = get_config_summary()
-    logging.info("Configuration validation successful")
-    logging.info(f"Configuration summary: {config_summary}")
+    logger.info("Configuration validation successful")
+    logger.info(f"Configuration summary: {config_summary}")
 except ValueError as e:
-    logging.error(f"Configuration validation failed: {e}")
-    raise e
+    logger.error(f"Configuration validation failed: {e}")
+    sys.exit(1)
 
-# TODO: ONLLY FOR DEV MODE
-Base.metadata.create_all(bind=engine)
+# Create database tables (development only)
+if os.getenv("ENV") != "production":
+    logger.info("Creating database tables for development")
+    Base.metadata.create_all(bind=engine)
 
+# Add rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
-# CORS, some browser security shit
+# Add security middlewares (order matters!)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CorrelationIDMiddleware)
+
+# CORS configuration - hardened for production
+cors_origins = os.getenv("CORS_ORIGINS", "https://app.attently.ca").split(",")
+cors_origins = [origin.strip() for origin in cors_origins]
+
+# Add development origins if not in production
+if os.getenv("ENV") != "production":
+    cors_origins.extend([
+        "http://127.0.0.1:5173", 
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000"
+    ])
+
+logger.info(f"CORS origins configured: {cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", SUPABASE_URL],
-    allow_credentials=False,  # Changed to False since we're using Bearer tokens
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=False,  # Using Bearer tokens, not cookies
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=[
+        "Authorization", 
+        "Content-Type", 
+        "X-Correlation-ID", 
+        "Idempotency-Key",
+        "Accept",
+        "Origin",
+        "User-Agent"
+    ],
+    max_age=86400,  # 24 hours preflight cache
 )
 
+# Global exception handler for security
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler that prevents information leakage.
+    """
+    correlation_id = getattr(request.state, 'correlation_id', 'unknown')
+    
+    # Log the actual error with correlation ID
+    logger.error(
+        f"Unhandled exception: {str(exc)}",
+        extra={
+            "correlation_id": correlation_id,
+            "path": request.url.path,
+            "method": request.method,
+            "client_ip": request.client.host if request.client else "unknown"
+        },
+        exc_info=True
+    )
+    
+    # Return generic error to client (don't leak internal details)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal server error",
+            "message": "An unexpected error occurred. Please try again later.",
+            "correlation_id": correlation_id
+        },
+        headers={"X-Correlation-ID": correlation_id}
+    )
 
-app.include_router(auth.router)
-app.include_router(agents.router)
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
-
+# Include routers
+app.include_router(health.router, tags=["health"])
+app.include_router(auth.router, prefix="/auth", tags=["authentication"])
+app.include_router(agents.router, tags=["agents"])
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    
+    port = int(os.getenv("PORT", 8000))
+    host = "0.0.0.0" if os.getenv("ENV") == "production" else "127.0.0.1"
+    
+    uvicorn.run(
+        "app.main:app", 
+        host=host, 
+        port=port, 
+        reload=os.getenv("ENV") != "production",
+        access_log=True,
+        log_level="info",
+        server_header=False
+    )

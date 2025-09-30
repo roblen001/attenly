@@ -9,13 +9,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies needed for building Python packages
+# Install system dependencies needed for building Python packages including WeasyPrint
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     pkg-config \
     libmagic1 \
     libmagic-dev \
+    libglib2.0-dev \
+    libpango1.0-dev \
+    libcairo2-dev \
+    libgdk-pixbuf2.0-dev \
+    libffi-dev \
+    libgtk-3-dev \
+    libharfbuzz-dev \
+    libfontconfig1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and build wheels
@@ -34,9 +42,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ENV=production \
     PORT=8080
 
-# Install runtime system dependencies
+# Install runtime system dependencies including WeasyPrint requirements
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
+    libglib2.0-0 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf2.0-0 \
+    libffi6 \
+    shared-mime-info \
+    libgtk-3-0 \
+    libharfbuzz0b \
+    libfontconfig1 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

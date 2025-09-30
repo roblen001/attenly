@@ -48,15 +48,6 @@ if os.getenv("ENV") != "production":
     logger.info("Creating database tables for development")
     Base.metadata.create_all(bind=engine)
 
-# Add rate limiting
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
-
-# Add security middlewares (order matters!)
-app.add_middleware(RequestSizeLimitMiddleware, max_upload_size=get_request_size_limit())
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(CorrelationIDMiddleware)
-
 # CORS configuration 
 cors_origins = os.getenv("CORS_ORIGINS",
     "https://app.attenly.ca,https://attenly.ca,https://www.attenly.ca"
@@ -84,6 +75,15 @@ app.add_middleware(
     expose_headers=["Content-Range","X-Content-Range"],
     max_age=86400,
 )
+
+# Add rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+# Add security middlewares (order matters!)
+app.add_middleware(RequestSizeLimitMiddleware, max_upload_size=get_request_size_limit())
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CorrelationIDMiddleware)
 
 
 # Global exception handler for security

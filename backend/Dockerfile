@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements and build wheels
 COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel
-RUN pip wheel --no-deps --wheel-dir /wheels -r requirements.txt
+RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
 # --- Runtime stage ---
 FROM python:3.11-slim AS runtime

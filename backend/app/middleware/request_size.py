@@ -15,13 +15,13 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     complementing the file-level validation in FileSecurityService.
     """
     
-    def __init__(self, app, max_upload_size: int = 50 * 1024 * 1024):
+    def __init__(self, app, max_upload_size: int = 500 * 1024 * 1024):
         """
         Initialize request size limit middleware.
         
         Args:
             app: FastAPI application instance
-            max_upload_size: Maximum request body size in bytes (default: 50MB)
+            max_upload_size: Maximum request body size in bytes (default: 500MB)
         """
         super().__init__(app)
         self.max_upload_size = max_upload_size
@@ -159,7 +159,7 @@ def get_request_size_limit() -> int:
         max_size_mb = MAX_FILE_SIZE_MB
     except ImportError:
         # Fallback if config not available
-        max_size_mb = 50
+        max_size_mb = 500
     
     # Add some overhead for multipart form data encoding
     # Typically adds ~30% overhead for base64 encoding + form boundaries

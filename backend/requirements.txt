@@ -46,8 +46,6 @@ redis==5.0.8
 reportlab==4.2.5
 python-magic==0.4.27
 
-# File type detection (alternative to python-magic on some systems)
-python-magic-bin==0.4.14
 
 # Document processing
 PyMuPDF==1.24.10
@@ -60,9 +58,7 @@ openai==1.54.4
 google-generativeai==0.8.3
 
 # Web framework
-uvicorn==0.35.0
 python-multipart==0.0.12
-sqlalchemy==2.0.43
 
 # Additional runtime dependencies (ensure all are pinned)
 beautifulsoup4==4.12.3

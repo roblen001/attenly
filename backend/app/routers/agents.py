@@ -1078,36 +1078,72 @@ async def download_saved_report_pdf(
     current_user = Depends(get_current_user),
     jwt_token: str = Depends(extract_jwt_token)
 ):
-    """Download PDF of saved report"""
+    """Download PDF of saved report using existing code patterns"""
     from fastapi.responses import StreamingResponse
     import io
     
     user_id = current_user.id
     
     try:
-        # Get saved report data
+        # Get saved report data (includes latest edits)
         report_data = supabase_service.get_saved_report(jwt_token, user_id, report_id)
         
         if not report_data:
             raise HTTPException(status_code=404, detail="Saved report not found")
         
-        # Create Agent object for PDF generation
-        agent = Agent(
-            id=report_data["agent_id"],
-            name=report_data["agent_name"],
-            description="",
-            reportTemplate="",
-            questions=[]
-        )
+        # Get proper agent configuration with reportTemplate (reuse existing code pattern)
+        agent_dict = _get_agent_by_id_internal(report_data["agent_id"], user_id, jwt_token)
+        agent = Agent(**agent_dict)
         
-        # Generate PDF from saved data
+        # Enhance report_data with document context (same pattern as fresh reports)
+        enhanced_report_data = report_data["report_data"].copy()
+        
+        # Build document context from saved document content (reuse existing structure)
+        document_context = enhanced_report_data.get("document_context", {})
+        if "documents" not in document_context:
+            # Get document IDs from the report data
+            document_ids = []
+            for answer_data in enhanced_report_data.get("answers", {}).values():
+                for quote in answer_data.get("quotes", []):
+                    doc_id = quote.get("document_id")
+                    if doc_id and doc_id not in document_ids:
+                        document_ids.append(doc_id)
+            
+            # Build documents mapping (same as fresh reports)
+            documents = {}
+            for doc_id in document_ids:
+                try:
+                    # Reuse existing document content retrieval
+                    doc_content = supabase_service.get_saved_document_content(
+                        jwt_token, user_id, report_id, doc_id
+                    )
+                    if doc_content:
+                        documents[doc_id] = {
+                            "filename": doc_content.get("filename", "Unknown Document"),
+                            "document_id": doc_id
+                        }
+                except Exception as e:
+                    logging.warning(f"Failed to get document {doc_id} for PDF generation: {e}")
+                    documents[doc_id] = {
+                        "filename": "Unknown Document",
+                        "document_id": doc_id
+                    }
+            
+            # Update document context (same structure as fresh reports)
+            enhanced_report_data["document_context"] = {
+                **document_context,
+                "documents": documents,
+                "document_ids": document_ids
+            }
+        
+        # Generate PDF using existing PDF generator (same as fresh reports)
         pdf_content = pdf_generator.generate_pdf_report(
             agent=agent,
-            report_data=report_data["report_data"],
+            report_data=enhanced_report_data,
             with_references=with_references
         )
         
-        # Create streaming response
+        # Create streaming response (same as fresh reports)
         pdf_buffer = io.BytesIO(pdf_content)
         
         # Generate filename

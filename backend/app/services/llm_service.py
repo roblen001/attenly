@@ -52,19 +52,21 @@ class LLMService:
         self.client = None
         
         try:
-            from google import genai
-            from google.genai import types
+            import google.generativeai as genai
             
             if not self.api_key:
                 logger.warning("GEMINI_API_KEY not found in environment variables")
                 raise ValueError("Gemini API key not configured")
             
-            # Initialize the client - new API gets API key from environment automatically
-            self.client = genai.Client(api_key=self.api_key)
+            # Configure the API key
+            genai.configure(api_key=self.api_key)
+            
+            # Initialize the model
+            self.model = genai.GenerativeModel(self.model_name)
             self.available = True
             
-            # Store types for configuration
-            self.types = types
+            # Store genai for later use
+            self.genai = genai
             
             logger.info(f"Initialized cost-optimized LLM service with model: {self.model_name}")
             
@@ -167,20 +169,16 @@ class LLMService:
         with open("batch_prompt_debug.txt", "w", encoding="utf-8") as f:
             f.write(batch_prompt)
         try:
-            # Configure for cost optimization and structured output
-            config = self.types.GenerateContentConfig(
-                # Use configurable thinking budget
-                thinking_config=self.types.ThinkingConfig(thinking_budget=LLM_THINKING_BUDGET),
-                # Use structured JSON output for consistent parsing
-                response_mime_type=LLM_RESPONSE_FORMAT,
-                response_schema=self._create_batch_response_schema_from_questions_with_chunks(questions_with_chunks)
+            # Configure generation parameters
+            generation_config = self.genai.types.GenerationConfig(
+                temperature=LLM_TEMPERATURE,
+                response_mime_type="application/json"
             )
             
             # Single API call for all questions - maximum cost efficiency
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=batch_prompt,
-                config=config
+            response = self.model.generate_content(
+                batch_prompt,
+                generation_config=generation_config
             )
             
             if not response or not response.text:
@@ -239,22 +237,12 @@ INSTRUCTIONS:
 RESPONSE FORMAT:
 You must respond with a valid JSON object containing answers for all questions using their IDs as keys."""
 
-    def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> 'self.types.Schema':
-        """Create JSON schema for structured batch response from questions with chunks"""
+    def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Create JSON schema for structured batch response from questions with chunks - simplified for compatibility"""
         
-        properties = {}
-        required_fields = []
-        
-        for item in questions_with_chunks:
-            question = item['question']
-            properties[question.placeholder] = self.types.Schema(type=self.types.Type.STRING)
-            required_fields.append(question.placeholder)
-        
-        return self.types.Schema(
-            type=self.types.Type.OBJECT,
-            properties=properties,
-            required=required_fields
-        )
+        # For the older API, we'll use a simpler approach without schema validation
+        # This ensures compatibility with google-generativeai 0.8.2
+        return {}
 
     def _parse_batch_response_with_individual_contexts(self, response_text: str, 
                                                      questions_with_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -743,17 +731,15 @@ IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make 
             quote_prompt = self._create_quote_extraction_prompt(answer, relevant_chunks, question_prompt)
             
             # Configure for quote extraction (use JSON output)
-            config = self.types.GenerateContentConfig(
-                thinking_config=self.types.ThinkingConfig(thinking_budget=0),  # No thinking needed for extraction
-                response_mime_type="application/json",
-                temperature=0.0 ,  # Low temperature for consistent extraction
+            generation_config = self.genai.types.GenerationConfig(
+                temperature=0.0,  # Low temperature for consistent extraction
+                response_mime_type="application/json"
             )
             
             # Make LLM call for quote extraction
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=quote_prompt,
-                config=config
+            response = self.model.generate_content(
+                quote_prompt,
+                generation_config=generation_config
             )
             
             if not response or not response.text:

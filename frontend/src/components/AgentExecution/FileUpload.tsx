@@ -17,7 +17,14 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
   const cancelFileUpload = (fileId: string) => {
     onFilesChange(prev => {
       const f = prev.find(x => x.id === fileId);
-      f?.abortController?.abort();
+      if (f?.abortController) {
+        try {
+          f.abortController.abort();
+        } catch (error) {
+          // Ignore abort errors - controller might already be aborted
+          console.debug('AbortController already aborted:', error);
+        }
+      }
       return prev.filter(x => x.id !== fileId);
     });
   };
@@ -25,13 +32,18 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
   // Cancel all pending uploads
   const cancelAllUploads = () => {
     onFilesChange(prev => {
-    prev.forEach(f => {
-      if ((f.status === 'uploading' || f.status === 'queued') && f.abortController) {
-        f.abortController.abort();
-      }
+      prev.forEach(f => {
+        if ((f.status === 'uploading' || f.status === 'queued') && f.abortController) {
+          try {
+            f.abortController.abort();
+          } catch (error) {
+            // Ignore abort errors - controller might already be aborted
+            console.debug('AbortController already aborted:', error);
+          }
+        }
+      });
+      return prev.filter(f => !(f.status === 'uploading' || f.status === 'queued'));
     });
-    return prev.filter(f => !(f.status === 'uploading' || f.status === 'queued'));
-  });
     setUploading(false);
   };
 
@@ -46,13 +58,13 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
     // Convert FileList to Array for easier manipulation
     const fileArray = Array.from(selectedFiles);
     
-    // Create initial files with queue positions and AbortControllers
+    // Create initial files with AbortControllers - all start as 'uploading' for concurrent processing
     const initialFiles: UploadedFile[] = fileArray.map((file, index) => ({
       id: `temp-${Date.now()}-${index}`, // Temporary ID until we get real one from backend
       name: file.name,
       size: file.size,
       type: file.type || 'application/pdf',
-      status: index === 0 ? 'uploading' as const : 'queued' as const,
+      status: 'uploading' as const, // All files start uploading concurrently
       queuePosition: index + 1,
       abortController: new AbortController(),
       progress: 0
@@ -61,17 +73,9 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
     // Add files to UI immediately (based on latest state)
     onFilesChange(prev => [...prev, ...initialFiles]);
     
-    // Process files sequentially
-    const processedFiles: UploadedFile[] = [];
-    let hasErrors = false;
-    
-    for (let i = 0; i < fileArray.length; i++) {
-      const file = fileArray[i];
-      const tempFile = initialFiles[i];
-  
-      onFilesChange(prev =>
-          prev.map(f => f.id === tempFile.id ? { ...f, status: 'uploading' as const } : f)
-        );
+    // Process files concurrently - each file uploads in parallel
+    const uploadPromises = fileArray.map(async (file, index) => {
+      const tempFile = initialFiles[index];
       
       try {
         // Create FormData for single file upload
@@ -91,7 +95,6 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
           const uploadedFile = result.files[0]; // Should be only one file
           // Preserve the AbortController reference (though upload is complete)
           uploadedFile.abortController = tempFile.abortController;
-          processedFiles.push(uploadedFile);
           
           // Update only if the temp still exists (prevents resurrection)
           onFilesChange(prev => {
@@ -102,10 +105,7 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
             return next;
           });
           
-          // Check for issues with this file
-          if (uploadedFile.status === 'failed' || uploadedFile.status === 'duplicate') {
-            hasErrors = true;
-          }
+          return { success: true, file: uploadedFile };
         } else {
           // Handle case where no files were returned
           const failedFile: UploadedFile = {
@@ -113,7 +113,6 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
             status: 'failed',
             error: 'No response from server'
           };
-          processedFiles.push(failedFile);
           
           onFilesChange(prev => {
             const idx = prev.findIndex(f => f.id === tempFile.id);
@@ -122,7 +121,8 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
             next[idx] = failedFile;
             return next;
           });
-          hasErrors = true;
+          
+          return { success: false, file: failedFile };
         }
         
       } catch (err) {
@@ -130,7 +130,7 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
         if (err instanceof Error && err.name === 'AbortError') {
            // File was cancelled - remove it completely
           onFilesChange(prev => prev.filter(f => f.id !== tempFile.id));
-          // Don't add cancelled files to processedFiles or show them in summary
+          return { success: false, cancelled: true };
         } else {
           // Handle other upload failures
           let errorMessage = 'Upload failed';
@@ -149,7 +149,6 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
             status: 'failed',
             error: errorMessage
           };
-          processedFiles.push(failedFile);
           
           onFilesChange(prev => {
             const idx = prev.findIndex(f => f.id === tempFile.id);
@@ -158,10 +157,37 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
             next[idx] = failedFile;
             return next;
           });
-          hasErrors = true;
+          
+          return { success: false, file: failedFile };
         }
       }
-    }
+    });
+
+    // Wait for all uploads to complete (concurrent processing)
+    const results = await Promise.allSettled(uploadPromises);
+    
+    // Process results and determine if there were errors
+    const processedFiles: UploadedFile[] = [];
+    let hasErrors = false;
+    
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value) {
+        if (result.value.success && result.value.file) {
+          processedFiles.push(result.value.file);
+          if (result.value.file.status === 'failed' || result.value.file.status === 'duplicate') {
+            hasErrors = true;
+          }
+        } else if (!result.value.cancelled && result.value.file) {
+          processedFiles.push(result.value.file);
+          hasErrors = true;
+        }
+        // Cancelled files are not added to processedFiles
+      } else if (result.status === 'rejected') {
+        // Handle any unexpected Promise rejections
+        console.error('Upload promise rejected:', result.reason);
+        hasErrors = true;
+      }
+    });
     
     // Show summary message if there were any issues
     if (hasErrors) {

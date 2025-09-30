@@ -8,12 +8,13 @@ Supports hybrid retrieval (vector + keyword search) and hierarchical expansion.
 import uuid
 from typing import List, Dict, Any, Optional
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStore:
-    """User-based vector store for document chunks using ChromaDB"""
+    """User-based vector store for document chunks using ChromaDB with Google embeddings"""
     
     def __init__(self, user_id: str):
         self.user_id = user_id
@@ -21,28 +22,48 @@ class VectorStore:
         
         try:
             import chromadb
+            from chromadb.utils import embedding_functions
             from chromadb.config import Settings
+            
+            # Validate Google API key
+            gemini_api_key = os.getenv("GEMINI_API_KEY")
+            if not gemini_api_key:
+                logger.error("GEMINI_API_KEY not found in environment variables")
+                raise ValueError("GEMINI_API_KEY is required for Google embedding function")
+            
+            # Create Google embedding function using Gemini API key
+            embedding_function = embedding_functions.GoogleGenerativeAiEmbeddingFunction(
+                api_key=gemini_api_key,
+                model_name="models/text-embedding-004"
+            )
             
             # Initialize ChromaDB client with in-memory storage for users
             self.client = chromadb.EphemeralClient()
 
-            # Create or get collection for this user
+            # Create or get collection for this user with Google embeddings
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"user_id": user_id}
+                embedding_function=embedding_function,
+                metadata={"user_id": user_id, "embedding_model": "text-embedding-004"}
             )
             
             self.available = True
-            logger.info(f"Initialized vector store for user {user_id}")
+            logger.info(f"Initialized vector store for user {user_id} with Google text-embedding-004")
             
-        except ImportError:
-            logger.warning("ChromaDB not available, vector search will be disabled")
+        except ImportError as e:
+            logger.warning(f"ChromaDB or required dependencies not available: {e}")
             self.client = None
             self.collection = None
             self.available = False
-            raise ImportError("ChromaDB is required for vector store functionality")
+            raise ImportError("ChromaDB and google-generativeai are required for vector store functionality")
+        except ValueError as e:
+            logger.error(f"Configuration error: {e}")
+            self.client = None
+            self.collection = None
+            self.available = False
+            raise e
         except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB: {e}")
+            logger.error(f"Failed to initialize ChromaDB with Google embeddings: {e}")
             self.client = None
             self.collection = None
             self.available = False

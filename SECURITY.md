@@ -64,11 +64,20 @@ If you discover a security vulnerability in Attenly, please report it responsibl
 - Automatic data cleanup and session management
 
 ### Infrastructure Security
-- Security headers (CSP, HSTS, X-Frame-Options)
-- Rate limiting per IP and per user
-- Input validation and sanitization
-- File type and size restrictions
-- CORS policy enforcement
+- **Security Headers**: Comprehensive Content Security Policy (CSP), HSTS, X-Frame-Options
+- **Request Size Limiting**: Application-level middleware with 50MB limits and intelligent filtering
+- **Rate Limiting**: Per IP and per user with SlowAPI and Redis token buckets
+- **Input Validation**: Multi-layer validation at request, file, and content levels
+- **File Security**: MIME validation, extension checks, content-based detection, malware scanning hooks
+- **CORS Policy**: Strict enforcement limited to trusted domains only
+
+### Container Security
+- **Multi-stage Docker Build**: Optimized production images with security scanning
+- **Non-root Execution**: Application runs as dedicated `appuser` with minimal privileges
+- **Image Hardening**: Minimal base images with only required dependencies
+- **Secret Management**: No secrets in container images, environment-based configuration only
+- **Supply Chain Security**: All dependencies pinned to exact versions (==) for reproducible builds
+- **Build Optimization**: Comprehensive `.dockerignore` preventing sensitive files in images
 
 ### AI/ML Security
 - Prompt injection prevention

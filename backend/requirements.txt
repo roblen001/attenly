@@ -41,25 +41,30 @@ uvicorn==0.35.0
 websockets==15.0.1
 
 # Additional security and monitoring dependencies
-slowapi>=0.1.9
-redis>=5.0.0
-reportlab>=4.0.4
-python-magic>=0.4.27
+slowapi==0.1.9
+redis==5.0.8
+reportlab==4.2.5
+python-magic==0.4.27
 
 # File type detection (alternative to python-magic on some systems)
-python-magic-bin>=0.4.14
+python-magic-bin==0.4.14
 
 # Document processing
-PyMuPDF
-weasyprint
+PyMuPDF==1.24.10
+weasyprint==62.3
 
 # AI and ML
-chromadb
-tiktoken
-openai
-google-genai
+chromadb==0.5.15
+tiktoken==0.8.0
+openai==1.54.4
+google-generativeai==0.8.3
 
 # Web framework
-uvicorn[standard]
-python-multipart
-sqlalchemy
+uvicorn==0.35.0
+python-multipart==0.0.12
+sqlalchemy==2.0.43
+
+# Additional runtime dependencies (ensure all are pinned)
+beautifulsoup4==4.12.3
+lxml==5.3.0
+requests==2.32.3

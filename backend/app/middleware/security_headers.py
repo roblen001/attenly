@@ -30,8 +30,20 @@ async def security_headers_middleware(request, call_next):
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     
-    # Example CSP (tune to your app)
-    # response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self';"
+    # Content Security Policy for Attenly API
+    csp_policy = (
+        "default-src 'self'; "
+        "connect-src 'self' https://*.supabase.co https://api.openai.com https://generativelanguage.googleapis.com; "
+        "img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'; "
+        "upgrade-insecure-requests;"
+    )
+    response.headers["Content-Security-Policy"] = csp_policy
 
     return response
 

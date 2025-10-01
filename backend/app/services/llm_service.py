@@ -17,6 +17,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from app.schemas import QuestionOut
+from app.services.performance_monitor import time_operation, get_performance_monitor
 from app.config import (
     LLM_MODEL_NAME,
     GEMINI_API_KEY,
@@ -161,13 +162,20 @@ class LLMService:
                                                         document_context: Dict) -> Dict[str, Any]:
         """Process all questions in a single batch request, each with its own relevant context"""
         
+        performance_monitor = get_performance_monitor()
+        
         # Create a single batch prompt with all questions and their individual contexts
-        batch_prompt = self._create_batch_prompt_with_individual_contexts(
-            questions_with_chunks, document_context
-        )
+        with time_operation("llm_batch_prompt_preparation", 
+                          {"question_count": len(questions_with_chunks)}) as timer:
+            batch_prompt = self._create_batch_prompt_with_individual_contexts(
+                questions_with_chunks, document_context
+            )
+            prompt_prep_time = timer.stop().duration
+        
         # Write the batch prompt to a text file for debugging
         with open("batch_prompt_debug.txt", "w", encoding="utf-8") as f:
             f.write(batch_prompt)
+        
         try:
             # Configure generation parameters
             generation_config = self.genai.types.GenerationConfig(
@@ -176,20 +184,35 @@ class LLMService:
             )
             
             # Single API call for all questions - maximum cost efficiency
-            response = self.model.generate_content(
-                batch_prompt,
-                generation_config=generation_config
-            )
+            with time_operation("llm_api_call", 
+                              {"question_count": len(questions_with_chunks), 
+                               "model": self.model_name,
+                               "prompt_length": len(batch_prompt)}) as timer:
+                response = self.model.generate_content(
+                    batch_prompt,
+                    generation_config=generation_config
+                )
+                api_call_time = timer.stop().duration
             
             if not response or not response.text:
                 raise ValueError("Empty response from Gemini model")
             
             # Parse the batch JSON response
-            batch_results = self._parse_batch_response_with_individual_contexts(
-                response.text, questions_with_chunks
-            )
+            with time_operation("llm_response_parsing", 
+                              {"response_length": len(response.text)}) as timer:
+                batch_results = self._parse_batch_response_with_individual_contexts(
+                    response.text, questions_with_chunks
+                )
+                parsing_time = timer.stop().duration
             
-            logger.info(f"Successfully processed {len(questions_with_chunks)} questions with individual contexts in single batch request")
+            # Log comprehensive timing breakdown
+            total_time = prompt_prep_time + api_call_time + parsing_time
+            logger.info(f"🤖 LLM Processing Complete: {len(questions_with_chunks)} questions in {total_time:.2f}s")
+            logger.info(f"⏱️  LLM Timing Breakdown - Prep: {prompt_prep_time*1000:.1f}ms, "
+                       f"API: {api_call_time*1000:.1f}ms, Parse: {parsing_time*1000:.1f}ms")
+            logger.info(f"🚀 LLM Performance - {len(questions_with_chunks)/total_time:.1f} questions/sec, "
+                       f"API latency: {api_call_time*1000:.0f}ms")
+            
             return batch_results
             
         except Exception as e:

@@ -48,6 +48,17 @@ VECTOR_SEARCH_TOP_K_PER_QUESTION = 10
 VECTOR_SEARCH_MAX_SOURCE_QUOTES = 3
 
 # =============================================================================
+# EMBEDDING GENERATION CONFIGURATION
+# =============================================================================
+
+# Batch Embedding Parameters
+EMBEDDING_BATCH_SIZE = 50  # Number of texts to embed in a single batch (max 100 for Google AI)
+EMBEDDING_MAX_RETRIES = 3  # Maximum number of retry attempts for failed batches
+EMBEDDING_TIMEOUT_SECONDS = 30  # Timeout for embedding API requests
+EMBEDDING_MODEL_NAME = "models/gemini-embedding-001"  # Google AI embedding model
+EMBEDDING_MAX_CONCURRENT_BATCHES = 3  # Maximum concurrent batch requests
+
+# =============================================================================
 # INTELLIGENT QUOTE EXTRACTION CONFIGURATION
 # =============================================================================
 
@@ -177,6 +188,27 @@ def validate_config():
     
     if not 0.0 <= MIN_ANSWER_CONFIDENCE <= 1.0:
         errors.append("MIN_ANSWER_CONFIDENCE must be between 0.0 and 1.0")
+    
+    # Validate embedding configuration
+    if EMBEDDING_BATCH_SIZE < 1:
+        errors.append("EMBEDDING_BATCH_SIZE must be at least 1")
+    if EMBEDDING_BATCH_SIZE > 100:
+        errors.append("EMBEDDING_BATCH_SIZE should not exceed 100 (Google AI limit)")
+    
+    if EMBEDDING_MAX_RETRIES < 0:
+        errors.append("EMBEDDING_MAX_RETRIES must be non-negative")
+    if EMBEDDING_MAX_RETRIES > 10:
+        errors.append("EMBEDDING_MAX_RETRIES should not exceed 10")
+    
+    if EMBEDDING_TIMEOUT_SECONDS < 5:
+        errors.append("EMBEDDING_TIMEOUT_SECONDS must be at least 5")
+    if EMBEDDING_TIMEOUT_SECONDS > 300:
+        errors.append("EMBEDDING_TIMEOUT_SECONDS should not exceed 300")
+    
+    if EMBEDDING_MAX_CONCURRENT_BATCHES < 1:
+        errors.append("EMBEDDING_MAX_CONCURRENT_BATCHES must be at least 1")
+    if EMBEDDING_MAX_CONCURRENT_BATCHES > 10:
+        errors.append("EMBEDDING_MAX_CONCURRENT_BATCHES should not exceed 10")
     
     if errors:
         raise ValueError(f"Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors))

@@ -3,12 +3,16 @@ Vector Store Service for User-Based Document Chunk Storage
 
 Provides user-isolated vector storage using ChromaDB for document chunks.
 Supports hybrid retrieval (vector + keyword search) and hierarchical expansion.
+Enhanced with batch embedding generation for optimal performance.
 """
 
 import uuid
 from typing import List, Dict, Any, Optional
 import logging
 import os
+import asyncio
+from .embedding_batch_service import get_embedding_service
+from .performance_monitor import time_operation
 
 logger = logging.getLogger(__name__)
 
@@ -22,33 +26,29 @@ class VectorStore:
         
         try:
             import chromadb
-            from chromadb.utils import embedding_functions
             from chromadb.config import Settings
             
             # Validate Google API key
             gemini_api_key = os.getenv("GEMINI_API_KEY")
             if not gemini_api_key:
                 logger.error("GEMINI_API_KEY not found in environment variables")
-                raise ValueError("GEMINI_API_KEY is required for Google embedding function")
-            
-            # Create Google embedding function using Gemini API key
-            embedding_function = embedding_functions.GoogleGenerativeAiEmbeddingFunction(
-                api_key=gemini_api_key,
-                model_name="models/text-embedding-004"
-            )
+                raise ValueError("GEMINI_API_KEY is required for batch embedding generation")
             
             # Initialize ChromaDB client with in-memory storage for users
             self.client = chromadb.EphemeralClient()
 
-            # Create or get collection for this user with Google embeddings
+            # Create or get collection for this user WITHOUT auto-embedding
+            # We'll use manual embedding generation for better performance
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                embedding_function=embedding_function,
-                metadata={"user_id": user_id, "embedding_model": "text-embedding-004"}
+                metadata={"user_id": user_id, "embedding_model": "text-embedding-004", "batch_mode": True}
             )
             
+            # Get batch embedding service
+            self.embedding_service = get_embedding_service()
+            
             self.available = True
-            logger.info(f"Initialized vector store for user {user_id} with Google text-embedding-004")
+            logger.info(f"Initialized vector store for user {user_id} with batch embedding generation")
             
         except ImportError as e:
             logger.warning(f"ChromaDB or required dependencies not available: {e}")
@@ -68,8 +68,8 @@ class VectorStore:
             self.collection = None
             self.available = False
     
-    def store_document_chunks(self, document_id: str, l1_chunks: List[Dict], l2_chunks: List[Dict]) -> int:
-        """Store L2 chunks in vector DB with L1 metadata for retrieval"""
+    async def store_document_chunks(self, document_id: str, l1_chunks: List[Dict], l2_chunks: List[Dict]) -> int:
+        """Store L2 chunks in vector DB with L1 metadata for retrieval using batch embedding generation"""
         
         if not self.available:
             logger.warning("Vector store not available, skipping chunk storage")
@@ -80,8 +80,9 @@ class VectorStore:
             return 0
         
         try:
+            logger.info(f"🚀 Starting batch embedding generation for {len(l2_chunks)} L2 chunks")
+            
             # Prepare data for ChromaDB
-            embeddings = []  # ChromaDB will auto-generate embeddings
             documents = []
             metadatas = []
             ids = []
@@ -123,14 +124,31 @@ class VectorStore:
                 
                 metadatas.append(metadata)
             
-            # Store in ChromaDB (will auto-generate embeddings)
-            self.collection.add(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids
-            )
+            # Generate embeddings in batches using the batch embedding service
+            with time_operation("batch_embedding_generation", 
+                              {"document_id": document_id, "chunk_count": len(documents)}) as timer:
+                embeddings = await self.embedding_service.generate_embeddings_batch(documents)
             
-            logger.info(f"Stored {len(l2_chunks)} L2 chunks for document {document_id}")
+            if len(embeddings) != len(documents):
+                raise ValueError(f"Embedding count mismatch: expected {len(documents)}, got {len(embeddings)}")
+            
+            # Store in ChromaDB with pre-computed embeddings
+            with time_operation("chromadb_storage", 
+                              {"document_id": document_id, "chunk_count": len(documents)}):
+                self.collection.add(
+                    documents=documents,
+                    embeddings=embeddings,  # Use pre-computed embeddings
+                    metadatas=metadatas,
+                    ids=ids
+                )
+            
+            # Get embedding service statistics
+            embedding_stats = self.embedding_service.get_performance_stats()
+            logger.info(f"✅ Successfully stored {len(l2_chunks)} L2 chunks for document {document_id}")
+            logger.info(f"📊 Batch embedding stats: {embedding_stats['total_api_calls']} API calls, "
+                       f"{embedding_stats['avg_embeddings_per_call']:.1f} avg embeddings/call, "
+                       f"{embedding_stats['error_rate_percent']:.1f}% error rate")
+            
             return len(l2_chunks)
             
         except Exception as e:
@@ -159,7 +177,7 @@ class VectorStore:
             logger.error(f"Failed to delete chunks for document {document_id}: {e}")
             return False
     
-    def search_chunks(self, query: str, top_k: int = 40, document_ids: Optional[List[str]] = None) -> List[Dict]:
+    async def search_chunks(self, query: str, top_k: int = 40, document_ids: Optional[List[str]] = None) -> List[Dict]:
         """Search for relevant chunks using vector similarity"""
         
         if not self.available:
@@ -167,14 +185,18 @@ class VectorStore:
             return []
         
         try:
+            # Generate embedding for search query using the same batch service
+            query_embeddings = await self.embedding_service.generate_embeddings_batch([query])
+            query_embedding = query_embeddings[0]
+            
             # Build where clause for filtering
             where_clause = {}
             if document_ids:
                 where_clause["document_id"] = {"$in": document_ids}
             
-            # Perform vector search
+            # Perform vector search with pre-computed query embedding
             results = self.collection.query(
-                query_texts=[query],
+                query_embeddings=[query_embedding],
                 n_results=min(top_k, 100),  # ChromaDB limit
                 where=where_clause if where_clause else None
             )

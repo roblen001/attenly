@@ -45,6 +45,7 @@ slowapi==0.1.9
 redis==5.0.8
 reportlab==4.2.5
 python-magic==0.4.27
+psutil==6.0.0
 
 
 # Document processing

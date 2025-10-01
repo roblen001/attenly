@@ -1,4 +1,5 @@
 import logging
+import time
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Depends, Header
 from fastapi.responses import JSONResponse
 import json
@@ -15,6 +16,9 @@ from app.services.document_processor import DocumentProcessor
 from app.services.vector_store import vector_store_manager # In user-based storage, we use a global manager for vector store operations
 from app.services.report_service import report_service
 from app.services.pdf_generator import pdf_generator
+
+# Import performance monitoring
+from app.services.performance_monitor import get_performance_monitor, time_operation, timed_operation
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -135,6 +139,7 @@ def list_prebuilt_agents():
 async def upload_files(files: List[UploadFile] = File(...), current_user = Depends(get_current_user)):
     """Upload multiple files and process them through the document pipeline"""
     user_id = current_user.id
+    performance_monitor = get_performance_monitor()
 
     # Initialize user storage if not exists
     if user_id not in uploaded_files_storage:
@@ -150,15 +155,31 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
     
     for file in files:
         file_result = None
+        # Start monitoring individual file processing
+        file_metrics = None
+        
         try:
-            # Read file content
-            content = await file.read()
+            # Read file content with timing
+            with time_operation("file_upload_read", {"filename": file.filename}):
+                content = await file.read()
+            
+            # Start performance monitoring for this file
+            file_metrics = performance_monitor.start_file_processing(
+                file_id=str(uuid.uuid4()),
+                filename=file.filename,
+                file_size_bytes=len(content)
+            )
             
             # Calculate content hash for duplicate detection
-            content_hash = calculate_content_hash(content)
+            with time_operation("hash_calculation", {"file_size_bytes": len(content)}) as timer:
+                content_hash = calculate_content_hash(content)
+                performance_monitor.update_file_metric(file_metrics.file_id, "hash_calculation_time", timer.stop().duration)
             
             # Check for duplicate file
-            duplicate_file = find_duplicate_file(user_id, content_hash)
+            with time_operation("duplicate_check", {"hash": content_hash[:8]}) as timer:
+                duplicate_file = find_duplicate_file(user_id, content_hash)
+                performance_monitor.update_file_metric(file_metrics.file_id, "duplicate_check_time", timer.stop().duration)
+            
             if duplicate_file:
                 logging.info(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
                 print(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
@@ -191,22 +212,34 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
                     "error": f"Duplicate of existing file '{duplicate_file['name']}'"
                 }
                 uploaded_files.append(file_result)
+                
+                # Finish monitoring with duplicate status
+                if file_metrics:
+                    performance_monitor.finish_file_processing(file_metrics.file_id, success=True, error_message="Duplicate file")
                 continue  # Skip to next file instead of raising exception
             
             # Validate document using document processor
-            validation_result = document_processor.validate_document(content, file.filename)
+            with time_operation("document_validation", {"filename": file.filename}) as timer:
+                validation_result = document_processor.validate_document(content, file.filename)
+                performance_monitor.update_file_metric(file_metrics.file_id, "validation_time", timer.stop().duration)
             
             if not validation_result["valid"]:
                 # Handle validation failure gracefully
+                error_message = f"Validation failed: {', '.join(validation_result['errors'])}"
+                
                 file_result = {
                     "id": str(uuid.uuid4()),
                     "name": file.filename,
                     "size": len(content),
                     "type": file.content_type or "application/pdf",
                     "status": "failed",
-                    "error": f"Validation failed: {', '.join(validation_result['errors'])}"
+                    "error": error_message
                 }
                 uploaded_files.append(file_result)
+                
+                # Finish monitoring with failure
+                if file_metrics:
+                    performance_monitor.finish_file_processing(file_metrics.file_id, success=False, error_message=error_message)
                 continue  # Skip to next file instead of raising exception
             
             # Create file record with initial processing status
@@ -224,35 +257,64 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
             # Store file
             uploaded_files_storage[user_id][file_id] = file_record
             
+            # Update file metrics with actual file ID
+            if file_metrics:
+                file_metrics.file_id = file_id
+            
             # Process document through pipeline
             try:
-                processing_result = await document_processor.process_document(
-                    file_id=file_id,
-                    content=content,
-                    filename=file.filename,
-                    vector_store=vector_store
-                )
+                with time_operation("document_processing_pipeline", {"file_id": file_id, "filename": file.filename}) as timer:
+                    processing_result = await document_processor.process_document(
+                        file_id=file_id,
+                        content=content,
+                        filename=file.filename,
+                        vector_store=vector_store
+                    )
+                    
+                    # Update metrics with processing stats
+                    if file_metrics and processing_result.get("processing_stats"):
+                        stats = processing_result["processing_stats"]
+                        performance_monitor.update_file_metric(file_metrics.file_id, "total_pages", stats.get("total_pages", 0))
+                        performance_monitor.update_file_metric(file_metrics.file_id, "l1_chunks_created", stats.get("l1_chunks", 0))
+                        performance_monitor.update_file_metric(file_metrics.file_id, "l2_chunks_created", stats.get("l2_chunks", 0))
+                        performance_monitor.update_file_metric(file_metrics.file_id, "chunks_stored", stats.get("stored_chunks", 0))
+                
                 print(f"Processing result for {file.filename}: {processing_result}")
                 
                 if processing_result["success"]:
                     file_record["status"] = "uploaded"
                     file_record["processing_stats"] = processing_result["processing_stats"]
                     file_record["chunk_statistics"] = processing_result["chunk_statistics"]
+                    
+                    # Finish monitoring with success
+                    if file_metrics:
+                        performance_monitor.finish_file_processing(file_metrics.file_id, success=True)
                 else:
+                    error_message = processing_result["error"]
                     file_record["status"] = "failed"
-                    file_record["error"] = processing_result["error"]
+                    file_record["error"] = error_message
+                    
+                    # Finish monitoring with failure
+                    if file_metrics:
+                        performance_monitor.finish_file_processing(file_metrics.file_id, success=False, error_message=error_message)
                 
                 processing_results.append(processing_result)
                 
             except Exception as e:
+                error_message = str(e)
                 logging.error(f"Failed to process document {file.filename}: {e}")
                 file_record["status"] = "failed"
-                file_record["error"] = str(e)
+                file_record["error"] = error_message
+                
+                # Finish monitoring with failure
+                if file_metrics:
+                    performance_monitor.finish_file_processing(file_metrics.file_id, success=False, error_message=error_message)
+                
                 processing_results.append({
                     "success": False,
                     "document_id": file_id,
                     "filename": file.filename,
-                    "error": str(e)
+                    "error": error_message
                 })
             
             # Add to response (without content)
@@ -268,16 +330,22 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
             
         except Exception as e:
             # Handle any unexpected errors gracefully
+            error_message = f"Unexpected error: {str(e)}"
             logging.error(f"Unexpected error processing file {file.filename}: {e}")
+            
             file_result = {
                 "id": str(uuid.uuid4()),
                 "name": file.filename,
                 "size": 0,
                 "type": file.content_type or "application/pdf",
                 "status": "failed",
-                "error": f"Unexpected error: {str(e)}"
+                "error": error_message
             }
             uploaded_files.append(file_result)
+            
+            # Finish monitoring with failure
+            if file_metrics:
+                performance_monitor.finish_file_processing(file_metrics.file_id, success=False, error_message=error_message)
     
     # Compile response
     successful_uploads = [f for f in uploaded_files if f["status"] == "uploaded"]
@@ -294,6 +362,12 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
         message_parts.append(f"{len(duplicate_uploads)} duplicates")
     
     response_message = ": ".join([message_parts[0], ", ".join(message_parts[1:])])
+    
+    # Log performance summary for this batch
+    if successful_uploads or failed_uploads:
+        logging.info(f"🚀 Upload batch completed: {len(successful_uploads)} successful, {len(failed_uploads)} failed")
+        if len(uploaded_files) >= 5:  # Log performance report for larger batches
+            performance_monitor.log_performance_report(level=logging.INFO, last_n_files=10)
     
     return {
         "files": uploaded_files,
@@ -516,7 +590,7 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
         # Generate report using report service (LLM processing happens here)
         document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
         
-        report_result = report_service.generate_report(
+        report_result = await report_service.generate_report(
             agent=agent,
             vector_store=vector_store,
             document_ids=document_ids
@@ -597,7 +671,7 @@ async def test_single_question(
         document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
         
         # Search for relevant chunks for this question
-        relevant_chunks = vector_store.search_chunks(
+        relevant_chunks = await vector_store.search_chunks(
             query=question_text,
             document_ids=document_ids,
             top_k=10  # Get more chunks for testing
@@ -1433,3 +1507,55 @@ def _get_agent_by_id_internal(agent_id: str, user_id: str = None, jwt_token: str
 def get_agent_by_id(agent_id: str, current_user = Depends(get_current_user), jwt_token: str = Depends(extract_jwt_token)):
     """Get a specific agent by ID (handles both prebuilt and custom agents)"""
     return _get_agent_by_id_internal(agent_id, current_user.id, jwt_token)
+
+@router.get("/performance/report")
+async def get_performance_report(current_user = Depends(get_current_user)):
+    """Get comprehensive performance metrics for file processing"""
+    performance_monitor = get_performance_monitor()
+    
+    try:
+        # Get performance summary
+        summary = performance_monitor.get_performance_summary(last_n_files=50)
+        
+        if "error" in summary:
+            return {
+                "available": False,
+                "message": summary["error"]
+            }
+        
+        return {
+            "available": True,
+            "user_id": current_user.id,
+            "performance_data": summary,
+            "report_generated_at": time.time()
+        }
+        
+    except Exception as e:
+        logging.error(f"Failed to generate performance report: {e}")
+        return {
+            "available": False,
+            "error": str(e)
+        }
+
+@router.post("/performance/export")
+async def export_performance_metrics(current_user = Depends(get_current_user)):
+    """Export performance metrics to JSON file"""
+    performance_monitor = get_performance_monitor()
+    
+    try:
+        # Generate filename with timestamp
+        timestamp = int(time.time())
+        filepath = f"performance_export_{timestamp}.json"
+        
+        # Export metrics
+        performance_monitor.export_metrics(filepath, last_n_files=1000)
+        
+        return {
+            "success": True,
+            "filepath": filepath,
+            "message": f"Performance metrics exported to {filepath}"
+        }
+        
+    except Exception as e:
+        logging.error(f"Failed to export performance metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export metrics: {str(e)}")

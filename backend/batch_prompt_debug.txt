@@ -1,184 +1,142 @@
 You are an expert data extraction AI. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
 
 
-=== QUESTION 1 (ID: {{Test Question}}) ===
-QUESTION: test
+=== QUESTION 1 (ID: AdvantagesAndOpportunitiesThis) ===
+QUESTION: What is the advantages and opportunities with this company?
 
 RELEVANT CONTEXT FOR THIS QUESTION:
 === DOCUMENT SECTION 1 ===
-Source: IONQ-10-Q.pdf (Pages 18-18)
-application costs. Intangible assets with identifiable useful lives are initially valued at acquisition cost and are amortized over their estimated
-      useful lives using the straight-line method. Intangible assets with indefinite useful lives are assessed for impairment at least annually.
-      Goodwill
-            Goodwill  is the excess of the purchase price over the fair values assigned to the net assets acquired in a business combination. The
-      Company   tests goodwill for impairment on an annual basis, which it has determined to be the first day of the fourth quarter, and whenever events
-      or changes in circumstances indicate that the carrying amount may not be recoverable. The Company tests goodwill qualitatively, or
-                                                                           11
-
-https://www.sec.gov/Archives/edgar/data/1824920/000095017025104066/ionq-20250630.htm                                                            18/109
+Source: IONQ-10-Q.pdf (Pages 43-44)
+of
+      new information, future events, or otherwise after the date of such statement.
+            You should read the following discussion and analysis of our financial condition and results of operations together with our unaudited
+      condensed consolidated financial statements and related notes included elsewhere in this Quarterly Report on Form 10-Q, and our audited
+      consolidated financial statements and related notes for the year ended December 31, 2024, filed with the SEC on February 26, 2025.
+      Overview
+            We are developing quantum computers  and networks designed to solve some of the world’s most complex problems, and transform
+      business, society and the planet for the better. We believe that our proprietary technology, our architecture, and the technology exclusively
+      available to us through license agreements will offer us advantages both in terms of research and development, as well as the commercial value
+      of our intended product offerings.
+            Today, we sell specialized quantum computing and networking hardware together with related maintenance and support. We also sell
+      access to several quantum computers of various qubit capacities and are in the process of researching and developing technologies for quantum
+      computers with increasing computational capabilities. We currently make access to our quantum computers available via three major cloud
+      platforms, Amazon Web  Services’ (“AWS”)  Amazon  Braket, Microsoft’s Azure Quantum  and Google’s Cloud Marketplace, and also to select
+      customers via our own cloud service. This cloud-based approach enables the broad availability of quantum-computing-as-a-service (“QCaaS”).
+            We supplement  our offerings with professional services focused on assisting our customers in applying quantum computing and
+      networking to their businesses. We also sell and expect to sell full quantum computing systems to customers, either over the cloud or for local
+      access. We also offer quantum networking products which offer customers secure communication networks and enable networked quantum
+      computing.
+            We are still in the early stages of commercial growth. Since our inception we have incurred significant operating losses. Our ability to
+      generate revenue sufficient to achieve profitability will depend heavily on the successful development and further commercialization of our
+      quantum  computing systems and networks. Our net losses attributable to IonQ, Inc. were $209.1 million and $77.2 million for the six months
+      ended June 30, 2025 and 2024, respectively. As of June 30, 2025, we had an accumulated deficit of $892.8 million. We expect to continue to
 === END SECTION 1 ===
 
 === DOCUMENT SECTION 2 ===
-Source: IONQ-10-Q.pdf (Pages 41-41)
-follows (in thousands):
-
-----------------------------------------------------------------------------------------------------------------------------------------
-                 |                                                          |     Three Months Ended     |      Six Months Ended      |-
-----------------------------------------------------------------------------------------------------------------------------------------
-                 |----------------------------------------------------------|          June 30,          |           June 30,         |-
-                 |                                                          |    2025     |     2024     |     2025     |    2024     |-
-                |Cash  payments  (receipts) included in the measurement of   |             |              |             |             | 
-                 |operating lease liabilities, net of lease incentives       |$       742  | $       226  | $     1,543 | $     (2,097)|
-----------------------------------------------------------------------------------------------------------------------------------------
-
-                                                                          28
-
-https://www.sec.gov/Archives/edgar/data/1824920/000095017025104066/ionq-20250630.htm                                                           41/109
+Source: IONQ-10-Q.pdf (Pages 76-76)
+rapidly evolving customer
+      requirements, or if new technologies emerge that are able to deliver competitive products at lower prices, more efficiently, with better
+      functionality, more conveniently, or more securely than our platform, our business, financial condition and results of operations could be
+      adversely affected.
+      Acquisitions and other strategic investments involve a number of inherent risks, any of which could result in the benefits anticipated not
+      being realized.
+            Acquisitions are an important component of our growth strategy and we have pursued and we may continue to pursue growth opportunities
+      by acquiring businesses, solutions or technologies through strategic transactions, investments or partnerships that complement or expand our
+      current business, including expansion into adjacent industries, with the expectation that these transactions will result in increases in sales,
+      synergies and various other benefits. However, there can be no assurance that we will be able to continue to grow our business through
+      acquisitions or other strategic transactions or that any businesses acquired will perform in accordance with expectations or that business
+      judgments  concerning the value, strengths and weaknesses of businesses acquired will prove to be correct.
+            The identification of suitable acquisition, strategic investment or strategic partnership candidates can be costly and time consuming. If such
+      strategic transactions require us to seek additional debt or equity financing, we may not be able to obtain such financing on terms favorable to us
+      or at all, and such transactions may adversely affect our liquidity and capital structure. To the extent we issue equity and/or convertible securities
+      as consideration in such strategic transactions, our stockholders may experience substantial dilution. Certain of our strategic investments are or
+      may  be with companies that are not publicly traded and our ability to liquidate and realize value from our investments may also be limited.
+            Any  strategic transaction might not strengthen our competitive position, may increase some of our risks, may raise new compliance-related
+      obligations and challenges, may distract our management team from our current operations, may be viewed negatively by our customers, partners
+      or investors, or we may have to delay or not proceed with announced strategic transactions. If an acquired business fails to operate as anticipated
+      or cannot be successfully integrated with our existing business, it could have a material adverse effect on our business or financial condition.
+      Even  if we successfully complete a strategic transaction, we may not be able to effectively integrate the acquired business, technology, systems,
+      control environment, solutions, or operations into our business, and we may have difficulty integrating and retaining new employees. We may
 === END SECTION 2 ===
 
 === DOCUMENT SECTION 3 ===
-Source: IONQ-10-Q.pdf (Pages 101-102)
-; and
-            •     the impact of any of the foregoing on our management, employees, partners, customers, and operating results.
-            Following periods of volatility in the overall market and the market price of a company’s securities, securities class action litigation has
-      often been instituted against such company. Such litigation could result in substantial costs and a diversion of management’s attention and
-      resources. See also “—Risks Related to Litigation and Government Regulation—Our   business is exposed to risks associated with litigation,
-      investigations and regulatory proceedings.”
-      If our operating and financial performance  in any given period does not meet the guidance provided to the public or the expectations of
-      investment analysts, the market price of our common  stock may  decline.
-            We  have historically and may continue to, but are not obligated to, provide public guidance on our expected operating and financial results
-      for future periods. Any such guidance will consist of forward-looking statements, subject to the risks and uncertainties described in this filing and
-      in our other public filings and public statements. Our actual results may not always be in line with or exceed any guidance we have provided,
-      especially in times of economic uncertainty. Further, our lengthy sales cycle may contribute to substantial fluctuations in our quarterly or annual
-      operating results as significant sales can be delayed to subsequent periods. If, in the future, our operating or financial results for a particular
-      period do not meet any guidance provided or the expectations of investment analysts, or if we reduce our guidance for future periods, the market
-      price of our common  stock may decline as well. There can be no assurance that we will continue to issue public guidance in the future.
-      Our  quarterly operating results may fluctuate significantly and could fall below the expectations of securities analysts and investors due to
-      several factors, some of which are beyond our control, resulting in a decline in our stock price.
-            Our quarterly operating results may fluctuate significantly because of several factors, including:
-            •     labor availability and costs for hourly and management personnel;
-            •     profitability of our products, especially in new markets;
-            •     changes in interest rates;
-            •     impairment  of long-lived assets;
-                                                                           70
+Source: IONQ-10-Q.pdf (Pages 55-55)
+--- PAGE 55 ---
+9/28/25, 5:15 AM                                                                     10-Q
+      Income  tax benefit (expense)
 
-https://www.sec.gov/Archives/edgar/data/1824920/000095017025104066/ionq-20250630.htm                                                           101/109
+-------------------------------------------------------------------------------------------------------------------------------------------
+             |                                                              |       Six Months Ended       |--------------|---------------|
+             |--------------------------------------------------------------|           June 30,           |------$-------|-------%-------|
+-------------------------------------------------------------------------------------------------------------------------------------------
+             |--------------------------------------------------------------|     2025     |     2024      |    Change    |     Change    |
+             |                                                              |         (in thousands)       |              |               |
+-------------------------------------------------------------------------------------------------------------------------------------------
+             |Income  tax benefit (expense)                                  |$     15,257  | $        (23) |$      15,280|            NM |
 
---- PAGE 102 ---
-9/28/25, 5:15 AM                                                               10-Q
-
-https://
+            NM—Not    Meaningful
+            Income  tax benefit (expense) increased by $15.3 million to a benefit of $15.3 million for the six months ended June 30, 2025, from an
+      expense of less than $0.1 million for the six months ended June 30, 2024. The increase was primarily driven by a partial release of U.S. federal
+      and state valuation allowances.
+      Liquidity and  Capital Resources
+            As of June 30, 2025, we had cash, cash equivalents and available-for-sale securities of $656.8 million. Excluded from our available
+      liquidity is $3.4 million of restricted cash, which is primarily recorded in other noncurrent assets in our condensed consolidated balance sheets.
+      We  believe that our cash, cash equivalents and investments as of June 30, 2025, will be sufficient to meet our working capital and capital
+      expenditure needs for the next 12 months. We believe we will meet longer term expected future cash requirements and obligations through a
+      combination  of cash flows from operating activities and available funds from our cash, cash equivalents and investment balances. However, this
+      determination is based upon internal projections and is subject to changes in market and business conditions. In July 2025, we completed an
+      equity offering to raise additional capital. Refer to Note 18 for further details. We have incurred significant losses since our inception and as of
+      June 30, 2025, we had an accumulated deficit of $892.8 million. During the six months ended June 30, 2025, we incurred net losses of $209.1
+      million. We expect to incur significant losses and higher operating expenses for the
 === END SECTION 3 ===
 
 === DOCUMENT SECTION 4 ===
-Source: IONQ-10-Q.pdf (Pages 53-53)
---- PAGE 53 ---
-9/28/25, 5:15 AM                                                                 10-Q
-
---------------------------------------------------------------------------------------------------------------------------------------
-            |                                                             |     Three Months Ended     |--------------|--------------|
---------------------------------------------------------------------------------------------------------------------------------------
-            |-------------------------------------------------------------|          June 30,          |      $       |      %       |
-            |-------------------------------------------------------------|    2025     |     2024     |   Change     |    Change    |
---------------------------------------------------------------------------------------------------------------------------------------
-            |                                                             |       (in thousands)       |              |              |
-            |Income  tax benefit (expense)                                |$     15,269 | $        (15) |$     15,284 |           NM |
-
-           NM—Not    Meaningful
-           Income  tax benefit (expense) increased by $15.3 million to a benefit of $15.3 million for the three months ended June 30, 2025, from an
-      expense of less than $0.1 million for the three months ended June 30, 2024. The increase was primarily driven by a partial release of U.S. federal
-      and state valuation allowances.
-      Comparison  of the Six Months Ended  June 30, 2025 and 2024
-      Revenue
-
---------------------------------------------------------------------------------------------------------------------------------------
-            |                                                            |      Six Months Ended      |--------------|--------------|-
-            |------------------------------------------------------------|          June 30,          |------$-------|-----%--------|-
---------------------------------------------------------------------------------------------------------------------------------------
-            |------------------------------------------------------------|    2025     |     2024     |   Change     |   Change     |-
-            |                                                            |        (in thousands)      |              |              |-
---------------------------------------------------------------------------------------------------------------------------------------
-            |Revenue                                                      |$     28,260 | $    18,963 |  $     9,297  |          49%| 
-
-           Revenue  increased by $9.3 million, or 49%, to $28.3 million for the six months ended June 30, 2025, from $19.0 million for the six months
-      ended June 30, 2025. The increase was primarily driven by progress on arrangements to build specialized quantum computing hardware, as well
-      as increased revenue as a result of acquisitions.
-      Cost of revenue
-
---------------------------------------------------------------------------------------------------------------------------------------
-            |                                                            |      Six Months Ended      |--------------|--------------|-
-            |------------------------------------------------------------|          June 30,          |------$-------|-----%--------|-
---------------------------------------------------------------------------------------------------------------------------------------
-            |------------------------------------------------------------|    2025     |
+Source: IONQ-10-Q.pdf (Pages 103-103)
+all. The failure to raise capital
+      when  needed  could harm  our business, operating results and financial condition. Debt or equity issued to raise additional capital may reduce
+      the value of our common   stock.
+            We  cannot be certain when or if the operations of our business will generate sufficient cash to fund our ongoing operations or the growth of
+      our business. We intend to make investments to support our current business and may require additional funds to respond to business challenges,
+      including the need to develop or enhance our technology, improve our operating infrastructure or acquire complementary businesses and
+      technologies. Additional financing may not be available on favorable terms, if at all. In addition, we may not be able to access a portion of our
+      existing cash, cash equivalents and investments due to market conditions. If banks and financial institutions enter receivership or become
+      insolvent in the future in response to financial conditions affecting the banking system and financial markets, our ability to access our existing
+      cash, cash equivalents and investments may be threatened and could have a material adverse effect on our business and financial condition.
+      Additionally, weakness and volatility in capital markets and the economy, in general or as a result of bank failures or macroeconomic conditions
+      such as rising inflation, could limit our access to capital markets and increase our costs of borrowing. If adequate funds are not available on
+      acceptable terms, we may be unable to invest in future growth opportunities, which could harm our business, operating results and financial
+      condition. If we incur debt, the debt holders could have rights senior to holders of our common stock to make claims on our assets. The terms of
+      any debt could restrict our operations, including our ability to pay dividends on our common stock. If we issue additional equity securities,
+      stockholders will experience dilution, and the new equity securities could have rights senior to those of our common stock.
+            Because  the decision to issue securities in the future offering will depend on numerous considerations, including factors beyond our
+      control, we cannot predict or estimate the amount, timing or nature of any future issuances of debt or equity securities. As a result, stockholders
+      will bear the risk of future issuances of debt or equity securities reducing the value of their common stock and diluting their interest.
+      There  can be no assurance that we will be able to comply with the continued listing standards of the New York Stock Exchange (“NYSE”).
+            If we fail to satisfy the continued listing requirements of NYSE
 === END SECTION 4 ===
 
 === DOCUMENT SECTION 5 ===
-Source: IONQ-10-Q.pdf (Pages 69-71)
-among current and future partners and customers.
-            The markets in which we operate are rapidly evolving and highly competitive. As these markets continue to mature and new technologies
-      and competitors enter such markets, we expect competition to intensify. Our current competitors include (among others):
-            •    large, well-established tech companies that generally compete in all of our markets, including Amazon, Google, IBM, Intel, and
-                 Microsoft;
-            •    countries such as China, Russia, Australia, Canada, the United Kingdom, and certain countries in the European Union;
-            •    less-established public and private companies with competing technology, including companies located outside the United States;
-                 and
-            •    new  or emerging entrants seeking to develop competing technologies.
-            We compete  based on various factors, including technology, price, performance, multi-cloud availability, brand recognition and reputation,
-      customer support and differentiated capabilities, including ease of administration and use, scalability and reliability, data governance and
-      security. Many of our competitors have substantially greater brand recognition, customer relationships, and financial, technical and other
-      resources, including an experienced sales force and sophisticated supply chain management. They may be able to respond more effectively than
-                                                                        49
-
-https://www.sec.gov/Archives/edgar/data/1824920/000095017025104066/ionq-20250630.htm                                                       70/109
-
---- PAGE 71 ---
-9/28/25, 5:15 AM                                                               10-Q
-
-https://www.sec.gov/Archives/edgar/data/1824920/000095017025104066/ionq-20250630.htm                                                   71/109
+Source: IONQ-10-Q.pdf (Pages 10-10)
+----------------|----------------|---------------|---------------|-------------|- 
+-----------------------------------------------------------------------------------------------------------------------------------------
+      |stock in connection|   17,509,601  |        2  |       461,829  |            —   |           —   |       16,918  |      478,749|  
+      |with acquisitions  |               |           |                |                |               |               |             |  
+      |Issuance of common |---------------|-----------|----------------|----------------|---------------|---------------|-------------|- 
+-----------------------------------------------------------------------------------------------------------------------------------------
+      |stock from equity  |     8,896,073 |        1  |         6,342  |            —   |           —   |           —   |        6,343|  
+      |incentive plans    |               |           |                |                |               |               |             |  
+      |Vesting of restricted|             |-----------|                |----------------|---------------|---------------|             |- 
+      |                   |       48,145  |       —   |            98  |            —   |           —   |           —   |           98|  
+      |common  stock      |               |           |                |                |               |               |             |  
+      |Stock-based        |---------------|-----------|                |----------------|---------------|---------------|             |- 
+      |                   |           —   |       —   |        97,403  |            —   |           —   |           —   |       97,403|  
+      |compensation       |               |-----------|                |----------------|---------------|---------------|             |- 
+      |                   |       77,396  |       —   |         3,665  |            —   |           —   |           —   |        3,665|  
+      |Warrants exercised |               |-----------|                |----------------|---------------|---------------|             |- 
+      |Balance,           |               |           |                |                |               |               |             |  
+      |                   |  269,600,132  |$      27  |$    2,050,344  |$     (892,810) |$        4,072 |$      16,813  |$   1,178,446|  
+      |June 30, 2025      |               |           |                |                |               |               |             |-
 === END SECTION 5 ===
-
-=== DOCUMENT SECTION 6 ===
-Source: IONQ-10-Q.pdf (Pages 98-98)
-assert, as a defense, that we do not infringe the
-      relevant patent claims, that the patent is invalid or both. The strength of our defenses will depend on the patents asserted, the interpretation of
-      these patents, and our ability to invalidate the asserted patents. However, we could be unsuccessful in advancing non-infringement and/or
-      invalidity arguments in our defense. In the United States, issued patents enjoy a presumption of validity, and the party challenging the validity of
-https://www.sec.gov/Archives/edgar/data/1824920/000095017025104066/ionq-20250630.htm                                                            98/109
-=== END SECTION 6 ===
-
-=== DOCUMENT SECTION 7 ===
-Source: IONQ-10-Q.pdf (Pages 30-30)
---- PAGE 30 ---
-9/28/25, 5:15 AM                                                                  10-Q
-
----------------------------------------------------------------------------------------------------------------------------------------
-             |                                                                 |                 |   Measurement   |     Updated     |-
-             |                                                                 | Preliminary Fair|                 |                 | 
-             |                                                                 |                 |      Period     |  Preliminary Fair|
-             |                                                                 |     Value       |                 |                 | 
-             |                                                                 |                 |   Adjustments   |      Value      |-
-             |Accounts receivable                                               |$           400  |$            (24)| $           376|-
----------------------------------------------------------------------------------------------------------------------------------------
-             |Prepaid expenses and other current assets                         |            531  |            340  |             871|-
-             |Intangible assets                                                 |         11,900  |          (1,050)|          10,850|-
----------------------------------------------------------------------------------------------------------------------------------------
-             |Goodwill                                                          |          9,220  |            759  |           9,979|-
-             |Other noncurrent assets                                           |              3  |              —  |               3|-
----------------------------------------------------------------------------------------------------------------------------------------
-             |Unearned revenue                                                  |             —   |             (25)|             (25)|
-             | Total fair value of net assets acquired                          |$        22,054  |$             —  | $        22,054|-
----------------------------------------------------------------------------------------------------------------------------------------
-
-            The goodwill of $10.0 million is primarily attributable to Qubitekk's specialized assembled workforce and expected future synergies from
-      combining operations. The Company  expects the goodwill from this acquisition will be deductible for income tax purposes. Identifiable
-      intangibles recognized consist of $5.9 million in customer relationships, $4.0 million in developed technology, $0.8 million in trademarks, each
-      with estimated useful lives of 5 years, and $0.2 million in backlog with an estimated useful life of 1 year. Fair values of intangible assets were
-      determined using income approaches, include the relief from royalty and multi-period excess earnings methods.
-            The Company  has included the revenue and expenses of Qubitekk in its condensed consolidated financial statements from the date of
-      acquisition. No summarized unaudited pro forma results are provided for the Qubitekk acquisition due to the immateriality of this acquisition
-      relative to the Company's condensed consolidated financial position and results of operations.
-      4. CASH,  CASH   EQUIVALENT
-=== END SECTION 7 ===
 
 
 

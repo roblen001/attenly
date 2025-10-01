@@ -7,7 +7,7 @@ import EditorStep from '../components/agent-creation/EditorStep';
 import FileUpload from '../components/AgentExecution/FileUpload';
 import { api } from '../libs/https';
 import type { UploadedFile } from '../types';
-import { transformCustomAgentData, addProfessionalStyling } from '../utils/agentTransform';
+import { transformCustomAgentData, addProfessionalStyling, restoreInteractivePlaceholders } from '../utils/agentTransform';
 
 // Types matching backend schemas
 interface QuestionOut {
@@ -91,18 +91,25 @@ const CreateAgent: React.FC = () => {
         const agent = await response.json();
         setOriginalAgent(agent);
         
-        // Pre-populate all form fields
+        // Apply reverse transformation to convert simple placeholders back to interactive ones
+        const { restoredTemplate, mappedQuestions } = restoreInteractivePlaceholders(
+          agent.reportTemplate,
+          agent.questions
+        );
+        
+        // Pre-populate all form fields with transformed data
         setCurrentStep({
           step: 'upload',
           data: {
             agentName: agent.name,
             agentDescription: agent.description,
-            reportTemplate: agent.reportTemplate,
-            questions: agent.questions
+            reportTemplate: restoredTemplate,
+            questions: mappedQuestions
           }
         });
 
         console.log('Agent loaded for editing:', agent.name);
+        console.log('Template transformed for editing - placeholders restored:', mappedQuestions.length);
 
       } catch (error) {
         console.error('Error fetching agent for editing:', error);

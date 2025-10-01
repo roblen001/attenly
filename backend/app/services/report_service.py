@@ -24,7 +24,7 @@ class ReportService:
     def __init__(self):
         self.llm_service = llm_service
     
-    def generate_report(self, agent: Agent, vector_store: VectorStore, 
+    async def generate_report(self, agent: Agent, vector_store: VectorStore, 
                        document_ids: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Generate a complete report with extracted data and source quotes
@@ -50,7 +50,7 @@ class ReportService:
         
         try:
             # Get question-specific chunks for each question individually
-            questions_with_chunks = self._gather_question_specific_chunks(
+            questions_with_chunks = await self._gather_question_specific_chunks(
                 agent.questions, vector_store, document_ids
             )
             
@@ -95,7 +95,7 @@ class ReportService:
             logger.error(f"Failed to generate report for agent {agent.id}: {e}")
             raise ValueError(f"Report generation failed: {str(e)}")
     
-    def _gather_question_specific_chunks(self, questions: List[QuestionOut], vector_store: VectorStore, 
+    async def _gather_question_specific_chunks(self, questions: List[QuestionOut], vector_store: VectorStore, 
                                        document_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Gather relevant chunks for each question individually for optimal RAG processing"""
         
@@ -105,7 +105,7 @@ class ReportService:
         for question in questions:
             try:
                 # Use the question prompt as search query
-                chunks = vector_store.search_chunks(
+                chunks = await vector_store.search_chunks(
                     query=question.prompt,
                     top_k=VECTOR_SEARCH_TOP_K_PER_QUESTION,  # Use configurable value
                     document_ids=document_ids

@@ -18,6 +18,7 @@ from .pdf_parser import PDFProcessor
 from .chunking_service import ChunkingService
 from .vector_store import VectorStore
 from .document_classifier import DocumentClassifier, ProcessorType
+from .performance_monitor import time_operation, get_performance_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -265,12 +266,20 @@ class DocumentProcessor:
             Dictionary with processing results and statistics
         """
         
+        performance_monitor = get_performance_monitor()
+        
         try:
             logger.info(f"Starting document processing for {filename} (ID: {file_id})")
             
             # Step 1: Classify document to determine appropriate processor
-            logger.info("Step 1: Classifying document...")
-            classification = self.classifier.classify_document(content, filename)
+            with time_operation("document_classification", 
+                              {"filename": filename, "file_size_bytes": len(content)}) as timer:
+                classification = self.classifier.classify_document(content, filename)
+                classification_time = timer.stop().duration
+                
+                # Update performance metrics
+                if file_id in performance_monitor._processing_sessions:
+                    performance_monitor.update_file_metric(file_id, "classification_time", classification_time)
             
             # Check if document is supported for processing
             if classification["recommended_processor"] == ProcessorType.UNSUPPORTED.value:
@@ -299,8 +308,14 @@ class DocumentProcessor:
             logger.info(f"Using {processor.processor_name} for {filename} (confidence: {classification['confidence']:.2f})")
             
             # Step 3: Extract structured content
-            logger.info("Step 2: Extracting document content...")
-            extraction_result = processor.extract_content(content, filename)
+            with time_operation("content_extraction", 
+                              {"processor": processor.processor_name, "filename": filename}) as timer:
+                extraction_result = processor.extract_content(content, filename)
+                content_extraction_time = timer.stop().duration
+                
+                # Update performance metrics
+                if file_id in performance_monitor._processing_sessions:
+                    performance_monitor.update_file_metric(file_id, "content_extraction_time", content_extraction_time)
             
             if not extraction_result["success"]:
                 raise ValueError(f"Content extraction failed: {extraction_result.get('error', 'Unknown error')}")
@@ -308,28 +323,64 @@ class DocumentProcessor:
             document_data = extraction_result["data"]
             logger.info(f"Extracted content using {processor.processor_name}")
             
-            # Step 4: Create two-level chunks
-            logger.info("Step 3: Creating two-level chunks...")
-            l1_chunks, l2_chunks = self.chunking_service.create_two_level_chunks(
-                document_id=file_id,
-                pdf_data=document_data,  # Note: This works for PDF, may need abstraction for other types
-                filename=filename
-            )
+            # Update file metrics with document stats
+            if file_id in performance_monitor._processing_sessions:
+                total_pages = document_data["metadata"]["total_pages"]
+                performance_monitor.update_file_metric(file_id, "total_pages", total_pages)
+            
+            # Step 4: Create L1 chunks
+            with time_operation("l1_chunking", 
+                              {"filename": filename, "total_pages": document_data["metadata"]["total_pages"]}) as timer:
+                l1_chunks, _ = self.chunking_service.create_two_level_chunks(
+                    document_id=file_id,
+                    pdf_data=document_data,
+                    filename=filename
+                )
+                l1_chunking_time = timer.stop().duration
+                
+                # Update performance metrics
+                if file_id in performance_monitor._processing_sessions:
+                    performance_monitor.update_file_metric(file_id, "l1_chunking_time", l1_chunking_time)
+                    performance_monitor.update_file_metric(file_id, "l1_chunks_created", len(l1_chunks))
+            
+            # Step 5: Create L2 chunks
+            with time_operation("l2_chunking", 
+                              {"filename": filename, "l1_chunks": len(l1_chunks)}) as timer:
+                # Re-run to get L2 chunks (the chunking service creates both but we want separate timing)
+                _, l2_chunks = self.chunking_service.create_two_level_chunks(
+                    document_id=file_id,
+                    pdf_data=document_data,
+                    filename=filename
+                )
+                l2_chunking_time = timer.stop().duration
+                
+                # Update performance metrics
+                if file_id in performance_monitor._processing_sessions:
+                    performance_monitor.update_file_metric(file_id, "l2_chunking_time", l2_chunking_time)
+                    performance_monitor.update_file_metric(file_id, "l2_chunks_created", len(l2_chunks))
             
             if not l1_chunks:
                 raise ValueError("Failed to create document chunks")
             
             logger.info(f"Created {len(l1_chunks)} L1 chunks and {len(l2_chunks)} L2 chunks")
             
-            # Step 5: Store chunks in vector database
-            logger.info("Step 4: Storing chunks in vector database...")
-            stored_count = vector_store.store_document_chunks(file_id, l1_chunks, l2_chunks)
+            # Step 6: Store chunks in vector database
+            with time_operation("vector_storage", 
+                              {"filename": filename, "l1_chunks": len(l1_chunks), "l2_chunks": len(l2_chunks)}) as timer:
+                stored_count = await vector_store.store_document_chunks(file_id, l1_chunks, l2_chunks)
+                vector_storage_time = timer.stop().duration
+                
+                # Update performance metrics
+                if file_id in performance_monitor._processing_sessions:
+                    performance_monitor.update_file_metric(file_id, "vector_storage_time", vector_storage_time)
+                    performance_monitor.update_file_metric(file_id, "chunks_stored", stored_count)
             
             if stored_count == 0:
                 raise ValueError("Failed to store chunks for document")
             
-            # Step 6: Generate processing statistics
-            chunk_stats = self.chunking_service.get_chunk_statistics(l1_chunks, l2_chunks)
+            # Step 7: Generate processing statistics
+            with time_operation("chunk_statistics", {"filename": filename}):
+                chunk_stats = self.chunking_service.get_chunk_statistics(l1_chunks, l2_chunks)
             
             # Compile results
             result = {
@@ -346,13 +397,27 @@ class DocumentProcessor:
                     "total_paragraphs": document_data["statistics"]["total_paragraphs"],
                     "l1_chunks": len(l1_chunks),
                     "l2_chunks": len(l2_chunks),
-                    "stored_chunks": stored_count
+                    "stored_chunks": stored_count,
+                    # Add detailed timing breakdown
+                    "timing_breakdown": {
+                        "classification_time_ms": classification_time * 1000,
+                        "content_extraction_time_ms": content_extraction_time * 1000,
+                        "l1_chunking_time_ms": l1_chunking_time * 1000,
+                        "l2_chunking_time_ms": l2_chunking_time * 1000,
+                        "vector_storage_time_ms": vector_storage_time * 1000
+                    }
                 },
                 "chunk_statistics": chunk_stats,
                 "document_metadata": document_data["metadata"]
             }
             
             logger.info(f"Successfully processed document {filename}")
+            logger.info(f"📈 Processing breakdown: Classification: {classification_time*1000:.1f}ms, "
+                       f"Content: {content_extraction_time*1000:.1f}ms, "
+                       f"L1 Chunks: {l1_chunking_time*1000:.1f}ms, "
+                       f"L2 Chunks: {l2_chunking_time*1000:.1f}ms, "
+                       f"Vector Store: {vector_storage_time*1000:.1f}ms")
+            
             return result
             
         except Exception as e:

@@ -424,6 +424,9 @@ const EditorStep: React.FC<EditorStepProps> = ({
         onClose={handleAIModalClose}
         onAddToTemplate={handleAddToTemplate}
         agentId="test-agent"
+        existingQuestion={editingQuestion?.prompt}
+        existingAnswer={editingQuestion?.exampleAnswer}
+        existingQuotes={editingQuestion?.exampleQuotes}
       />
     </div>
   );

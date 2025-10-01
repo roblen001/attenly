@@ -11,9 +11,28 @@ interface QuestionOut {
   prompt: string;
 }
 
+interface Question {
+  id: string;
+  placeholder: string;
+  prompt: string;
+  exampleAnswer: string;
+  exampleQuotes: Quote[];
+}
+
+interface Quote {
+  text: string;
+  page: number;
+  source?: string;
+}
+
 interface TransformResult {
   cleanTemplate: string;
   cleanQuestions: QuestionOut[];
+}
+
+interface RestoreResult {
+  restoredTemplate: string;
+  mappedQuestions: Question[];
 }
 
 /**
@@ -123,6 +142,69 @@ export function transformCustomAgentData(reportTemplate: string, questions: Ques
  */
 function escapeRegex(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Restore interactive placeholders for editing mode
+ * Converts simple {{placeholder}} format back to clickable anchor tags
+ */
+export function restoreInteractivePlaceholders(
+  template: string, 
+  questions: QuestionOut[]
+): RestoreResult {
+  let restoredTemplate = template;
+  
+  // Create a map of placeholder names to question data
+  const placeholderToQuestion = new Map<string, QuestionOut>();
+  questions.forEach(question => {
+    placeholderToQuestion.set(question.placeholder, question);
+  });
+  
+  // Find all {{placeholder}} patterns in the template
+  const placeholderRegex = /\{\{([^}]+)\}\}/g;
+  const mappedQuestions: Question[] = [];
+  
+  restoredTemplate = restoredTemplate.replace(placeholderRegex, (match, placeholderName) => {
+    const trimmedName = placeholderName.trim();
+    const question = placeholderToQuestion.get(trimmedName);
+    
+    if (question) {
+      // Create a mapped question with the editor format expected by EditorStep
+      const mappedQuestion = {
+        id: question.id,
+        placeholder: `{{${trimmedName}}}`,
+        prompt: question.prompt,
+        exampleAnswer: '', // Will be empty for existing questions
+        exampleQuotes: []  // Will be empty for existing questions
+      };
+      
+      // Only add if not already in the array
+      if (!mappedQuestions.find(q => q.id === question.id)) {
+        mappedQuestions.push(mappedQuestion);
+      }
+      
+      // Convert to interactive anchor tag
+      const interactiveHtml = `<a href="#" class="ai-placeholder mceNonEditable ai-locked" data-question-id="${escapeHtml(question.id)}" role="button" tabindex="0" contenteditable="false">{{${escapeHtml(trimmedName)}}}</a>`;
+      return interactiveHtml;
+    }
+    
+    // Return original if no matching question found
+    return match;
+  });
+  
+  return {
+    restoredTemplate,
+    mappedQuestions
+  };
+}
+
+/**
+ * Escape HTML characters for safe insertion
+ */
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 /**

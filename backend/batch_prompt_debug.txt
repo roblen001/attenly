@@ -1,0 +1,183 @@
+You are an expert data extraction AI. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
+
+
+=== QUESTION 1 (ID: {{Test Question}}) ===
+QUESTION: Why are they looking for work?
+
+RELEVANT CONTEXT FOR THIS QUESTION:
+=== DOCUMENT SECTION 1 ===
+Source: roberto_resume.pdf (Pages 1-2)
+--- PAGE 1 ---
+Roberto   Lentini                                                                Email  : rob.len001@gmail.com
+LinkedIn: roberto-lentini-908843173                                                   Mobile : +1-416-819-4393
+GitHub:  roblen001                                                                       Location : Halifax, NS
+Mission
+
+I’m a senior machine learning engineer at Aviva with a strong foundation in statistics, technical communication, and
+self-taught quantum computing. I build innovative solutions to real-world problems and translate complex ideas into
+high-impact, accessible products.
+Language
+
+Fully Bilingual in French and English (reading, writing, and speaking).
+Education
+
+  University  of Toronto                                                                          Toronto, ON
+•
+  Honours Bachelor of Science; Major: Statistics — Minors: Mathematics, Biology.              Graduation: 2022
+Selected    Continued     Education
+
+  Physics  1
+•
+  Toronto Metropolitan University GPA: 4.33/4.33                                                    June 2025
+     ◦content:  force and motion, work and energy, collisions, gravitation, electrostatics, capacitance.
+  Physics  2
+•
+  Toronto Metropolitan University                                                         Expected August 2025
+     ◦content:  oscillations, mechanical waves, magnetism, electromagnetism, optics and nuclear physics.
+  Modern   Physics
+•
+  Dalhousie University                                                                  Expected December 2025
+     ◦content:  quantum  wave functions, energy quantization, Schr¨odinger’s equation, quantum tunneling.
+  Qiskit Global  Summer   School  2024
+•
+  Earned Badge of Quantum  Excellence.                                                                Jul 2024
+     ◦Links:   (Qiskit Global Summer School). (Badge of Quantum Excellence).
+Awards    and   Achievements
+
+  Promoted   to Senior Machine   Learning  Engineer
+•
+  Promoted to senior less than 2 years at the company.                                                Oct 2024
+  Top  Performer  Recognition
+• Recognized by Tracy Garrad, CEO of Aviva Canada, as a top performer for outstanding                May 2023
+  contributions to the organization.
+Experience
+
+  Aviva  Canada                                                                                Remote, Canada
+•
+  Senior Machine Learning Engineer                                                            Oct 2024 – Present
+     ◦AI-Powered    Underwriting   Assistant: Designed and developed an AI-powered underwriting assistant that
+       leverages generative AI to process broker submissions and
+=== END SECTION 1 ===
+
+=== DOCUMENT SECTION 2 ===
+Source: roberto_resume.pdf (Pages 1-2)
+�Hidden   Markov  Models:  Innovated a categorization tool using Hidden Markov Models for early detection of
+       Alzheimer’s, enhancing diagnostic capabilities.
+     ◦Proposal   Similarity App: Developed a similarity proposal app, reducing manual workload by 90% and
+       increasing proposal review efficiency. (Link: Document Similarity Checker).
+     ◦Technologies  used: R, RShiny, Hidden Markov Models, Python, Elastic Net Regression.
+  Baycrest  Rotman  Research  Institute                                                         Toronto, ON
+•
+  Research Intern (Data Science)                                                        May 2020 – Aug 2020
+     ◦Data   Cleaning App:  Enhanced an internal data cleaning app, to check standards for any kind of data and
+       standard guidelines, reducing data validation time by 95%. (Link: ONDRI Standards App).
+     ◦Technologies  used:  Python, R, Shiny.
+  SickKids  Research Institute (Wilson  Lab)                                                    Toronto, ON
+•
+  Research Intern (Data Engineer)                                                       May 2019 – Aug 2019
+     ◦Data   cleaning script: Developed Python and R scripts to automate data extraction, sorting, and merging from
+       large databases, reducing manual tasks and improving processing speed by 80%.
+     ◦Technologies  used: Python, R.
+Independent     Projects
+
+• Automated   Trading  Agent  (Jul 2021-Apr 2023): Developed an automated trading agent using a shared proximal
+  policy optimization model to trade Ethereum. Created a dashboard for real-time monitoring. Supervise by UofT
+  professor. (Links: algorithm, dashboard).
+  Technologies  used: Python, TensorFlow, Flask, GatsbyJS, Reinforcement Learning.
+• Piggibank  App  (May  2021-Aug  2021): Developed a beginner-friendly budgeting app. Led development and app
+  design. (Link: PiggiBank).
+  Technologies  used: Android Studio, Google Play Services, React Native, React Animated
+• TipsiSocial (Jan 2019-Apr  2022): Designed and launched a web and Android app for easy access to nightlife venues,
+  allowing users to browse and skip lines effortlessly. (Link: TipsiSocial).
+  Technologies  used: Javascript, Android SDK, Firebase, UX/UI Design, React Native, ReactJS.
+Technical    Competitions
+
+• Aviva  AWS   DeepRacer  Competition
+=== END SECTION 2 ===
+
+=== DOCUMENT SECTION 3 ===
+Source: roberto_resume.pdf (Pages 1-2)
+, as a top performer for outstanding                May 2023
+  contributions to the organization.
+Experience
+
+  Aviva  Canada                                                                                Remote, Canada
+•
+  Senior Machine Learning Engineer                                                            Oct 2024 – Present
+     ◦AI-Powered    Underwriting   Assistant: Designed and developed an AI-powered underwriting assistant that
+       leverages generative AI to process broker submissions and automatically output Account Summaries and Coverage
+       Checklists. Collaborated closely with underwriters to refine workflow requirements and implemented the entire
+       system from architecture to deployment.
+   Machine Learning Engineer                                                                Dec 2022 – Oct 2024
+     ◦Modular    Internal Generative  AI Framework:   Designed and led the development of a scalable, modular
+       framework for internal generative AI tool creation, enabling rapid adaptation to evolving industry standards and
+       streamlining the end-to-end development process for on-premise deployment.
+     ◦Productionized    Large Language   Models:  Led the development of a production-ready LLM inference server
+       using NVIDIA  Triton Server and TensorRT on an on-premise HPC cluster, increasing inferencing speed by 80%. I
+       also automated the process with bash-script deployment.
+     ◦Commercial    Lines Risk  Recommendation:    Spearheaded the automation of risk recommendation processes
+       with a generative AI RAG application, reducing quoting time from weeks to minutes.
+
+--- PAGE 2 ---
+     ◦AI  Innovation  Presentations: Presented AI innovations at internal conferences, effectively communicating
+       complex technologies to senior stakeholders.
+     ◦Technologies  used: Streamlit, Flask, FastAPI, Docker, LangChain, HuggingFace, Transformers, Python, Triton,
+       TensorRT.
+  Baycrest  Rotman  Research  Institute                                                         Toronto, ON
+•
+  Research Staff (Data Scientist)                                                       May 2021 – Dec 2022
+     ◦Alzheimer’s   Research: Led analysis on Alzheimer’s and Mild Cognitive Impairment using elastic net regression,
+       to predict fear of falling in patients, informing potential interventions.
+     ◦Hidden   Markov  Models:  Innovated a categorization tool using Hidden Markov Models for early detection of
+       Alzheimer’s, enhancing diagnostic capabilities.
+     ◦Proposal   Similarity App: Developed a similarity proposal app, reducing manual workload by 90% and
+       increasing proposal review efficiency. (Link: Document Similarity Checker).
+     ◦Technologies  used: R
+=== END SECTION 3 ===
+
+=== DOCUMENT SECTION 4 ===
+Source: roberto_resume.pdf (Pages 1-2)
+Jan 2019-Apr  2022): Designed and launched a web and Android app for easy access to nightlife venues,
+  allowing users to browse and skip lines effortlessly. (Link: TipsiSocial).
+  Technologies  used: Javascript, Android SDK, Firebase, UX/UI Design, React Native, ReactJS.
+Technical    Competitions
+
+• Aviva  AWS   DeepRacer  Competition   (2023) Led a team of five to develop a PPO-based reinforcement learning
+  agent for AWS DeepRacer, winning first place in the Aviva Global qualifiers and competing in the London finals.
+  Presented results at Aviva Canada’s Data Science Summit.
+• RUHacks   Hackathon   Project (2021) Lead Developer in the creation of TAVOS (Time Assistant and Virtual
+  Optimizer for Students), an intelligent planner that optimizes study time management. (Link: App Demo).
+Technical    Communications
+
+• Medium   Blogger  and technical Youtuber:  I create engaging blog posts and videos on quantum computing,
+  semiconductors, and emerging technologies, exploring their industry applications and global political impact. Published
+  articles in Medium’s DataDrivenInvestors and Dialogue and Discourse. (Notable Article Link: AI’s Full Potential Hinges
+  on moving from GPUs to Quantum  Computers (QPUs)) (Link: Documentary on Quantum  Computing and Geopolitics).
+• Book/Chapter   Reviewer:
+     ◦Manning  Publications (Published 2024): Architecture Modernization: Socio-technical alignment of software,
+       strategy, and structure by Nick Tune.
+     ◦Chapman   and Hall (Published 2023): Telling Stories with Data by Rohan Alexander.
+Sports   Achievements
+
+• Team  Canada   Paddler (Jan  2018 - Sep 2019): IDBF World Dragon Boat Racing Championships.
+• Premier  Dragon  Boating  Team  (Jan 2018  - Sep 2019): NDRC  Paddling.
+• University Dragon  Boating  Team  (Jan  2017 - Sep 2018): New Dragons, University of Toronto.
+• NOJHL    Hockey  Player (Aug  2016 - Apr  2017): Kirkland Lake Goldminers Junior Hockey League Team.
+=== END SECTION 4 ===
+
+
+
+
+
+INSTRUCTIONS:
+1. For each question, analyze ONLY its specific relevant context section
+2. Extract the specific information requested for each question
+3. If information is not found in a question's context, respond with "Not specified" or "Not found"
+4. Be precise and factual - only extract information that is explicitly has support in the context
+5. For numerical values, include units when specified
+6. For dates, use a consistent format (MM/DD/YYYY or as stated in document)
+7. Directly answer each question
+8. Respond in the exact JSON format specified
+
+RESPONSE FORMAT:
+You must respond with a valid JSON object containing answers for all questions using their IDs as keys.

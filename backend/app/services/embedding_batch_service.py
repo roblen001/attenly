@@ -28,6 +28,21 @@ from app.config import (
     EMBEDDING_MAX_CONCURRENT_BATCHES
 )
 
+# Global HTTP client for connection reuse (HTTP/2 enabled)
+_HTTPX_CLIENT: Optional[httpx.AsyncClient] = None
+
+def _get_client() -> httpx.AsyncClient:
+    """Get or create the global HTTP client with HTTP/2 support and connection reuse"""
+    global _HTTPX_CLIENT
+    if _HTTPX_CLIENT is None:
+        _HTTPX_CLIENT = httpx.AsyncClient(
+            http2=True, 
+            timeout=httpx.Timeout(60.0),  # Longer timeout for batch operations
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
+        logger.info("Initialized global httpx client with HTTP/2 and connection reuse")
+    return _HTTPX_CLIENT
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,113 +122,101 @@ class EmbeddingBatchService:
         batch_index: int,
         retry_count: int = 0
     ) -> BatchResult:
-        """Generate embeddings for a single batch with retry logic"""
+        """Generate embeddings for a single batch using the real batch API with retry logic"""
         
         start_time = time.time()
-        
-        try:
-            # Rate limiting
-            await self._rate_limit_delay()
-            
-            # Create embedding request
-            model = genai.GenerativeModel(self.model_name)
-            
-            # Use the embed_content method for batch processing
-            response = await asyncio.wait_for(
-                asyncio.to_thread(
-                    genai.embed_content,
-                    model=self.model_name,
-                    content=texts
-                ),
-                timeout=self.timeout
-            )
-            
-            # Extract embeddings from response
-            embeddings = []
-            
-            # Handle the Google AI API response format
-            if isinstance(response, dict) and 'embedding' in response:
-                embedding_data = response['embedding']
+        await self._rate_limit_delay()
+
+        # Use the real batch API endpoint with correct format
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:batchEmbedContents"
+        params = {"key": self.api_key}
+        # Correct payload format per Google AI API documentation
+        payload = {
+            "requests": [
+                {
+                    "model": f"models/{self.model_name}",
+                    "content": {"parts": [{"text": text}]}
+                }
+                for text in texts
+            ]
+        }
+
+        client = _get_client()
+        backoff = 0.5
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                logger.debug(f"Making batch API call for {len(texts)} texts (batch {batch_index}, attempt {attempt + 1})")
                 
-                if isinstance(embedding_data, list):
-                    # Check if it's a single embedding (list of floats) or batch embeddings (list of lists)
-                    if len(embedding_data) > 0:
-                        if isinstance(embedding_data[0], (int, float)):
-                            # Single embedding - list of numbers
-                            embeddings = [embedding_data]
-                        elif isinstance(embedding_data[0], list):
-                            # Batch embeddings - list of lists
-                            embeddings = embedding_data
-                        else:
-                            raise ValueError(f"Unexpected embedding data format: first element is {type(embedding_data[0])}")
-                    else:
-                        raise ValueError("Empty embedding data received")
-                else:
-                    raise ValueError(f"Expected embedding data to be a list, got {type(embedding_data)}")
-            else:
-                raise ValueError(f"No 'embedding' key found in response. Response keys: {list(response.keys()) if isinstance(response, dict) else 'Not a dict'}")
-            
-            if not embeddings:
-                raise ValueError("No embeddings extracted from response")
-            
-            processing_time = time.time() - start_time
-            
-            # Update statistics
-            self.total_embeddings_generated += len(embeddings)
-            self.total_api_calls += 1
-            self.total_processing_time += processing_time
-            
-            logger.debug(f"Generated {len(embeddings)} embeddings in batch {batch_index} "
-                        f"({processing_time:.2f}s)")
-            
-            return BatchResult(
-                embeddings=embeddings,
-                batch_index=batch_index,
-                processing_time=processing_time,
-                retry_count=retry_count,
-                success=True
-            )
-            
-        except asyncio.TimeoutError as e:
-            error_msg = f"Batch {batch_index} timed out after {self.timeout}s"
-            logger.warning(error_msg)
-            return await self._handle_batch_error(texts, batch_index, retry_count, error_msg)
-            
-        except Exception as e:
-            error_msg = f"Batch {batch_index} failed: {str(e)}"
-            logger.warning(error_msg)
-            return await self._handle_batch_error(texts, batch_index, retry_count, error_msg)
+                r = await client.post(url, params=params, json=payload)
+                
+                # Handle server errors with retry
+                if r.status_code >= 500:
+                    raise httpx.HTTPStatusError("Server error", request=r.request, response=r)
+                
+                r.raise_for_status()
+                data = r.json()
+
+                # Response format: {"embeddings": [{"values": [...]}, ...]}
+                emb_items = data.get("embeddings", [])
+                if not emb_items:
+                    raise ValueError(f"Bad batch response: keys={list(data.keys())}")
+
+                embeddings = [item["values"] for item in emb_items]
+                if len(embeddings) != len(texts):
+                    raise ValueError(f"Batch size mismatch ({len(embeddings)} != {len(texts)})")
+
+                processing_time = time.time() - start_time
+                
+                # Update statistics
+                self.total_api_calls += 1
+                self.total_embeddings_generated += len(embeddings)
+                self.total_processing_time += processing_time
+
+                logger.debug(f"✅ Generated {len(embeddings)} embeddings in batch {batch_index} "
+                           f"({processing_time:.2f}s, attempt {attempt + 1})")
+
+                return BatchResult(
+                    embeddings=embeddings,
+                    batch_index=batch_index,
+                    processing_time=processing_time,
+                    retry_count=attempt,
+                    success=True,
+                )
+
+            except (httpx.HTTPError, ValueError) as e:
+                error_msg = f"Batch {batch_index} failed (attempt {attempt + 1}): {str(e)}"
+                logger.warning(error_msg)
+                
+                if attempt < self.max_retries:
+                    logger.info(f"Retrying batch {batch_index} after {backoff}s delay")
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+                    continue
+                
+                # Final failure after all retries
+                self.error_count += 1
+                logger.error(f"Batch {batch_index} failed after {self.max_retries + 1} attempts: {str(e)}")
+                
+                return BatchResult(
+                    embeddings=[],
+                    batch_index=batch_index,
+                    processing_time=time.time() - start_time,
+                    retry_count=attempt,
+                    error=str(e),
+                    success=False,
+                )
+
+        # This should never be reached, but included for safety
+        return BatchResult(
+            embeddings=[],
+            batch_index=batch_index,
+            processing_time=time.time() - start_time,
+            retry_count=self.max_retries,
+            error="Maximum retries exceeded",
+            success=False,
+        )
     
-    async def _handle_batch_error(
-        self, 
-        texts: List[str], 
-        batch_index: int, 
-        retry_count: int,
-        error_msg: str
-    ) -> BatchResult:
-        """Handle batch processing errors with retry logic"""
-        
-        self.error_count += 1
-        
-        if retry_count < self.max_retries:
-            # Exponential backoff
-            delay = 2 ** retry_count
-            logger.info(f"Retrying batch {batch_index} after {delay}s delay "
-                       f"(attempt {retry_count + 1}/{self.max_retries})")
-            
-            await asyncio.sleep(delay)
-            return await self._generate_batch_embeddings(texts, batch_index, retry_count + 1)
-        
-        else:
-            logger.error(f"Batch {batch_index} failed after {self.max_retries} retries: {error_msg}")
-            return BatchResult(
-                embeddings=[],
-                batch_index=batch_index,
-                processing_time=0.0,
-                retry_count=retry_count,
-                error=error_msg,
-                success=False
-            )
     
     async def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """

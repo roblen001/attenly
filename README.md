@@ -116,7 +116,7 @@ MAX_FILE_SIZE_MB=50
 
 #### Frontend Environment Variables
 ```bash
-VITE_API_BASE_URL=https://api.attently.ca
+VITE_API_BASE_URL=https://api.attenly.ca
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```

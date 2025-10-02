@@ -52,10 +52,10 @@ VECTOR_SEARCH_MAX_SOURCE_QUOTES = 3
 # =============================================================================
 
 # Batch Embedding Parameters
-EMBEDDING_BATCH_SIZE = 50  # Number of texts to embed in a single batch (max 100 for Google AI)
-EMBEDDING_MAX_RETRIES = 3  # Maximum number of retry attempts for failed batches
+EMBEDDING_BATCH_SIZE = 100  # Number of texts to embed in a single batch (max 100 for Google AI)
+EMBEDDING_MAX_RETRIES = 4  # Maximum number of retry attempts for failed batches
 EMBEDDING_TIMEOUT_SECONDS = 30  # Timeout for embedding API requests
-EMBEDDING_MODEL_NAME = "models/gemini-embedding-001"  # Google AI embedding model
+EMBEDDING_MODEL_NAME = "gemini-embedding-001"  # Google AI embedding model (correct name for batch API)
 EMBEDDING_MAX_CONCURRENT_BATCHES = 3  # Maximum concurrent batch requests
 
 # =============================================================================

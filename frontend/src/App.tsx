@@ -8,13 +8,15 @@ import {
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
+import AuthGate from "./components/AuthGate";
 import { useAuth } from "./feature/auth/useAuth";
 import AgentExecutionPage from "./pages/AgentExecution";
 import ReportView from "./pages/ReportView";
 import CreateAgent from "./pages/CreateAgent";
 
 export default function App() {
-  const { session, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return (
@@ -33,13 +35,14 @@ export default function App() {
   return (
     <Router>
       <Routes>
+        {/* Public Routes */}
         <Route
           path="/"
           element={
-            session ? (
+            isAuthenticated ? (
               <Navigate to="/dashboard" replace />
             ) : (
-              <LandingPage session={session} />
+              <LandingPage />
             )
           }
         />
@@ -47,7 +50,7 @@ export default function App() {
         <Route
           path="/login"
           element={
-            session ? (
+            isAuthenticated ? (
               <Navigate to="/dashboard" replace />
             ) : (
               <Login />
@@ -55,69 +58,61 @@ export default function App() {
           }
         />
 
+        {/* Auth Callback Route */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
+
+        {/* Protected Routes */}
         <Route
           path="/dashboard"
           element={
-            session ? (
+            <AuthGate>
               <Dashboard />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            </AuthGate>
           }
         />
 
         <Route 
           path="/agent-execution/:agentId" 
           element={
-            session ? (
+            <AuthGate>
               <AgentExecutionPage />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            </AuthGate>
           }
         />
 
         <Route 
           path="/report/:agentId" 
           element={
-            session ? (
+            <AuthGate>
               <ReportView />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            </AuthGate>
           }
         />
 
         <Route 
           path="/report/saved/:reportId" 
           element={
-            session ? (
+            <AuthGate>
               <ReportView />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            </AuthGate>
           }
         />
 
         <Route 
           path="/create-agent" 
           element={
-            session ? (
+            <AuthGate>
               <CreateAgent />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            </AuthGate>
           }
         />
 
         <Route 
           path="/create-agent/:agentId" 
           element={
-            session ? (
+            <AuthGate>
               <CreateAgent />
-            ) : (
-              <Navigate to="/" replace />
-            )
+            </AuthGate>
           }
         />
 

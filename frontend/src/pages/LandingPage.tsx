@@ -1,12 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import "./LandingPage.css";
-import type { Session } from "@supabase/supabase-js";
+import { useAuth } from "../feature/auth/useAuth";
 
-export default function LandingPage({ session }: { session: Session | null }) {
+export default function LandingPage() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const handleGetStarted = async () => {
-    if (session) {
+    if (isAuthenticated) {
       navigate("/dashboard");
     } else {
       navigate("/login");

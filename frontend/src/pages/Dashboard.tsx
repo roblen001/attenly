@@ -9,24 +9,55 @@ import PrebuiltAgentCard from '../components/dashboard/PrebuiltAgentCard';
 import CustomAgentCard from '../components/dashboard/CustomAgentCard';
 import CompactReportList from '../components/dashboard/CompactReportList';
 
+// Import types from the component files to reuse existing interfaces
+interface CustomAgent {
+  id: string;
+  name: string;
+  description: string;
+  reportTemplate: string;
+  questions: Array<{
+    id: string;
+    placeholder: string;
+    prompt: string;
+  }>;
+  user_id: string;
+  is_custom: boolean;
+  created_by_name?: string;
+  createdAt: string;
+  updatedAt: string;
+  can_delete: boolean;
+}
+
+interface SavedReport {
+  id: string;
+  report_name: string;
+  agent_name: string;
+  agent_id: string;
+  saved_at: string;
+  generated_at: string;
+}
+
 // TODO BEFORE LAUNCH: important to adjust supabase polecies to include email confirmation and what not
 export default function Dashboard() {
   const { loading: authLoading, session, signOut } = useAuth();
   const navigate = useNavigate();
   const [prebuiltAgents, setPrebuiltAgents] = useState<Agent[]>([]);
-  const [customAgents, setCustomAgents] = useState<any[]>([]);
+  const [customAgents, setCustomAgents] = useState<CustomAgent[]>([]);
   const [loadingCustomAgents, setLoadingCustomAgents] = useState(false);
-  const [savedReports, setSavedReports] = useState<any[]>([]);
+  const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   const [loadingSavedReports, setLoadingSavedReports] = useState(false);
   
   // Ref to track if API calls have been initiated to prevent duplicates
   const apiCallsInitiated = useRef(false);
+  // State and ref to track visibility and data loading times
+  const [wasVisible, setWasVisible] = useState(true);
+  const lastDataLoad = useRef<number>(0);
 
   const handleExecuteAgent = (agent: Agent) => {
     navigate(`/agent-execution/${agent.id}`);
   };
 
-  const handleExecuteCustomAgent = (agent: any) => {
+  const handleExecuteCustomAgent = (agent: CustomAgent) => {
     navigate(`/agent-execution/${agent.id}`);
   };
 
@@ -112,9 +143,44 @@ export default function Dashboard() {
     }
   };
 
-  // Reset API calls flag when auth state changes
+  // Handle page visibility changes to prevent unnecessary reloads on tab switching
   useEffect(() => {
-    apiCallsInitiated.current = false;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !wasVisible) {
+        // Page became visible after being hidden
+        // Only allow reload if data is older than 30 seconds (prevents excessive reloads)
+        const now = Date.now();
+        if (now - lastDataLoad.current > 30000) {
+          apiCallsInitiated.current = false;
+        }
+        setWasVisible(true);
+      } else if (document.visibilityState === 'hidden') {
+        setWasVisible(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [wasVisible]);
+
+  // Reset API calls flag when auth state changes (for legitimate auth changes)
+  useEffect(() => {
+    // Only reset immediately for auth changes, not routine session validation
+    if (!authLoading && session) {
+      // Allow some time for auth state to stabilize before allowing reloads
+      const timer = setTimeout(() => {
+        // Only reset if we don't have recent data
+        const now = Date.now();
+        if (now - lastDataLoad.current > 10000) { // 10 seconds for auth changes
+          apiCallsInitiated.current = false;
+        }
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
   }, [authLoading, session]);
 
   useEffect(() => {
@@ -129,6 +195,7 @@ export default function Dashboard() {
     }
 
     apiCallsInitiated.current = true;
+    lastDataLoad.current = Date.now(); // Track when we loaded data
     const controller = new AbortController();
 
     async function loadPrebuiltAgents() {
@@ -162,7 +229,14 @@ export default function Dashboard() {
 
     async function loadCustomAgents() {
       try {
-        setLoadingCustomAgents(true);
+        // Only show loading state if we don't have existing data or it's been a while
+        const hasExistingData = customAgents.length > 0;
+        const shouldShowLoading = !hasExistingData || (Date.now() - lastDataLoad.current > 30000);
+        
+        if (shouldShowLoading) {
+          setLoadingCustomAgents(true);
+        }
+        
         const res = await api("/agents/list_user_custom_agents", {
           method: "GET",
           headers: { Accept: "application/json" },
@@ -173,7 +247,10 @@ export default function Dashboard() {
         if (!res.ok) {
           const msg = await res.text().catch(() => "");
           console.error("Failed to load custom agents:", res.status, msg);
-          setCustomAgents([]);
+          // Only clear existing data if we don't have any or the call was expected to refresh
+          if (!hasExistingData) {
+            setCustomAgents([]);
+          }
           return;
         }
 
@@ -182,7 +259,10 @@ export default function Dashboard() {
       } catch (err: unknown) {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Error loading custom agents:", err);
-          setCustomAgents([]);
+          // Only clear existing data if we don't have any
+          if (customAgents.length === 0) {
+            setCustomAgents([]);
+          }
         }
       } finally {
         setLoadingCustomAgents(false);
@@ -191,7 +271,14 @@ export default function Dashboard() {
 
     async function loadSavedReports() {
       try {
-        setLoadingSavedReports(true);
+        // Only show loading state if we don't have existing data or it's been a while
+        const hasExistingData = savedReports.length > 0;
+        const shouldShowLoading = !hasExistingData || (Date.now() - lastDataLoad.current > 30000);
+        
+        if (shouldShowLoading) {
+          setLoadingSavedReports(true);
+        }
+        
         const res = await api("/agents/reports/saved", {
           method: "GET",
           headers: { Accept: "application/json" },
@@ -202,7 +289,10 @@ export default function Dashboard() {
         if (!res.ok) {
           const msg = await res.text().catch(() => "");
           console.error("Failed to load saved reports:", res.status, msg);
-          setSavedReports([]);
+          // Only clear existing data if we don't have any or the call was expected to refresh
+          if (!hasExistingData) {
+            setSavedReports([]);
+          }
           return;
         }
 
@@ -211,7 +301,10 @@ export default function Dashboard() {
       } catch (err: unknown) {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Error loading saved reports:", err);
-          setSavedReports([]);
+          // Only clear existing data if we don't have any
+          if (savedReports.length === 0) {
+            setSavedReports([]);
+          }
         }
       } finally {
         setLoadingSavedReports(false);

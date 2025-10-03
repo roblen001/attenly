@@ -258,7 +258,8 @@ INSTRUCTIONS:
 8. Respond in the exact JSON format specified
 
 RESPONSE FORMAT:
-You must respond with a valid JSON object containing answers for all questions using their IDs as keys."""
+You must respond with a valid JSON object containing answers for all questions using their IDs as keys. VALUES MUST BE PLAIN STRINGS. Do not return arrays or objects as values.
+"""
 
     def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Create JSON schema for structured batch response from questions with chunks - simplified for compatibility"""

@@ -1,170 +1,127 @@
 # Implementation Plan
 
-**Optimize chunking mechanism for large document processing speed while maintaining high-quality chunking.**
+## Overview
+Implement invite-only user signup flow by adding password reset functionality to the existing Supabase authentication system. This enables invited users to set their initial password through email reset links while maintaining the current authentication architecture.
 
-This implementation focuses on eliminating performance bottlenecks in the current two-level chunking system that cause exponential slowdown with document size. The current system processes 100+ page PDFs slowly due to linear page-by-page processing, redundant token counting, and sequential chunk creation. The optimization will deliver 6-15x speedup for large documents through intelligent batching, parallelization, and optimized algorithms while preserving all existing functionality and output quality.
+The implementation adds password reset capabilities to the existing Login page, creates callback handling for email reset links, and provides route protection through an AuthGate component. The existing signup UI is preserved since public signups are already disabled at the Supabase level.
 
-**[Types]**
-**Add new type definitions for performance-optimized chunking components.**
+## Types
+Define TypeScript interfaces for authentication state and callback handling.
 
-```python
-# Performance monitoring types
-@dataclass
-class ChunkingPerformanceMetrics:
-    total_processing_time: float
-    token_counting_time: float
-    l1_chunk_creation_time: float
-    l2_chunk_creation_time: float
-    parallel_processing_time: float
-    memory_peak_usage: int
-    pages_processed: int
-    chunks_created: int
-    speedup_factor: float
+```typescript
+// Frontend authentication types
+interface AuthState {
+  session: Session | null;
+  user: User | null;
+  loading: boolean;
+  isAuthenticated: boolean;
+}
 
-# Token counting optimization types
-@dataclass
-class TokenCountCache:
-    document_id: str
-    page_token_counts: List[int]
-    total_tokens: int
-    cache_timestamp: float
-    estimation_accuracy: float
+interface PasswordResetData {
+  email: string;
+  redirectTo: string;
+}
 
-# Chunk processing configuration
-@dataclass
-class FastChunkingConfig:
-    enable_fast_mode: bool
-    thread_pool_size: int
-    batch_size: int
-    token_estimation_mode: str  # 'precise', 'fast', 'hybrid'
-    parallel_l2_processing: bool
-    cache_token_counts: bool
-
-# Parallel processing results
-@dataclass
-class ChunkProcessingResult:
-    l1_chunks: List[Dict]
-    l2_chunks: List[Dict]
-    processing_time: float
-    error_message: Optional[str]
-    performance_metrics: ChunkingPerformanceMetrics
+interface AuthCallbackResult {
+  session: Session | null;
+  error: AuthError | null;
+}
 ```
 
-**[Files]**
-**Create new service files and modify existing chunking components.**
+## Files
+Modify existing authentication files and create new components for callback handling and route protection.
 
-**New Files:**
-- `backend/app/services/fast_chunking_service.py`: High-performance chunking engine with parallel processing
-- `backend/app/services/token_count_cache.py`: Intelligent token counting with caching and estimation
-- `backend/app/services/parallel_chunk_processor.py`: Concurrent chunk creation with thread safety
-- `backend/app/services/chunk_boundary_optimizer.py`: Smart boundary detection and optimization
-- `backend/app/services/chunking_performance_monitor.py`: Performance tracking and benchmarking
+### Modified Files:
+- `frontend/src/libs/supabase.ts` - Update client configuration with required auth flags
+- `frontend/src/pages/Login.tsx` - Add password reset functionality to existing login form
+- `frontend/.env.example` - Add auth redirect environment variable example
+- `frontend/src/App.tsx` (or main router file) - Add callback route and AuthGate integration
 
-**Modified Files:**
-- `backend/app/services/chunking_service.py`: Add fast mode integration and performance monitoring
-- `backend/app/config.py`: Add fast chunking configuration parameters
-- `backend/app/services/document_processor.py`: Integrate fast chunking service option
+### New Files:
+- `frontend/src/pages/AuthCallback.tsx` - Handle password reset email callbacks
+- `frontend/src/components/AuthGate.tsx` - Protect authenticated routes
+- `frontend/src/components/AuthGate.css` - Styling for auth gate loading states
 
-**Configuration Updates:**
-- Add 8 new configuration parameters for fast chunking control
-- Add performance monitoring configuration
-- Add fallback mechanism configuration
+## Functions
+Enhance existing authentication functions and add new password reset capabilities.
 
-**[Functions]**
-**Implement new high-performance functions and optimize existing chunk processing.**
+### Modified Functions:
+- `frontend/src/libs/supabase.ts`:
+  - Update `createClient()` configuration with `detectSessionInUrl: true`
+- `frontend/src/pages/Login.tsx`:
+  - Add `sendSetPassword()` function for password reset emails
+  - Update form submission handling for reset flow
 
-**New Functions in FastChunkingService:**
-- `create_fast_two_level_chunks()`: Main entry point for optimized chunking
-- `batch_count_tokens()`: Bulk token counting with caching
-- `create_parallel_l1_chunks()`: Concurrent L1 chunk creation
-- `create_parallel_l2_chunks()`: Concurrent L2 sliding window creation
-- `optimize_chunk_boundaries()`: Smart boundary detection
-- `estimate_tokens_fast()`: Character-based token estimation
+### New Functions:
+- `frontend/src/pages/AuthCallback.tsx`:
+  - `handleAuthCallback()` - Process email callback and redirect appropriately
+- `frontend/src/components/AuthGate.tsx`:
+  - `checkAuthState()` - Validate session and handle redirects
+  - `AuthGate()` component - Wrap protected routes with authentication check
 
-**New Functions in TokenCountCache:**
-- `get_cached_token_count()`: Retrieve cached token counts with validation
-- `cache_token_counts()`: Store token counts with metadata
-- `estimate_page_tokens()`: Fast estimation using character ratios
-- `calibrate_estimation()`: Improve estimation accuracy over time
+## Classes
+No new classes required. Implementation uses functional components with hooks.
 
-**Modified Functions in ChunkingService:**
-- `create_two_level_chunks()`: Add fast mode detection and routing
-- `_count_tokens()`: Integrate caching and fast estimation
-- `_create_page_based_chunks()`: Add parallel processing option
-- `_create_window_chunks()`: Optimize sliding window algorithm
+## Dependencies
+No new dependencies required. Uses existing Supabase and React Router packages.
 
-**[Classes]**
-**Create new performance-optimized classes and enhance existing chunking components.**
+The implementation leverages:
+- `@supabase/supabase-js` - Already installed for authentication
+- `react-router-dom` - Already installed for navigation
+- `react` hooks - useState, useEffect, useNavigate for state management
 
-**New Classes:**
-- `FastChunkingService`: Main high-performance chunking engine with parallel processing capabilities
-- `TokenCountCache`: Intelligent caching system for token counts with estimation fallbacks
-- `ParallelChunkProcessor`: Thread-safe concurrent chunk processing with error handling
-- `ChunkBoundaryOptimizer`: Advanced boundary detection using content analysis
-- `ChunkingPerformanceMonitor`: Real-time performance tracking and optimization metrics
+## Testing
+Test password reset flow and authentication state management.
 
-**Enhanced Classes:**
-- `ChunkingService`: Add fast mode integration, performance monitoring, and backward compatibility
-- `DocumentProcessor`: Integrate fast chunking option with automatic fallback
+### Test Scenarios:
+1. **Password Reset Flow**:
+   - Send reset email from login page
+   - Click reset link in email
+   - Verify callback handling and session creation
+   - Test navigation to dashboard after successful reset
 
-**Class Integration:**
-- All new classes integrate seamlessly with existing vector storage and LLM services
-- Backward compatibility maintained through configuration-based routing
-- Error handling and fallback mechanisms preserve system reliability
+2. **Route Protection**:
+   - Access protected route without authentication
+   - Verify redirect to login page
+   - Test authenticated access to protected routes
+   - Validate session persistence across page refreshes
 
-**[Dependencies]**
-**Add concurrent processing dependencies and optimize existing performance libraries.**
+3. **Environment Configuration**:
+   - Verify auth redirect URL configuration
+   - Test callback URL handling in different environments
 
-**New Dependencies:**
-- `concurrent.futures`: ThreadPoolExecutor for parallel chunk processing (built-in)
-- `psutil`: Memory usage monitoring for performance optimization
-- `cachetools`: Advanced caching mechanisms for token count optimization
+## Implementation Order
+Sequential implementation to ensure proper integration and testing at each step.
 
-**Updated Dependencies:**
-- Optimize `tiktoken` usage with batching and caching strategies
-- Enhance `chromadb` integration for bulk operations
-- Improve memory management for large document processing
+1. **Step 1: Environment Configuration**
+   - Add `VITE_AUTH_REDIRECT` environment variable to example and documentation
+   - Update frontend environment configuration
 
-**Configuration Dependencies:**
-- All optimizations controlled through environment variables
-- No breaking changes to existing deployment configurations
-- Gradual rollout support through feature flags
+2. **Step 2: Supabase Client Enhancement** 
+   - Update `frontend/src/libs/supabase.ts` with required auth configuration flags
+   - Test client initialization and session detection
 
-**[Testing]**
-**Comprehensive performance testing and validation of optimization effectiveness.**
+3. **Step 3: AuthCallback Component Creation**
+   - Create `frontend/src/pages/AuthCallback.tsx` for handling email reset callbacks
+   - Implement session detection and navigation logic
+   - Test callback URL processing
 
-**Performance Benchmark Tests:**
-- Large document processing benchmarks (100-500 page PDFs)
-- Memory usage validation under high load
-- Parallel processing thread safety verification
-- Token counting accuracy validation across estimation modes
+4. **Step 4: AuthGate Component Creation**
+   - Create `frontend/src/components/AuthGate.tsx` for route protection
+   - Implement authentication state checking and redirect logic
+   - Add loading states and error handling
 
-**Integration Tests:**
-- End-to-end document processing with fast chunking enabled
-- Vector storage integration with bulk chunk operations
-- LLM service compatibility with optimized chunks
-- Backward compatibility verification
+5. **Step 5: Login Page Enhancement**
+   - Modify existing `frontend/src/pages/Login.tsx` to add password reset functionality
+   - Add "Set/Forgot Password" button and form handling
+   - Integrate reset email sending with proper redirect URL
 
-**Unit Tests:**
-- Token count caching accuracy and performance
-- Parallel chunk processor error handling
-- Boundary optimization algorithm validation
-- Performance monitoring metric calculation
+6. **Step 6: Router Integration**
+   - Add `/auth/callback` route to main router
+   - Integrate AuthGate component with protected routes
+   - Test route protection and callback handling
 
-**Regression Tests:**
-- Ensure chunk quality matches original implementation
-- Validate all existing functionality preservation
-- Test fallback mechanisms under various failure scenarios
-
-**[Implementation Order]**
-**Sequential implementation to minimize conflicts and ensure successful integration.**
-
-1. **Create Token Counting Optimization**: Implement `TokenCountCache` and `token_count_cache.py` with caching and estimation
-2. **Implement Performance Monitoring**: Create `ChunkingPerformanceMonitor` for baseline measurements and optimization tracking
-3. **Build Parallel Processing Infrastructure**: Develop `ParallelChunkProcessor` with thread safety and error handling
-4. **Create Smart Boundary Detection**: Implement `ChunkBoundaryOptimizer` for improved chunk quality at speed
-5. **Develop Fast Chunking Service**: Integrate all optimizations in `FastChunkingService` with comprehensive testing
-6. **Update Configuration Management**: Add all fast chunking parameters to `config.py` with validation
-7. **Integrate with Existing Services**: Modify `ChunkingService` and `DocumentProcessor` for seamless fast mode integration
-8. **Performance Testing and Validation**: Comprehensive benchmarking and optimization validation
-9. **Documentation and Monitoring**: Add performance metrics and optimization guides
+7. **Step 7: Testing and Validation**
+   - Test complete password reset flow from email to dashboard
+   - Validate route protection works correctly
+   - Verify session persistence and authentication state management

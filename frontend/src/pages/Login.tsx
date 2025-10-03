@@ -1,17 +1,28 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../libs/supabase";
+import { useAuth } from "../feature/auth/useAuth";
 import "./Login.css";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isPasswordReset, setIsPasswordReset] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    const from = location.state?.from?.pathname || '/dashboard';
+    navigate(from, { replace: true });
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +31,18 @@ export default function Login() {
     setMessage("");
 
     try {
-      if (isSignUp) {
+      if (isPasswordReset) {
+        // Handle password reset
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        });
+
+        if (error) {
+          setError(error.message);
+        } else {
+          setMessage("Check your email for the password reset link!");
+        }
+      } else if (isSignUp) {
         if (password !== confirmPassword) {
           setError("Passwords do not match");
           setLoading(false);
@@ -46,7 +68,8 @@ export default function Login() {
         if (error) {
           setError(error.message);
         } else {
-          navigate("/dashboard");
+          const from = location.state?.from?.pathname || '/dashboard';
+          navigate(from, { replace: true });
         }
       }
     } catch {
@@ -58,6 +81,17 @@ export default function Login() {
 
   const toggleMode = () => {
     setIsSignUp(!isSignUp);
+    setIsPasswordReset(false);
+    setError("");
+    setMessage("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+  };
+
+  const togglePasswordReset = () => {
+    setIsPasswordReset(!isPasswordReset);
+    setIsSignUp(false);
     setError("");
     setMessage("");
     setEmail("");
@@ -93,10 +127,12 @@ export default function Login() {
           <div className="login-form-container">
             <div className="form-header">
               <h2 className="form-title">
-                {isSignUp ? "Create Account" : "Sign In"}
+                {isPasswordReset ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
               </h2>
               <p className="form-subtitle">
-                {isSignUp 
+                {isPasswordReset
+                  ? "Enter your email to receive a password reset link"
+                  : isSignUp 
                   ? "Get started with your professional workflow" 
                   : "Continue to your dashboard"
                 }
@@ -119,22 +155,24 @@ export default function Login() {
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="password" className="form-label">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="form-input"
-                  placeholder="Enter your password"
-                  required
-                />
-              </div>
+              {!isPasswordReset && (
+                <div className="form-group">
+                  <label htmlFor="password" className="form-label">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="form-input"
+                    placeholder="Enter your password"
+                    required
+                  />
+                </div>
+              )}
 
-              {isSignUp && (
+              {isSignUp && !isPasswordReset && (
                 <div className="form-group">
                   <label htmlFor="confirmPassword" className="form-label">
                     Confirm Password
@@ -173,14 +211,14 @@ export default function Login() {
                 {loading ? (
                   <>
                     <span className="loading-spinner"></span>
-                    {isSignUp ? "Creating Account..." : "Signing In..."}
+                    {isPasswordReset ? "Sending Reset Link..." : isSignUp ? "Creating Account..." : "Signing In..."}
                   </>
                 ) : (
                   <>
                     <span className="btn-icon">
-                      {isSignUp ? "🚀" : "✨"}
+                      {isPasswordReset ? "🔐" : isSignUp ? "🚀" : "✨"}
                     </span>
-                    {isSignUp ? "Create Account" : "Sign In"}
+                    {isPasswordReset ? "Send Reset Link" : isSignUp ? "Create Account" : "Sign In"}
                     <span className="btn-arrow">→</span>
                   </>
                 )}
@@ -188,16 +226,43 @@ export default function Login() {
             </form>
 
             <div className="form-footer">
-              <p className="toggle-text">
-                {isSignUp ? "Already have an account?" : "Don't have an account?"}
-                <button
-                  type="button"
-                  onClick={toggleMode}
-                  className="toggle-btn"
-                >
-                  {isSignUp ? "Sign In" : "Sign Up"}
-                </button>
-              </p>
+              {!isPasswordReset ? (
+                <>
+                  <p className="toggle-text">
+                    {isSignUp ? "Already have an account?" : "Don't have an account?"}
+                    <button
+                      type="button"
+                      onClick={toggleMode}
+                      className="toggle-btn"
+                    >
+                      {isSignUp ? "Sign In" : "Sign Up"}
+                    </button>
+                  </p>
+                  {!isSignUp && (
+                    <p className="toggle-text">
+                      Need to set or reset your password?
+                      <button
+                        type="button"
+                        onClick={togglePasswordReset}
+                        className="toggle-btn"
+                      >
+                        Reset Password
+                      </button>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="toggle-text">
+                  Remember your password?
+                  <button
+                    type="button"
+                    onClick={togglePasswordReset}
+                    className="toggle-btn"
+                  >
+                    Sign In
+                  </button>
+                </p>
+              )}
             </div>
           </div>
         </div>

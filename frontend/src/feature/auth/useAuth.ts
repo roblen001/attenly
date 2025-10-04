@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js';
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
     // Get initial session
@@ -20,12 +21,34 @@ export function useAuth() {
     // Listen for auth state changes
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       console.log('Auth state change:', event, sess ? 'Session exists' : 'No session');
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('Password recovery detected - blocking authentication until reset complete');
+        setIsPasswordRecovery(true);
+        setSession(sess);
+        setLoading(false);
+        return;
+      }
+      
+      // Don't reset password recovery state during INITIAL_SESSION events
+      if (event === 'INITIAL_SESSION' && isPasswordRecovery) {
+        console.log('Initial session during password recovery - maintaining recovery state');
+        setSession(sess);
+        setLoading(false);
+        return;
+      }
+      
+      if (event === 'SIGNED_IN' && isPasswordRecovery) {
+        console.log('Password recovery completed - user now authenticated');
+        setIsPasswordRecovery(false);
+      }
+      
       setSession(sess);
       setLoading(false);
     });
 
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [isPasswordRecovery]);
 
   const signIn = (email: string, password: string) =>
     supabase.auth.signInWithPassword({ email, password });
@@ -33,10 +56,12 @@ export function useAuth() {
   const signOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
+    setIsPasswordRecovery(false);
     // Session will be updated via onAuthStateChange
   };
 
-  const isAuthenticated = !!session?.user;
+  // Don't consider user authenticated during password recovery
+  const isAuthenticated = !!session?.user && !isPasswordRecovery;
 
   return { 
     session, 
@@ -44,6 +69,7 @@ export function useAuth() {
     signOut, 
     user: session?.user ?? null,
     loading,
-    isAuthenticated
+    isAuthenticated,
+    isPasswordRecovery
   };
 }

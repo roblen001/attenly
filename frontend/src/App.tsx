@@ -16,7 +16,8 @@ import ReportView from "./pages/ReportView";
 import CreateAgent from "./pages/CreateAgent";
 
 export default function App() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isPasswordRecovery } = useAuth(); 
+
 
   if (loading) {
     return (
@@ -39,7 +40,9 @@ export default function App() {
         <Route
           path="/"
           element={
-            isAuthenticated ? (
+            isPasswordRecovery ? (
+              <Navigate to="/auth/callback" replace />
+            ) : isAuthenticated ? (
               <Navigate to="/dashboard" replace />
             ) : (
               <LandingPage />
@@ -50,7 +53,9 @@ export default function App() {
         <Route
           path="/login"
           element={
-            isAuthenticated ? (
+            isPasswordRecovery ? (
+              <Navigate to="/auth/callback" replace />
+            ) : isAuthenticated ? (
               <Navigate to="/dashboard" replace />
             ) : (
               <Login />

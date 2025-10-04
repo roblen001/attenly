@@ -1,58 +1,59 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../libs/supabase';
 import type { Session } from '@supabase/supabase-js';
+
+const urlHasRecovery = () => {
+  const q = new URLSearchParams(window.location.search);
+  return q.get('type') === 'recovery' || window.location.hash.includes('type=recovery');
+};
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(
+    urlHasRecovery() || localStorage.getItem('auth:recovery') === '1'
+  );
+
+  // keep LS in sync
+  useEffect(() => {
+    if (isPasswordRecovery) localStorage.setItem('auth:recovery', '1');
+    else localStorage.removeItem('auth:recovery');
+  }, [isPasswordRecovery]);
 
   useEffect(() => {
-    // Get initial session
-    // Also detect recovery from URL on mount (covers first render)
-    if (new URLSearchParams(window.location.search).get('type') === 'recovery') {
-      setIsPasswordRecovery(true);
-    }
+    let mounted = true;
+
+    // Seed session
     supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.warn('Initial session retrieval error:', error);
-      }
-      console.log('Initial session loaded:', data.session ? 'Session exists' : 'No session');
+      if (error) console.warn('Initial session retrieval error:', error);
+      if (!mounted) return;
       setSession(data.session);
       setLoading(false);
     });
 
-    // Listen for auth state changes
+    // Subscribe once
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
-      console.log('Auth state change:', event, sess ? 'Session exists' : 'No session');
-      
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log('Password recovery detected - blocking authentication until reset complete');
-        setIsPasswordRecovery(true);
-        setSession(sess);
-        setLoading(false);
-        return;
-      }
-      
-      // Don't reset password recovery state during INITIAL_SESSION events
-      if (event === 'INITIAL_SESSION' && isPasswordRecovery) {
-        console.log('Initial session during password recovery - maintaining recovery state');
-        setSession(sess);
-        setLoading(false);
-        return;
-      }
-      
-      if (event === 'SIGNED_IN' && isPasswordRecovery) {
-        console.log('Password recovery completed - user now authenticated');
-        setIsPasswordRecovery(false);
-      }
-      
-      setSession(sess);
+      if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
+      if (event === 'SIGNED_OUT') setIsPasswordRecovery(false);
+
+      setSession(sess ?? null);
       setLoading(false);
     });
 
-    return () => sub.subscription.unsubscribe();
-  }, [isPasswordRecovery]);
+    // Enforce recovery if URL says so
+    if (urlHasRecovery()) setIsPasswordRecovery(true);
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []); // IMPORTANT: no dependency on isPasswordRecovery
+
+  // While recovering, never advertise "authenticated"
+  const isAuthenticated = useMemo(
+    () => !!session?.user && !isPasswordRecovery,
+    [session, isPasswordRecovery]
+  );
 
   const signIn = (email: string, password: string) =>
     supabase.auth.signInWithPassword({ email, password });
@@ -61,19 +62,18 @@ export function useAuth() {
     setLoading(true);
     await supabase.auth.signOut();
     setIsPasswordRecovery(false);
-    // Session will be updated via onAuthStateChange
   };
 
-  // Don't consider user authenticated during password recovery
-  const isAuthenticated = !!session?.user && !isPasswordRecovery;
+  const clearRecovery = () => setIsPasswordRecovery(false);
 
-  return { 
-    session, 
-    signIn, 
-    signOut, 
+  return {
+    session,
     user: session?.user ?? null,
     loading,
     isAuthenticated,
-    isPasswordRecovery
+    isPasswordRecovery,
+    signIn,
+    signOut,
+    clearRecovery,
   };
 }

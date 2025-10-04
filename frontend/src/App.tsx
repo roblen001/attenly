@@ -63,8 +63,19 @@ export default function App() {
           }
         />
 
-        {/* Auth Callback Route */}
-        <Route path="/auth/callback" element={<AuthCallback />} />
+        {/* Auth Callback Route — only valid during recovery */}
+        <Route
+          path="/auth/callback"
+          element={
+            isPasswordRecovery ? (
+              <AuthCallback />
+            ) : isAuthenticated ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
         {/* Protected Routes */}
         <Route
@@ -120,6 +131,9 @@ export default function App() {
             </AuthGate>
           }
         />
+
+        {/* Optional: 404 catch-all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
     </Router>

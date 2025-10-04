@@ -22,9 +22,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     );
   }
 
-  // 🚫 Do not allow access to protected routes during password recovery.
+  // While in recovery, allow the callback page to handle the flow.
   if (isPasswordRecovery) {
-    return <Navigate to="/auth/callback" replace />;
+    if (location.pathname !== '/auth/callback') {
+      return <Navigate to="/auth/callback" replace />;
+    }
+    return <>{children}</>;
   }
 
   if (!isAuthenticated) {

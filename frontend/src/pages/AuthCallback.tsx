@@ -79,14 +79,18 @@ const AuthCallback: React.FC = () => {
     try {
       setBusy(true);
       setError(null);
+
       const { error } = await supabase.auth.updateUser({ password: pwd });
       if (error) throw error;
 
-      // Important: Sign out to prevent automatic authentication
-      await supabase.auth.signOut();
+      // Fully sign out (global if supported)
+      await supabase.auth.signOut({ scope: 'global' });
+
+      // Clear recovery guard so routes treat this as a normal unauthenticated user
+      localStorage.removeItem('auth:recovery');
 
       setMode('done');
-      setTimeout(() => navigate('/login', { replace: true }), 100);
+      setTimeout(() => navigate('/login?reset=success', { replace: true }), 50);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to set password.');
     } finally {

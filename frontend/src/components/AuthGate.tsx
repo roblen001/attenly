@@ -8,7 +8,7 @@ interface AuthGateProps {
 }
 
 const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isPasswordRecovery } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -22,8 +22,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     );
   }
 
+  // 🚫 Do not allow access to protected routes during password recovery.
+  if (isPasswordRecovery) {
+    return <Navigate to="/auth/callback" replace />;
+  }
+
   if (!isAuthenticated) {
-    // Redirect to login with current location as state so we can redirect back
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

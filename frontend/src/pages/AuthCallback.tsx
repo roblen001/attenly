@@ -82,6 +82,9 @@ const AuthCallback: React.FC = () => {
       const { error } = await supabase.auth.updateUser({ password: pwd });
       if (error) throw error;
 
+      // Important: Sign out to prevent automatic authentication
+      await supabase.auth.signOut();
+
       setMode('done');
       setTimeout(() => navigate('/login', { replace: true }), 100);
     } catch (e: unknown) {

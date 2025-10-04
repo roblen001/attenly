@@ -83,7 +83,7 @@ const AuthCallback: React.FC = () => {
       if (error) throw error;
 
       setMode('done');
-      setTimeout(() => navigate('/dashboard', { replace: true }), 100);
+      setTimeout(() => navigate('/login', { replace: true }), 100);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to set password.');
     } finally {
@@ -112,7 +112,7 @@ const AuthCallback: React.FC = () => {
                 Reset Your <span className="title-highlight">Password</span>
               </h1>
               <p className="brand-description">
-                Enter your new password to continue to your dashboard
+                Enter your new password and you'll be redirected to sign in
               </p>
             </div>
 
@@ -161,7 +161,7 @@ const AuthCallback: React.FC = () => {
                   ) : (
                     <>
                       <span className="btn-icon">🔐</span>
-                      Save Password & Continue
+                      Save Password
                       <span className="btn-arrow">→</span>
                     </>
                   )}
@@ -170,16 +170,6 @@ const AuthCallback: React.FC = () => {
             </div>
           </div>
 
-          {/* Back to Login */}
-          <div className="back-to-landing">
-            <button
-              onClick={() => navigate("/login")}
-              className="back-btn"
-            >
-              <span className="back-icon">←</span>
-              Back to Login
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -228,16 +218,6 @@ const AuthCallback: React.FC = () => {
             </div>
           </div>
 
-          {/* Back to Login */}
-          <div className="back-to-landing">
-            <button
-              onClick={() => navigate("/login")}
-              className="back-btn"
-            >
-              <span className="back-icon">←</span>
-              Back to Login
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -295,16 +275,6 @@ const AuthCallback: React.FC = () => {
             </div>
           </div>
 
-          {/* Back to Login */}
-          <div className="back-to-landing">
-            <button
-              onClick={() => navigate("/login")}
-              className="back-btn"
-            >
-              <span className="back-icon">←</span>
-              Back to Login
-            </button>
-          </div>
         </div>
       </div>
     );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../libs/supabase";
 import { useAuth } from "../feature/auth/useAuth";
@@ -16,6 +16,14 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  // Check for password reset success
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('reset') === 'success') {
+      setMessage("Your password has been updated successfully. Please sign in with your new password.");
+    }
+  }, [location.search]);
 
   // Redirect if already authenticated
   if (isAuthenticated && !isPasswordRecovery) {

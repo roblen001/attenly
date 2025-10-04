@@ -7,7 +7,7 @@ import "./Login.css";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isPasswordRecovery } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [isPasswordReset, setIsPasswordReset] = useState(false);
   const [email, setEmail] = useState("");
@@ -18,7 +18,7 @@ export default function Login() {
   const [message, setMessage] = useState("");
 
   // Redirect if already authenticated
-  if (isAuthenticated) {
+  if (isAuthenticated && !isPasswordRecovery) {
     const from = location.state?.from?.pathname || '/dashboard';
     navigate(from, { replace: true });
     return null;
@@ -34,7 +34,7 @@ export default function Login() {
       if (isPasswordReset) {
         // Handle password reset
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
         });
 
         if (error) {

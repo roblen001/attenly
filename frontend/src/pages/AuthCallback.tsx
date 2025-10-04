@@ -1,46 +1,67 @@
-import React, { useEffect, useState } from 'react';
+// AuthCallback.tsx
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../libs/supabase';
+import { useAuth } from '../feature/auth/useAuth';
+import './Login.css';
 
 const AuthCallback: React.FC = () => {
   const navigate = useNavigate();
+  const { isPasswordRecovery } = useAuth(); // trust the hook as the primary signal
 
-  // modes: checking -> recovery (show form) -> done/error
-  const [mode, setMode] = useState<'checking'|'recovery'|'done'|'error'>('checking');
+  // modes: checking -> recovery -> done/error
+  const [mode, setMode] = useState<'checking' | 'recovery' | 'done' | 'error'>(
+    isPasswordRecovery ? 'recovery' : 'checking'
+  );
+  const modeRef = useRef(mode);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+
+  const recoveryRef = useRef<boolean>(isPasswordRecovery);
+  useEffect(() => { recoveryRef.current = isPasswordRecovery; }, [isPasswordRecovery]);
+
   const [error, setError] = useState<string | null>(null);
   const [pwd, setPwd] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Listen for PASSWORD_RECOVERY event
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+    let timer: number | undefined;
+
+    // If the hook already says "recovery", force recovery UI immediately
+    if (isPasswordRecovery) setMode('recovery');
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      // If the auth event says recovery, lock into recovery mode
       if (event === 'PASSWORD_RECOVERY') {
+        recoveryRef.current = true;
         setMode('recovery');
         return;
       }
-      if (session && mode === 'checking') {
-        // Normal OAuth/magic-link flow: send the user to the app
+
+      // Only redirect to dashboard when NOT recovering
+      if (!recoveryRef.current && session && modeRef.current === 'checking') {
         setMode('done');
         navigate('/dashboard', { replace: true });
       }
     });
 
-    // Trigger initial session parse from URL so the event fires
-    supabase.auth.getSession().then(({ data: { session }, error: authError }) => {
-      if (authError) {
-        setError(authError.message);
+    // Prime current session; but never redirect if recovering
+    supabase.auth.getSession().then(({ data, error: authErr }) => {
+      if (authErr) {
+        setError(authErr.message);
         setMode('error');
         return;
       }
-      if (session && mode === 'checking') {
-        // If already authenticated and not recovery, go in
+      const session = data?.session ?? null;
+
+      if (recoveryRef.current) {
+        setMode('recovery'); // force UI even if a session exists
+      } else if (session && modeRef.current === 'checking') {
         setMode('done');
         navigate('/dashboard', { replace: true });
-      } else if (mode === 'checking') {
-        // No session yet; wait for onAuthStateChange or show error if nothing arrives
-        // Give a tiny grace period; most cases the event will fire immediately.
-        setTimeout(() => {
-          if (mode === 'checking') {
+      } else if (modeRef.current === 'checking') {
+        // Wait briefly for an incoming event; otherwise show an error
+        timer = window.setTimeout(() => {
+          if (modeRef.current === 'checking') {
             setMode('error');
             setError('No active session. Please request a new link or sign in again.');
           }
@@ -48,9 +69,11 @@ const AuthCallback: React.FC = () => {
       }
     });
 
-    return () => subscription.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate]);
+    return () => {
+      sub.subscription.unsubscribe();
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [navigate, isPasswordRecovery]);
 
   const setNewPassword = async () => {
     try {
@@ -58,15 +81,9 @@ const AuthCallback: React.FC = () => {
       setError(null);
       const { error } = await supabase.auth.updateUser({ password: pwd });
       if (error) throw error;
-      
-      // Password successfully updated - the useAuth hook will detect SIGNED_IN event
-      // and clear the password recovery state, then we can navigate
+
       setMode('done');
-      
-      // Small delay to let auth state settle before navigating
-      setTimeout(() => {
-        navigate('/dashboard', { replace: true });
-      }, 100);
+      setTimeout(() => navigate('/dashboard', { replace: true }), 100);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to set password.');
     } finally {
@@ -76,25 +93,93 @@ const AuthCallback: React.FC = () => {
 
   if (mode === 'recovery') {
     return (
-      <div className="auth-callback-container">
-        <div className="auth-callback-recovery">
-          <h2>Set a new password</h2>
-          <input
-            type="password"
-            className="auth-callback-input"
-            placeholder="New password"
-            value={pwd}
-            onChange={(e) => setPwd(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && pwd && setNewPassword()}
-          />
-          <button
-            className="auth-callback-button"
-            onClick={setNewPassword}
-            disabled={busy || !pwd}
-          >
-            {busy ? 'Saving...' : 'Save password & continue'}
-          </button>
-          {error && <p className="auth-callback-error-text">{error}</p>}
+      <div className="login-page">
+        {/* Hero Background */}
+        <div className="login-hero">
+          <div className="hero-background">
+            <div className="hero-gradient"></div>
+            <div className="hero-pattern"></div>
+          </div>
+
+          <div className="login-container">
+            {/* Branding Section */}
+            <div className="login-branding">
+              <div className="brand-badge">
+                <span className="badge-icon">🏢</span>
+                <span>Attenly</span>
+              </div>
+              <h1 className="brand-title">
+                Reset Your <span className="title-highlight">Password</span>
+              </h1>
+              <p className="brand-description">
+                Enter your new password to continue to your dashboard
+              </p>
+            </div>
+
+            {/* Password Reset Form */}
+            <div className="login-form-container">
+              <div className="form-header">
+                <h2 className="form-title">Set New Password</h2>
+                <p className="form-subtitle">
+                  Choose a secure password for your account
+                </p>
+              </div>
+
+              <form onSubmit={(e) => { e.preventDefault(); if (pwd) setNewPassword(); }} className="login-form">
+                <div className="form-group">
+                  <label htmlFor="newPassword" className="form-label">
+                    New Password
+                  </label>
+                  <input
+                    id="newPassword"
+                    type="password"
+                    value={pwd}
+                    onChange={(e) => setPwd(e.target.value)}
+                    className="form-input"
+                    placeholder="Enter your new password"
+                    required
+                  />
+                </div>
+
+                {error && (
+                  <div className="form-message error-message">
+                    <span className="message-icon">⚠️</span>
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={busy || !pwd}
+                  className="form-submit-btn"
+                >
+                  {busy ? (
+                    <>
+                      <span className="loading-spinner"></span>
+                      Saving Password...
+                    </>
+                  ) : (
+                    <>
+                      <span className="btn-icon">🔐</span>
+                      Save Password & Continue
+                      <span className="btn-arrow">→</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Back to Login */}
+          <div className="back-to-landing">
+            <button
+              onClick={() => navigate("/login")}
+              className="back-btn"
+            >
+              <span className="back-icon">←</span>
+              Back to Login
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -102,10 +187,57 @@ const AuthCallback: React.FC = () => {
 
   if (mode === 'checking') {
     return (
-      <div className="auth-callback-container">
-        <div className="auth-callback-loading">
-          <div className="spinner" />
-          <p>Processing authentication…</p>
+      <div className="login-page">
+        {/* Hero Background */}
+        <div className="login-hero">
+          <div className="hero-background">
+            <div className="hero-gradient"></div>
+            <div className="hero-pattern"></div>
+          </div>
+
+          <div className="login-container">
+            {/* Branding Section */}
+            <div className="login-branding">
+              <div className="brand-badge">
+                <span className="badge-icon">🏢</span>
+                <span>Attenly</span>
+              </div>
+              <h1 className="brand-title">
+                Processing <span className="title-highlight">Authentication</span>
+              </h1>
+              <p className="brand-description">
+                Please wait while we verify your authentication link
+              </p>
+            </div>
+
+            {/* Loading Display */}
+            <div className="login-form-container">
+              <div className="form-header">
+                <h2 className="form-title">Authenticating</h2>
+                <p className="form-subtitle">
+                  Verifying your credentials...
+                </p>
+              </div>
+
+              <div className="login-form" style={{ alignItems: 'center', textAlign: 'center' }}>
+                <div className="loading-spinner" style={{ width: '32px', height: '32px', margin: '2rem auto' }}></div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-md)' }}>
+                  Processing authentication...
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Back to Login */}
+          <div className="back-to-landing">
+            <button
+              onClick={() => navigate("/login")}
+              className="back-btn"
+            >
+              <span className="back-icon">←</span>
+              Back to Login
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -113,22 +245,72 @@ const AuthCallback: React.FC = () => {
 
   if (mode === 'error') {
     return (
-      <div className="auth-callback-container">
-        <div className="auth-callback-error">
-          <h2>Authentication Error</h2>
-          <p>{error ?? 'Something went wrong.'}</p>
-          <button
-            onClick={() => navigate('/login', { replace: true })}
-            className="auth-callback-button"
-          >
-            Return to Login
-          </button>
+      <div className="login-page">
+        {/* Hero Background */}
+        <div className="login-hero">
+          <div className="hero-background">
+            <div className="hero-gradient"></div>
+            <div className="hero-pattern"></div>
+          </div>
+
+          <div className="login-container">
+            {/* Branding Section */}
+            <div className="login-branding">
+              <div className="brand-badge">
+                <span className="badge-icon">🏢</span>
+                <span>Attently</span>
+              </div>
+              <h1 className="brand-title">
+                Authentication <span className="title-highlight">Error</span>
+              </h1>
+              <p className="brand-description">
+                Your authentication link may have expired or is invalid
+              </p>
+            </div>
+
+            {/* Error Display */}
+            <div className="login-form-container">
+              <div className="form-header">
+                <h2 className="form-title">Link Expired</h2>
+                <p className="form-subtitle">
+                  Please request a new authentication link
+                </p>
+              </div>
+
+              <div className="login-form">
+                <div className="form-message error-message">
+                  <span className="message-icon">⚠️</span>
+                  {error ?? 'Your authentication link has expired or is invalid. Please request a new one.'}
+                </div>
+
+                <button
+                  onClick={() => navigate('/login', { replace: true })}
+                  className="form-submit-btn"
+                >
+                  <span className="btn-icon">🔑</span>
+                  Return to Login
+                  <span className="btn-arrow">→</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Back to Login */}
+          <div className="back-to-landing">
+            <button
+              onClick={() => navigate("/login")}
+              className="back-btn"
+            >
+              <span className="back-icon">←</span>
+              Back to Login
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  return null; // 'done' just navigates away
+  return null; // 'done' navigates away
 };
 
 export default AuthCallback;

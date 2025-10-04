@@ -9,6 +9,10 @@ export function useAuth() {
 
   useEffect(() => {
     // Get initial session
+    // Also detect recovery from URL on mount (covers first render)
+    if (new URLSearchParams(window.location.search).get('type') === 'recovery') {
+      setIsPasswordRecovery(true);
+    }
     supabase.auth.getSession().then(({ data, error }) => {
       if (error) {
         console.warn('Initial session retrieval error:', error);

@@ -267,16 +267,6 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Back to Landing */}
-        <div className="back-to-landing">
-          <button
-            onClick={() => navigate("/")}
-            className="back-btn"
-          >
-            <span className="back-icon">←</span>
-            Back to Home
-          </button>
-        </div>
       </div>
     </div>
   );

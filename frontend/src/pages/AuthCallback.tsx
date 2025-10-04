@@ -58,8 +58,15 @@ const AuthCallback: React.FC = () => {
       setError(null);
       const { error } = await supabase.auth.updateUser({ password: pwd });
       if (error) throw error;
+      
+      // Password successfully updated - the useAuth hook will detect SIGNED_IN event
+      // and clear the password recovery state, then we can navigate
       setMode('done');
-      navigate('/dashboard', { replace: true });
+      
+      // Small delay to let auth state settle before navigating
+      setTimeout(() => {
+        navigate('/dashboard', { replace: true });
+      }, 100);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to set password.');
     } finally {

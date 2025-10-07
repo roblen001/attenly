@@ -96,7 +96,6 @@ SUPPORTED_FILE_TYPES = [".pdf", ".docx", ".txt"]
 
 # PDF Processing
 PDF_MAX_PAGES = 500
-PDF_EXTRACT_TABLES = True
 PDF_EXTRACT_IMAGES = False
 
 # =============================================================================

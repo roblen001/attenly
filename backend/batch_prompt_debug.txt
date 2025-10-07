@@ -6,59 +6,62 @@ QUESTION: summarize
 
 RELEVANT CONTEXT FOR THIS QUESTION:
 === DOCUMENT SECTION 1 ===
-Source: 1_page_sample-tables.pdf (Pages 1-1)
+Source: 1_sample-tables-scan.pdf (Pages 1-1)
 --- PAGE 1 ---
-  Design                build
-                and
- accessible
+  Design
+                and     build
+  accessible
                       PDF      tables
- Sample
-             tables
- Table
-        1
- Column          (TH)
-          header
-                          Column   header  (TH)
-                                                   Column   header  (TH)
- Row  header  (TH)
-                                   (TD)
-                          Data cell                         (TD)
-                                                   Data cell
-      header(TH)
- Row
+  Sample
+              tables
+ Table  1
+ Column   header  (TH)
+                          Column           (TH)
+                                   header
+                                                   Column           (TH)
+                                                            header
+      header
+ Row          (TH)
                                    (TD)
                           Data cell
-                                                   Data     (TD)
+                                                            (TD)
+                                                   Data
                                                         cell
-          example
- Table
+      header(TH)
+ Row
+                          Data cell (TD)
+                                                            (TD)
+                                                   Data cell
+ Table    example
        2:           of footnotes
-                                 referenced
-                                             from within    table
-                                                         a
- Expenditure by
-                function
-                        £ million
+                                 referenced  from
+                                                  within
+                                                           table
+                                                          a
+ Expenditure    function
+             by
+                          million
+                        £
                                                      2009/10
                                                                 2010/11
  Policy
        functions
                           Financial
-                                                       22.5
+                                                        22.5
                                                                    30.57
-                          Information
-                                      2
+                         Information
                                                        10.2        14.8
-                         Contingency
+                          Contingency
                                                         2.6
                                                                     1.2
- Remunerated
-              functions
+ Remunerated  functions
                          Agency
-                                 services 3
-                                                       44.7        35.91
+                                 services
+                                         3
+                                                       44.7
+                                                                  35.91
                          Payments
-                                                       22.41       19.88
+                                                       22.41      19.88
                          Banking
                                                       22.90
                                                                   44.23
@@ -67,31 +70,34 @@ Source: 1_page_sample-tables.pdf (Pages 1-1)
                                                                   10.32
 (1) Provisional
              total    publication
-                    of          date.
-                  as
+                 as of          date.
 (2)
-   Costs associated   on-going
-                  with        information
+   Costs associated
+                  with on-going
+                              information
                                          programmes.
 (3)
-   From the management
-                       accounts,
+   From the management accounts,
                                 net of recoveries, including
-                                                        interest charges.
+                                                        interest
+                                                               charges.
                   Table
                          3: "film credits" style layout
-                     Main character
-                                     Daniel Radcliffe
+                     Main
+                          character
+                                     Daniel
+                                          Radcliffe
                          Sidekick
-                                  1  Rupert Grint
+                                 1  Rupert Grint
                          Sidekick
-                                  2  Emma Watson
-                      Lovable
-                              ogre   Robbie Coltrane
-                         Professor
-                                     Maggie Smith
-                       Headmaster   Richard
-                                            Harris
+                                  2 Emma  Watson
+                      Lovable ogre  Robbie
+                                           Coltrane
+                         Professor  Maggie
+                                           Smith
+                       Headmaster
+                                    Richard
+                                           Harris
 === END SECTION 1 ===
 
 

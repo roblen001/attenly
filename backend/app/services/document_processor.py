@@ -12,46 +12,16 @@ Architecture:
 """
 
 import logging
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Type
+from typing import Dict, Any, Optional, List
+from .base_document_processor import BaseDocumentProcessor
 from .pdf_parser import PDFProcessor
 from .chunking_service import ChunkingService
 from .vector_store import VectorStore
 from .document_classifier import DocumentClassifier, ProcessorType
 from .performance_monitor import time_operation, get_performance_monitor
+from .ocr_document_processor import OCRDocumentProcessor
 
 logger = logging.getLogger(__name__)
-
-
-class BaseDocumentProcessor(ABC):
-    """Abstract base class for document processors"""
-    
-    @property
-    @abstractmethod
-    def supported_extensions(self) -> List[str]:
-        """Return list of supported file extensions (e.g., ['.pdf', '.docx'])"""
-        pass
-    
-    @property
-    @abstractmethod
-    def processor_name(self) -> str:
-        """Return human-readable name of the processor"""
-        pass
-    
-    @abstractmethod
-    def validate_document(self, content: bytes, filename: str) -> Dict[str, Any]:
-        """Validate document before processing"""
-        pass
-    
-    @abstractmethod
-    def extract_content(self, content: bytes, filename: str) -> Dict[str, Any]:
-        """Extract structured content from document"""
-        pass
-    
-    @abstractmethod
-    def get_preview(self, content: bytes, filename: str, max_pages: int = 3) -> Dict[str, Any]:
-        """Generate preview of document content"""
-        pass
 
 
 class PDFDocumentProcessor(BaseDocumentProcessor):
@@ -219,6 +189,9 @@ class DocumentProcessor:
         for ext in pdf_processor.supported_extensions:
             self.processors[ext.lower()] = pdf_processor
         
+        # Register OCR processor (but don't register by extension - it's selected by classification)
+        self.ocr_processor = OCRDocumentProcessor()
+        
         # Future processors can be registered here
         # docx_processor = DOCXDocumentProcessor()
         # for ext in docx_processor.supported_extensions:
@@ -239,10 +212,10 @@ class DocumentProcessor:
         
         if processor_type == ProcessorType.PDF.value:
             return self.processors.get('.pdf')
-        elif processor_type == ProcessorType.DOCX.value:
-            return None # Future implementation
         elif processor_type == ProcessorType.OCR.value:
-            return None  # Future OCR processor
+            return self.ocr_processor  # Use OCR processor
+        elif processor_type == "docx":  # Future DOCX support (when ProcessorType.DOCX is added)
+            return None # Future implementation
         else:
             return None
     
@@ -310,15 +283,24 @@ class DocumentProcessor:
             # Step 3: Extract structured content
             with time_operation("content_extraction", 
                               {"processor": processor.processor_name, "filename": filename}) as timer:
-                extraction_result = processor.extract_content(content, filename)
-                content_extraction_time = timer.stop().duration
-                
-                # Update performance metrics
-                if file_id in performance_monitor._processing_sessions:
-                    performance_monitor.update_file_metric(file_id, "content_extraction_time", content_extraction_time)
+                try:
+                    extraction_result = processor.extract_content(content, filename)
+                    content_extraction_time = timer.stop().duration
+                    
+                    # Update performance metrics
+                    if file_id in performance_monitor._processing_sessions:
+                        performance_monitor.update_file_metric(file_id, "content_extraction_time", content_extraction_time)
+                except Exception as extraction_error:
+                    content_extraction_time = timer.stop().duration
+                    error_msg = f"Content extraction failed using {processor.processor_name}: {str(extraction_error)}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
             
             if not extraction_result["success"]:
-                raise ValueError(f"Content extraction failed: {extraction_result.get('error', 'Unknown error')}")
+                processor_error = extraction_result.get('error', 'Unknown error')
+                detailed_error = f"Content extraction failed using {processor.processor_name}: {processor_error}"
+                logger.error(detailed_error)
+                raise ValueError(detailed_error)
             
             document_data = extraction_result["data"]
             logger.info(f"Extracted content using {processor.processor_name}")

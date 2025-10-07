@@ -100,6 +100,34 @@ PDF_EXTRACT_TABLES = True
 PDF_EXTRACT_IMAGES = False
 
 # =============================================================================
+# OCR CONFIGURATION
+# =============================================================================
+
+# Model and Cache Configuration
+OCR_CACHE_DIR = os.getenv("ATTENLY_CACHE_DIR", "/var/cache/attenly/doctr")
+OCR_CUDA_DEVICES = os.getenv("CUDA_VISIBLE_DEVICES", "")  # Empty = CPU only
+
+# Processing Limits
+OCR_MAX_PAGES_PER_REQUEST = int(os.getenv("OCR_MAX_PAGES", "150"))
+OCR_MAX_FILE_SIZE_MB = int(os.getenv("OCR_MAX_FILE_SIZE_MB", "60"))
+
+# Quality Thresholds
+OCR_CONFIDENCE_THRESHOLD = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "0.55"))
+OCR_COVERAGE_THRESHOLD = float(os.getenv("OCR_COVERAGE_THRESHOLD", "0.65"))
+
+# Timeout Configuration
+OCR_BASE_TIMEOUT_SECONDS = int(os.getenv("OCR_BASE_TIMEOUT", "120"))  # 120s for 50 pages
+OCR_TIMEOUT_PER_50_PAGES = int(os.getenv("OCR_TIMEOUT_PER_50_PAGES", "120"))
+OCR_MAX_TIMEOUT_SECONDS = int(os.getenv("OCR_MAX_TIMEOUT", "480"))  # 8 minutes max
+
+# Model Configuration
+OCR_DET_ARCH = "db_resnet50"
+OCR_RECO_ARCH = "parseq"
+OCR_DET_BATCH_SIZE = 4
+OCR_RECO_BATCH_SIZE = 1024
+OCR_PDF_SCALE = 4.17  # 300 DPI equivalent
+
+# =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
 
@@ -209,6 +237,38 @@ def validate_config():
         errors.append("EMBEDDING_MAX_CONCURRENT_BATCHES must be at least 1")
     if EMBEDDING_MAX_CONCURRENT_BATCHES > 10:
         errors.append("EMBEDDING_MAX_CONCURRENT_BATCHES should not exceed 10")
+    
+    # Validate OCR configuration
+    if OCR_MAX_PAGES_PER_REQUEST < 1:
+        errors.append("OCR_MAX_PAGES_PER_REQUEST must be at least 1")
+    if OCR_MAX_PAGES_PER_REQUEST > 1000:
+        errors.append("OCR_MAX_PAGES_PER_REQUEST should not exceed 1000")
+    
+    if OCR_MAX_FILE_SIZE_MB < 1:
+        errors.append("OCR_MAX_FILE_SIZE_MB must be at least 1")
+    if OCR_MAX_FILE_SIZE_MB > 500:
+        errors.append("OCR_MAX_FILE_SIZE_MB should not exceed 500")
+    
+    if not 0.0 <= OCR_CONFIDENCE_THRESHOLD <= 1.0:
+        errors.append("OCR_CONFIDENCE_THRESHOLD must be between 0.0 and 1.0")
+    
+    if not 0.0 <= OCR_COVERAGE_THRESHOLD <= 1.0:
+        errors.append("OCR_COVERAGE_THRESHOLD must be between 0.0 and 1.0")
+    
+    if OCR_BASE_TIMEOUT_SECONDS < 10:
+        errors.append("OCR_BASE_TIMEOUT_SECONDS must be at least 10")
+    if OCR_BASE_TIMEOUT_SECONDS > 3600:
+        errors.append("OCR_BASE_TIMEOUT_SECONDS should not exceed 3600")
+    
+    if OCR_TIMEOUT_PER_50_PAGES < 10:
+        errors.append("OCR_TIMEOUT_PER_50_PAGES must be at least 10")
+    if OCR_TIMEOUT_PER_50_PAGES > 3600:
+        errors.append("OCR_TIMEOUT_PER_50_PAGES should not exceed 3600")
+    
+    if OCR_MAX_TIMEOUT_SECONDS < OCR_BASE_TIMEOUT_SECONDS:
+        errors.append("OCR_MAX_TIMEOUT_SECONDS must be at least OCR_BASE_TIMEOUT_SECONDS")
+    if OCR_MAX_TIMEOUT_SECONDS > 7200:  # 2 hours max
+        errors.append("OCR_MAX_TIMEOUT_SECONDS should not exceed 7200")
     
     if errors:
         raise ValueError(f"Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors))

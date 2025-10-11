@@ -40,7 +40,7 @@ class ContentType(Enum):
 class ProcessorType(Enum):
     """Available processors"""
     PDF = "pdf"
-    # OCR = "ocr"                    # Future OCR processor
+    OCR = "ocr"                    # OCR processor for image-based PDFs
     # DOCX = "docx"                  # Future DOCX processor
     UNSUPPORTED = "unsupported"
 
@@ -312,8 +312,7 @@ class DocumentClassifier:
             if content_type == ContentType.TEXT_BASED:
                 return ProcessorType.PDF
             elif content_type in [ContentType.IMAGE_BASED, ContentType.MIXED]:
-                # Future: Return ProcessorType.OCR when OCR is implemented
-                return ProcessorType.UNSUPPORTED  # For now, return unsupported
+                return ProcessorType.OCR  # Use OCR processor for image-based PDFs
             elif content_type == ContentType.EMPTY:
                 return ProcessorType.UNSUPPORTED
             else:
@@ -380,6 +379,12 @@ class DocumentClassifier:
         
         elif processor == ProcessorType.PDF:
             notes.append("Document ready for text extraction and processing.")
+        elif processor == ProcessorType.OCR:
+            notes.extend([
+                "Document will be processed using OCR for text extraction.",
+                "Processing may take several minutes depending on document size.",
+                "OCR quality depends on document image quality and resolution."
+            ])
         
         return notes
     
@@ -411,7 +416,7 @@ class DocumentClassifier:
             "current_capabilities": {
                 "pdf_text_extraction": True,
                 "pdf_image_detection": True,
-                "ocr_processing": False,  # Future feature
+                "ocr_processing": True,   # Now available
                 "docx_processing": False  # Future feature
             }
         }

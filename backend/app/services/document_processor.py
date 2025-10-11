@@ -390,7 +390,8 @@ class DocumentProcessor:
                     }
                 },
                 "chunk_statistics": chunk_stats,
-                "document_metadata": document_data["metadata"]
+                "document_metadata": document_data["metadata"],
+                "document_data": document_data  # Add full document data including pages for content retrieval
             }
             
             logger.info(f"Successfully processed document {filename}")

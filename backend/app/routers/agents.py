@@ -101,6 +101,110 @@ def clear_report_cache(user_id: str, agent_id: str = None) -> None:
         del report_cache_storage[user_id]
         logging.info(f"Cleared all cached reports for user {user_id}")
 
+def get_pdf_document_content(file_record: dict, document_id: str) -> dict:
+    """Extract content using PDFProcessor (reuses existing logic)"""
+    from app.services.pdf_parser import PDFProcessor
+    
+    content = file_record["content"]
+    filename = file_record["name"]
+    
+    pdf_processor = PDFProcessor()
+    pdf_data = pdf_processor.process_pdf(content, filename)
+    
+    if not pdf_data or not pdf_data.get("pages"):
+        raise HTTPException(status_code=500, detail="Failed to extract readable content from document")
+    
+    # Build full document text with page markers (same as existing logic)
+    full_text = ""
+    pages_info = []
+    
+    for page in pdf_data["pages"]:
+        page_number = page["page_number"]
+        page_content = page["markdown"]
+        
+        # Add page marker and content
+        page_text = f"\n--- PAGE {page_number} ---\n{page_content}\n"
+        full_text += page_text
+        
+        # Track page info for navigation
+        pages_info.append({
+            "page_number": page_number,
+            "start_position": len(full_text) - len(page_text),
+            "end_position": len(full_text),
+            "content_length": len(page_content)
+        })
+    
+    return {
+        "document_id": document_id,
+        "filename": filename,
+        "full_text": full_text,
+        "pages": pages_info,
+        "total_pages": len(pdf_data["pages"]),
+        "total_characters": len(full_text),
+        "metadata": {
+            "size": file_record["size"],
+            "type": file_record["type"],
+            "processing_stats": file_record.get("processing_stats", {})
+        }
+    }
+
+def get_ocr_document_content(file_record: dict, document_id: str) -> dict:
+    """Use stored OCR document data to avoid re-extraction"""
+    
+    filename = file_record["name"]
+    
+    # Use stored extracted data if available (avoids dual OCR processing)
+    if "extracted_document_data" in file_record:
+        logging.info(f"Using stored OCR document data for {document_id} (avoiding re-extraction)")
+        ocr_data = file_record["extracted_document_data"]
+    else:
+        # No stored data available - this shouldn't happen for new uploads
+        logging.error(f"No stored OCR document data found for {document_id}")
+        raise HTTPException(status_code=500, detail="OCR document data not available - please re-upload the document")
+    
+    if not ocr_data or not ocr_data.get("pages"):
+        raise HTTPException(status_code=500, detail="Failed to extract readable content from OCR document")
+    
+    # Build full document text with page markers (same format as PDF)
+
+    print("==============DEBUG==============")
+    print(ocr_data)
+
+    print("================keys==============")
+    print(ocr_data.keys())
+    full_text = ""
+    pages_info = []
+    
+    for page in ocr_data["pages"]:
+        page_number = page["page_number"]
+        page_content = page["markdown"]
+        
+        # Add page marker and content (same format as PDF)
+        page_text = f"\n--- PAGE {page_number} ---\n{page_content}\n"
+        full_text += page_text
+        
+        # Track page info for navigation
+        pages_info.append({
+            "page_number": page_number,
+            "start_position": len(full_text) - len(page_text),
+            "end_position": len(full_text),
+            "content_length": len(page_content)
+        })
+
+    return {
+        "document_id": document_id,
+        "filename": filename,
+        "full_text": full_text,
+        "pages": pages_info,
+        "total_pages": len(ocr_data["pages"]),
+        "total_characters": len(full_text),
+        "metadata": {
+            "size": file_record["size"],
+            "type": file_record["type"],
+            "processing_stats": file_record.get("processing_stats", {})
+        }
+    }
+
 @router.get("/prebuilt", response_model=list[Agent])
 def list_prebuilt_agents():
     """Get all prebuilt agents from JSON file"""
@@ -283,8 +387,20 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
                 
                 if processing_result["success"]:
                     file_record["status"] = "uploaded"
-                    file_record["processing_stats"] = processing_result["processing_stats"]
+                    
+                    # Enhanced processing_stats to include content_type and processor_used
+                    enhanced_processing_stats = processing_result["processing_stats"].copy()
+                    enhanced_processing_stats["content_type"] = processing_result.get("content_type")
+                    enhanced_processing_stats["processor_used"] = processing_result.get("processor_used")
+                    
+                    file_record["processing_stats"] = enhanced_processing_stats
                     file_record["chunk_statistics"] = processing_result["chunk_statistics"]
+                    
+                    # Store extracted document data to avoid re-extraction during content retrieval
+                    if "document_data" in processing_result:
+                        file_record["extracted_document_data"] = processing_result["document_data"]
+                        processor_used = processing_result.get("processor_used", "")
+                        logging.info(f"Stored extracted document data for {processor_used} file {file_id}")
                     
                     # Finish monitoring with success
                     if file_metrics:
@@ -483,7 +599,7 @@ async def list_files(current_user = Depends(get_current_user)):
 
 @router.get("/documents/{document_id}/content")
 async def get_document_content(document_id: str, current_user = Depends(get_current_user)):
-    """Get the full content of a document for viewing"""
+    """Get the full content of a document for viewing (processor-aware)"""
     user_id = current_user.id
     
     # Check if user has uploaded files
@@ -501,52 +617,23 @@ async def get_document_content(document_id: str, current_user = Depends(get_curr
         raise HTTPException(status_code=400, detail=f"Document not available for viewing. Status: {file_record['status']}")
     
     try:
-        # Get the raw content
-        content = file_record["content"]
-        filename = file_record["name"]
+        # NEW: Detect which processor was used during original processing
+        processing_stats = file_record.get("processing_stats", {})
+        content_type = processing_stats.get("content_type", "pdf")
+        processor_used = processing_stats.get("processor_used", "PDF Processor")
         
-        from app.services.pdf_parser import PDFProcessor
-        pdf_processor = PDFProcessor()
-        pdf_data = pdf_processor.process_pdf(content, filename)
-
+        logging.info(f"Retrieving content for document {document_id}: processor='{processor_used}', content_type='{content_type}'")
         
-        if not pdf_data or not pdf_data.get("pages"):
-            raise HTTPException(status_code=500, detail="Failed to extract readable content from document")
+        # Route to appropriate processor-specific content retrieval
+        if content_type == "pdf_ocr" or processor_used == "OCR Processor":
+            # Use OCR content retrieval (reuses existing OCR logic)
+            return get_ocr_document_content(file_record, document_id)
+        if content_type == "pdf" or processor_used == "PDF Processor":
+            return get_pdf_document_content(file_record, document_id)
         
-        # Build full document text with page markers
-        full_text = ""
-        pages_info = []
-        
-        for page in pdf_data["pages"]:
-            page_number = page["page_number"]
-            page_content = page["markdown"]
-            
-            # Add page marker and content
-            page_text = f"\n--- PAGE {page_number} ---\n{page_content}\n"
-            full_text += page_text
-            
-            # Track page info for navigation
-            pages_info.append({
-                "page_number": page_number,
-                "start_position": len(full_text) - len(page_text),
-                "end_position": len(full_text),
-                "content_length": len(page_content)
-            })
-        
-        return {
-            "document_id": document_id,
-            "filename": filename,
-            "full_text": full_text,
-            "pages": pages_info,
-            "total_pages": len(pdf_data["pages"]),
-            "total_characters": len(full_text),
-            "metadata": {
-                "size": file_record["size"],
-                "type": file_record["type"],
-                "processing_stats": file_record.get("processing_stats", {})
-            }
-        }
-        
+    except HTTPException:
+        # Re-raise HTTP exceptions (from helper functions)
+        raise
     except Exception as e:
         logging.error(f"Failed to get content for document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve document content: {str(e)}")
@@ -939,43 +1026,23 @@ async def save_current_report(
             content = file_record["content"]
             
             try:
-                # Process with PDF parser to get full text and pages
-                from app.services.pdf_parser import PDFProcessor
-                pdf_processor = PDFProcessor()
-                pdf_data = pdf_processor.process_pdf(content, file_record["name"])
+                # Use same processor-aware approach as get_document_content endpoint
+                processing_stats = file_record.get("processing_stats", {})
+                content_type = processing_stats.get("content_type")
+                processor_used = processing_stats.get("processor_used")
                 
-                if not pdf_data or not pdf_data.get("pages"):
-                    logging.warning(f"Failed to process PDF content for document {doc_id}")
-                    continue
+                logging.info(f"Saving content for document {doc_id}: processor='{processor_used}', content_type='{content_type}'")
                 
-                # Build full document text with page markers (same as existing endpoint)
-                full_text = ""
-                pages_info = []
-                for page in pdf_data["pages"]:
-                    page_number = page["page_number"]
-                    page_content = page["markdown"]
-                    page_text = f"\n--- PAGE {page_number} ---\n{page_content}\n"
-                    full_text += page_text
-                    pages_info.append({
-                        "page_number": page_number,
-                        "start_position": len(full_text) - len(page_text),
-                        "end_position": len(full_text),
-                        "content_length": len(page_content)
-                    })
+                # Route to appropriate processor-specific content retrieval
+                if content_type == "pdf_ocr" or processor_used == "OCR Processor":
+                    # Use OCR content retrieval (reuses existing OCR logic)
+                    document_content = get_ocr_document_content(file_record, doc_id)
+                else:
+                    # Use existing PDF processor method (default fallback)
+                    document_content = get_pdf_document_content(file_record, doc_id)
                 
-                document_contents[doc_id] = {
-                    "document_id": doc_id,
-                    "filename": file_record["name"],
-                    "full_text": full_text,
-                    "pages": pages_info,
-                    "total_pages": len(pdf_data["pages"]),
-                    "total_characters": len(full_text),
-                    "metadata": {
-                        "size": file_record["size"],
-                        "type": file_record["type"],
-                        "processing_stats": file_record.get("processing_stats", {})
-                    }
-                }
+                # Use the result directly from the helper functions
+                document_contents[doc_id] = document_content
                 
             except Exception as e:
                 logging.error(f"Failed to process document {doc_id} for saving: {e}")

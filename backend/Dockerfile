@@ -52,6 +52,17 @@ COPY requirements.txt .
 RUN pip install --no-index --find-links /wheels -r requirements.txt && \
     rm -rf /wheels
 
+# ---- Pre-download DocTR models during build (as root) ----
+# This prevents runtime downloads and memory spikes on first OCR request
+RUN mkdir -p /cache/attenly/doctr && \
+    ATTENLY_CACHE_DIR=/cache/attenly/doctr python -c "\
+import os; \
+os.environ['CUDA_VISIBLE_DEVICES'] = ''; \
+from doctr.models import ocr_predictor; \
+print('Pre-caching DocTR models...'); \
+_ = ocr_predictor(det_arch='db_resnet50', reco_arch='parseq', pretrained=True); \
+print('DocTR models cached successfully')"
+
 # ---- Create non-root user and writable cache AFTER deps are installed ----
 RUN useradd -u 10001 -m appuser \
  && mkdir -p /cache/attenly \

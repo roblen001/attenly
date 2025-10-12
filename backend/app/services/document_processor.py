@@ -284,7 +284,12 @@ class DocumentProcessor:
             with time_operation("content_extraction", 
                               {"processor": processor.processor_name, "filename": filename}) as timer:
                 try:
-                    extraction_result = processor.extract_content(content, filename)
+                    # Check if processor's extract_content is async (OCR processor)
+                    import inspect
+                    if inspect.iscoroutinefunction(processor.extract_content):
+                        extraction_result = await processor.extract_content(content, filename)
+                    else:
+                        extraction_result = processor.extract_content(content, filename)
                     content_extraction_time = timer.stop().duration
                     
                     # Update performance metrics

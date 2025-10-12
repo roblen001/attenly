@@ -84,13 +84,20 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
                 validation_result["valid"] = False
                 validation_result["errors"].append("PDF contains no pages")
             else:
-                # Check page count limits
+                # Check page count limits (optimized for 1GB RAM instances)
                 from app.config import OCR_MAX_PAGES_PER_REQUEST
                 if len(doc) > OCR_MAX_PAGES_PER_REQUEST:
                     validation_result["valid"] = False
-                    validation_result["errors"].append(f"PDF has {len(doc)} pages, exceeds limit of {OCR_MAX_PAGES_PER_REQUEST} pages")
-                elif len(doc) > 50:
-                    validation_result["warnings"].append(f"Large PDF with {len(doc)} pages may take longer to process")
+                    validation_result["errors"].append(
+                        f"PDF has {len(doc)} pages, exceeds limit of {OCR_MAX_PAGES_PER_REQUEST} pages for OCR processing. "
+                        f"This limit prevents memory exhaustion on resource-constrained instances. "
+                        f"Please split your document into smaller files or use a text-based PDF if possible."
+                    )
+                elif len(doc) > 20:
+                    validation_result["warnings"].append(
+                        f"PDF with {len(doc)} pages will require extended processing time. "
+                        f"OCR processing is memory-intensive - expect 2-5 minutes for documents of this size."
+                    )
             
             validation_result["file_info"]["pages"] = len(doc)
             doc.close()
@@ -99,17 +106,19 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
             validation_result["valid"] = False
             validation_result["errors"].append(f"Invalid PDF file: {str(e)}")
         
-        # Add OCR-specific warnings
-        validation_result["warnings"].extend([
-            "Document will be processed using OCR - processing may take several minutes",
-            "OCR quality depends on document image quality and resolution"
-        ])
+        # Add OCR-specific warnings with memory context
+        if validation_result["valid"]:
+            validation_result["warnings"].extend([
+                "Document will be processed using OCR - processing may take several minutes",
+                "OCR quality depends on document image quality and resolution",
+                "Processing uses optimized settings for memory-constrained environments"
+            ])
         
         return validation_result
     
-    def extract_content(self, content: bytes, filename: str) -> Dict[str, Any]:
+    async def extract_content(self, content: bytes, filename: str) -> Dict[str, Any]:
         """
-        Extract content from PDF using OCR
+        Extract content from PDF using OCR (async for memory management)
         
         Args:
             content: PDF file content as bytes
@@ -150,7 +159,11 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
                 doc = fitz.open(stream=content, filetype="pdf")
                 num_pages = len(doc)
                 doc.close()
-                logger.info(f"PDF has {num_pages} pages")
+                logger.info(f"PDF has {num_pages} pages - starting OCR processing")
+                
+                # Add progress indication for larger documents
+                if num_pages > 10:
+                    logger.info(f"Processing {num_pages}-page document may take 3-5 minutes on memory-constrained instances")
             except Exception as pdf_error:
                 logger.warning(f"Failed to determine PDF page count: {pdf_error}")
                 num_pages = 10  # Default estimate if we can't determine
@@ -158,11 +171,25 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
             timeout = self.ocr_service.calculate_timeout(num_pages)
             logger.info(f"OCR timeout set to {timeout}s for {num_pages} pages")
             
-            # Process with OCR
+            # Process with OCR (now async)
             try:
-                ocr_result = self.ocr_service.process_pdf_bytes(content, filename, timeout)
+                ocr_result = await self.ocr_service.process_pdf_bytes(content, filename, timeout)
             except ImportError as ie:
                 error_msg = f"OCR dependencies not installed: {str(ie)}. Please ensure python-doctr[torch], torch, and torchvision are properly installed."
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "content_type": "pdf_ocr",
+                    "processor": self.processor_name,
+                    "error": error_msg
+                }
+            except MemoryError as mem_error:
+                error_msg = (
+                    f"Out of memory during OCR processing of {filename}. "
+                    f"The document may be too large for available resources. "
+                    f"Try: (1) reducing document size, (2) splitting into smaller files, "
+                    f"or (3) using a text-based PDF instead of scanned images."
+                )
                 logger.error(error_msg)
                 return {
                     "success": False,
@@ -173,6 +200,9 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
             except Exception as ocr_error:
                 error_msg = f"OCR processing failed: {str(ocr_error)}"
                 logger.error(error_msg)
+                # Check if error message indicates memory issues
+                if "memory" in str(ocr_error).lower() or "oom" in str(ocr_error).lower():
+                    error_msg += " (Possible memory exhaustion - try a smaller document)"
                 return {
                     "success": False,
                     "content_type": "pdf_ocr",
@@ -181,8 +211,15 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
                 }
             
             if not ocr_result.success:
-                error_msg = f"OCR processing failed for {filename}: {ocr_result.error_message}"
-                logger.error(error_msg)
+                error_msg = ocr_result.error_message or "OCR processing failed"
+                logger.error(f"OCR processing failed for {filename}: {error_msg}")
+                
+                # Enhance error message with helpful context
+                if "timeout" in error_msg.lower():
+                    error_msg += " - Document too large for current timeout settings"
+                elif "memory" in error_msg.lower() or "oom" in error_msg.lower():
+                    error_msg += " - Try reducing document size or page count"
+                
                 return {
                     "success": False,
                     "content_type": "pdf_ocr",
@@ -223,8 +260,9 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
             # Write debug output files
             # self._write_debug_files(filename, ocr_result.doctr_export, attently_data, ocr_result.quality_metrics)
             
-            logger.info(f"OCR extraction successful: {len(attently_data['pages'])} pages, "
-                       f"{attently_data['statistics']['total_tokens']} tokens")
+            logger.info(f"OCR extraction successful for {filename}: {len(attently_data['pages'])} pages, "
+                       f"{attently_data['statistics']['total_tokens']} tokens, "
+                       f"processing time: {ocr_result.processing_time:.1f}s")
             
             return {
                 "success": True,

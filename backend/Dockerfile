@@ -1,5 +1,5 @@
 # =========================
-# Dockerfile (FastAPI + WeasyPrint/OCR friendly, slim & safe)
+# Dockerfile (FastAPI + WeasyPrint/OCR + OpenCV, slim & safe)
 # =========================
 
 # --- Build stage ---
@@ -24,8 +24,6 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
 
 # --- Runtime stage ---
 FROM python:3.11-slim-bookworm AS runtime
-
-# Workdir first so COPY . . below lands where expected
 WORKDIR /app
 
 # Conservative threading to avoid OOM; you can tune later
@@ -39,11 +37,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MKL_NUM_THREADS=1 \
     ATTENLY_CACHE_DIR=/cache/attenly
 
-# Only the runtime libs actually needed by WeasyPrint/Cairo/Pango + fonts
+# Runtime libs: WeasyPrint/Cairo/Pango + fonts + OpenCV deps (libGL etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi8 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
     libgdk-pixbuf-2.0-0 libharfbuzz0b libfontconfig1 \
     libmagic1 shared-mime-info fonts-dejavu curl \
+    libgl1 libsm6 libxext6 libxrender1 \
+    libglib2.0-0 \
   && rm -rf /var/lib/apt/lists/*
 
 # ---- Install Python deps from prebuilt wheels as root (offline) ----
@@ -55,9 +55,9 @@ RUN pip install --no-index --find-links /wheels -r requirements.txt && \
 # ---- Create non-root user and writable cache AFTER deps are installed ----
 RUN useradd -u 10001 -m appuser \
  && mkdir -p /cache/attenly \
- && chown -R appuser:appuser /cache
+ && chown -R appuser:appuser /cache /app
 
-# Copy app source then fix ownership
+# Copy app source (after deps to maximize cache)
 COPY . .
 RUN chown -R appuser:appuser /app
 

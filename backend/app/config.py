@@ -103,7 +103,7 @@ PDF_EXTRACT_IMAGES = False
 # =============================================================================
 
 # Model and Cache Configuration
-OCR_CACHE_DIR = os.getenv("ATTENLY_CACHE_DIR", "/var/cache/attenly/doctr")
+OCR_CACHE_DIR = os.getenv("ATTENLY_CACHE_DIR", "/cache/attenly/doctr")
 OCR_CUDA_DEVICES = os.getenv("CUDA_VISIBLE_DEVICES", "")  # Empty = CPU only
 
 # Processing Limits

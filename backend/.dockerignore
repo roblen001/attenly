@@ -71,3 +71,20 @@ docs/
 # Temporary files
 *.tmp
 *.temp
+
+.git
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+node_modules/
+build/
+dist/
+*.log
+.mypy_cache/
+.pytest_cache/
+.docs/
+.tests/
+data/

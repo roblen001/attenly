@@ -25,16 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libharfbuzz-dev \
     libfontconfig1-dev \
     libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    libxrandr2 \
-    libxss1 \
-    libxcursor1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxi6 \
-    libxinerama1 \
-    libxslt1.1 \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and build wheels
@@ -70,17 +63,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libharfbuzz0b \
     libfontconfig1 \
     libgl1-mesa-glx \
-    libglu1-mesa \
-    libxrandr2 \
-    libxss1 \
-    libxcursor1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxi6 \
-    libxinerama1 \
     libgomp1 \
-    libxslt1.1 \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

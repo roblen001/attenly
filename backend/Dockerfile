@@ -18,8 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN python -m pip install --upgrade pip wheel \
- && pip wheel --no-cache-dir --no-deps -r requirements.txt -w /wheels
+# IMPORTANT: build wheels for requirements AND their transitive deps
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    pip wheel -r requirements.txt -w /wheels
 
 # --- Runtime stage ---
 FROM python:3.11-slim-bookworm AS runtime
@@ -49,10 +50,11 @@ RUN useradd -u 10001 -m appuser \
  && chown -R appuser:appuser /cache
 USER appuser
 
-# Install Python deps from prebuilt wheels only
+# Install Python deps from prebuilt wheels ONLY (offline/reproducible)
 COPY --from=builder /wheels /wheels
-RUN pip install --no-index --find-links /wheels /wheels/* \
- && rm -rf /wheels
+COPY requirements.txt .
+RUN pip install --no-index --find-links /wheels -r requirements.txt && \
+    rm -rf /wheels
 
 # Copy app source (after deps to maximize cache)
 COPY . .

@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies needed for building Python packages including WeasyPrint
+# Install system dependencies needed for building Python packages including WeasyPrint and OCR
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -24,6 +24,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-3-dev \
     libharfbuzz-dev \
     libfontconfig1-dev \
+    libgl1-mesa-dev \
+    libglu1-mesa-dev \
+    libxrandr2 \
+    libxss1 \
+    libxcursor1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxi6 \
+    libxinerama1 \
+    libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and build wheels
@@ -36,13 +47,16 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Set production environment variables
+# Set production environment variables including graphics/OCR support
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ENV=production \
-    PORT=8080
+    PORT=8080 \
+    MPLBACKEND=Agg \
+    QT_QPA_PLATFORM=offscreen \
+    DISPLAY=:99
 
-# Install runtime system dependencies including WeasyPrint requirements
+# Install runtime system dependencies including WeasyPrint and OCR requirements
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
     libglib2.0-0 \
@@ -55,6 +69,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-3-0 \
     libharfbuzz0b \
     libfontconfig1 \
+    libgl1-mesa-glx \
+    libglu1-mesa \
+    libxrandr2 \
+    libxss1 \
+    libxcursor1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxi6 \
+    libxinerama1 \
+    libgomp1 \
+    libxslt1.1 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

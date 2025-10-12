@@ -18,12 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# IMPORTANT: build wheels for requirements AND their transitive deps
+# Build wheels for requirements AND their transitive deps (no --no-deps)
 RUN python -m pip install --upgrade pip setuptools wheel && \
     pip wheel -r requirements.txt -w /wheels
 
 # --- Runtime stage ---
 FROM python:3.11-slim-bookworm AS runtime
+
+# Workdir first so COPY . . below lands where expected
 WORKDIR /app
 
 # Conservative threading to avoid OOM; you can tune later
@@ -44,20 +46,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 shared-mime-info fonts-dejavu curl \
   && rm -rf /var/lib/apt/lists/*
 
-# Non-root user and writable cache dir
-RUN useradd -u 10001 -m appuser \
- && mkdir -p /cache/attenly \
- && chown -R appuser:appuser /cache
-USER appuser
-
-# Install Python deps from prebuilt wheels ONLY (offline/reproducible)
+# ---- Install Python deps from prebuilt wheels as root (offline) ----
 COPY --from=builder /wheels /wheels
 COPY requirements.txt .
 RUN pip install --no-index --find-links /wheels -r requirements.txt && \
     rm -rf /wheels
 
-# Copy app source (after deps to maximize cache)
+# ---- Create non-root user and writable cache AFTER deps are installed ----
+RUN useradd -u 10001 -m appuser \
+ && mkdir -p /cache/attenly \
+ && chown -R appuser:appuser /cache
+
+# Copy app source then fix ownership
 COPY . .
+RUN chown -R appuser:appuser /app
+
+USER appuser
 
 # Healthcheck (adjust path if needed)
 EXPOSE 8080

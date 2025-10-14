@@ -25,16 +25,7 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from contextlib import contextmanager
 
-import torch
-from doctr.io import DocumentFile
-from doctr.models import ocr_predictor
-
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
-
+# Import config FIRST to get cache directory setting
 from app.config import (
     OCR_CACHE_DIR, OCR_CUDA_DEVICES, OCR_DET_ARCH, OCR_RECO_ARCH,
     OCR_DET_BATCH_SIZE, OCR_RECO_BATCH_SIZE, OCR_PDF_SCALE,
@@ -44,6 +35,15 @@ from app.config import (
     OCR_ENABLE_REQUEST_QUEUE, OCR_MAX_CONCURRENT_REQUESTS,
     OCR_UNLOAD_MODELS_AFTER_USE, OCR_FORCE_GC_FREQUENCY
 )
+
+# Set DOCTR_CACHE_DIR BEFORE importing doctr to ensure it uses the correct cache location
+os.environ.setdefault('DOCTR_CACHE_DIR', OCR_CACHE_DIR)
+
+# NOW import torch and doctr (they will use the environment variables we just set)
+import torch
+from doctr.io import DocumentFile
+from doctr.models import ocr_predictor
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +99,6 @@ class OCRService:
         self.model = None
         self._model_lock = threading.Lock()
 
-        # Log psutil availability
-        if not PSUTIL_AVAILABLE:
-            logger.warning("psutil not available, memory monitoring disabled")
-
         # Initialize request queue semaphore for memory-constrained instances
         if OCR_ENABLE_REQUEST_QUEUE:
             self._request_semaphore = asyncio.Semaphore(OCR_MAX_CONCURRENT_REQUESTS)
@@ -137,6 +133,8 @@ class OCRService:
         try:
             cache_dir = Path(OCR_CACHE_DIR)
             cache_dir.mkdir(parents=True, exist_ok=True)
+            # Set DocTR cache directory to ensure models are found
+            os.environ.setdefault('DOCTR_CACHE_DIR', str(cache_dir))
             os.environ.setdefault('TORCH_HOME', str(cache_dir / 'torch'))
             os.environ.setdefault('HF_HOME', str(cache_dir / 'huggingface'))
             logger.info(f"OCR cache directory: {cache_dir}")
@@ -244,8 +242,6 @@ class OCRService:
 
     def _get_memory_stats(self) -> Dict[str, float]:
         """Get current memory usage statistics in MB"""
-        if not PSUTIL_AVAILABLE:
-            return {"available": False}
 
         try:
             process = psutil.Process()

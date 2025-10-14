@@ -35,6 +35,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    TORCH_NUM_THREADS=1 \
     DOCTR_CACHE_DIR=/cache/attenly/doctr
 
 # Runtime libs: WeasyPrint/Cairo/Pango + fonts + OpenCV deps (libGL etc.)
@@ -53,16 +55,21 @@ RUN pip install --no-index --find-links /wheels -r requirements.txt && \
     rm -rf /wheels
 
 # ---- Pre-download DocTR models during build (as root) ----
-# This prevents runtime downloads and memory spikes on first OCR request
-# Using db_mobilenet_v3_large for faster OCR on CPU instances
+# Use smallest/fastest CPU pair:
+#   det_arch='db_mobilenet_v3_large'
+#   reco_arch='crnn_mobilenet_v3_small'
 RUN mkdir -p /cache/attenly/doctr && \
-    DOCTR_CACHE_DIR=/cache/attenly/doctr python -c "\
+    DOCTR_CACHE_DIR=/cache/attenly/doctr \
+    OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TORCH_NUM_THREADS=1 \
+    CUDA_VISIBLE_DEVICES="" \
+    python -c "\
 import os; \
-os.environ['CUDA_VISIBLE_DEVICES'] = ''; \
+os.environ['CUDA_VISIBLE_DEVICES']=''; \
+os.environ['DOCTR_CACHE_DIR']='/cache/attenly/doctr'; \
 from doctr.models import ocr_predictor; \
-print('Pre-caching DocTR models (optimized for speed)...'); \
-_ = ocr_predictor(det_arch='db_mobilenet_v3_large', reco_arch='parseq', pretrained=True); \
-print('DocTR models cached successfully')"
+print('Pre-caching DocTR models (small/fast)...'); \
+_ = ocr_predictor(det_arch='db_mobilenet_v3_large', reco_arch='crnn_mobilenet_v3_small', pretrained=True); \
+print('DocTR models cached successfully');"
 
 # ---- Create non-root user and writable cache AFTER deps are installed ----
 RUN useradd -u 10001 -m appuser \

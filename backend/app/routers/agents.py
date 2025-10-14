@@ -401,6 +401,10 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
                         file_record["extracted_document_data"] = processing_result["document_data"]
                         processor_used = processing_result.get("processor_used", "")
                         logging.info(f"Stored extracted document data for {processor_used} file {file_id}")
+                        
+                        # Remove document_data from response to save memory - it's already stored server-side
+                        # Frontend doesn't need this data; DocumentViewer makes a separate API call to retrieve it
+                        del processing_result["document_data"]
                     
                     # Finish monitoring with success
                     if file_metrics:

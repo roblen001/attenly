@@ -35,7 +35,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
-    ATTENLY_CACHE_DIR=/cache/attenly
+    DOCTR_CACHE_DIR=/cache/attenly/doctr
 
 # Runtime libs: WeasyPrint/Cairo/Pango + fonts + OpenCV deps (libGL etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -55,7 +55,7 @@ RUN pip install --no-index --find-links /wheels -r requirements.txt && \
 # ---- Pre-download DocTR models during build (as root) ----
 # This prevents runtime downloads and memory spikes on first OCR request
 RUN mkdir -p /cache/attenly/doctr && \
-    ATTENLY_CACHE_DIR=/cache/attenly/doctr python -c "\
+    DOCTR_CACHE_DIR=/cache/attenly/doctr python -c "\
 import os; \
 os.environ['CUDA_VISIBLE_DEVICES'] = ''; \
 from doctr.models import ocr_predictor; \

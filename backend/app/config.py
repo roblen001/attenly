@@ -82,7 +82,7 @@ PDF_EXTRACT_IMAGES = False
 # OCR CONFIGURATION (CPU-only, small instance)
 # =============================================================================
 
-OCR_CACHE_DIR = os.getenv("ATTENLY_CACHE_DIR", "/cache/attenly/doctr")
+OCR_CACHE_DIR = os.getenv("DOCTR_CACHE_DIR", "/cache/attenly/doctr")
 OCR_CUDA_DEVICES = ""  # force CPU path
 
 # Processing Limits (Optimized for 1GB RAM Koyeb instances)

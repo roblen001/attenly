@@ -338,8 +338,8 @@ class OCRService:
 
             try:
                 with self._timeout_handler(timeout_seconds):
-                    # First pass: count pages cheaply (without scaling high)
-                    # We load at tiny scale just to determine page count; very low memory.
+                    # OPTIMIZATION: Load PDF once to get page count and avoid redundant probe
+                    # First get page count at scale 1.0 (fast)
                     probe_docs = DocumentFile.from_pdf(tmp_path, scale=1.0)
                     total_pages = len(probe_docs)
                     del probe_docs
@@ -352,18 +352,26 @@ class OCRService:
                         f"OCR starting: {filename} | pages={total_pages} | "
                         f"scale={chosen_scale} | chunk_size={chunk_size}"
                     )
+                    
+                    # OPTIMIZATION: Load entire PDF once at target scale (eliminates per-chunk disk I/O)
+                    logger.info(f"Loading PDF once at scale {chosen_scale}...")
+                    doc_full = DocumentFile.from_pdf(tmp_path, scale=chosen_scale)
+                    logger.info(f"PDF loaded: {len(doc_full)} pages in memory")
 
                     exports: List[Dict[str, Any]] = []
                     use_cuda = torch.cuda.is_available() and bool(OCR_CUDA_DEVICES)
                     autocast_device = "cuda" if use_cuda else "cpu"
+                    
+                    # Track timing for progress estimation
+                    chunk_start_time = time.time()
+                    total_chunks = math.ceil(total_pages / chunk_size)
 
-                    # Process in chunks to keep memory bounded
+                    # Process in chunks by slicing in-memory array (eliminates disk reloads)
                     for chunk_idx, start in enumerate(range(0, total_pages, chunk_size)):
                         end = min(start + chunk_size, total_pages)
 
-                        # Load only the current page window at desired scale
-                        # (re-load the PDF at each iteration to avoid holding all pages in RAM)
-                        doc_window = DocumentFile.from_pdf(tmp_path, scale=chosen_scale)[start:end]
+                        # OPTIMIZATION: Slice in-memory document array instead of reloading from disk
+                        doc_window = doc_full[start:end]
 
                         # Inference with no grad and optional mixed precision
                         with torch.inference_mode():
@@ -386,14 +394,40 @@ class OCRService:
                             except Exception:
                                 pass
 
+                        # Enhanced progress logging with percentage and timing
+                        chunks_completed = chunk_idx + 1
+                        progress_pct = (chunks_completed / total_chunks) * 100
+                        elapsed_time = time.time() - chunk_start_time
+                        
+                        # Calculate ETA
+                        if chunks_completed > 0:
+                            avg_time_per_chunk = elapsed_time / chunks_completed
+                            remaining_chunks = total_chunks - chunks_completed
+                            eta_seconds = avg_time_per_chunk * remaining_chunks
+                        else:
+                            eta_seconds = 0
+
                         # Aggressive GC at configured frequency
-                        if OCR_FORCE_GC_FREQUENCY > 0 and (chunk_idx + 1) % OCR_FORCE_GC_FREQUENCY == 0:
+                        if OCR_FORCE_GC_FREQUENCY > 0 and chunks_completed % OCR_FORCE_GC_FREQUENCY == 0:
                             self._force_gc()
                             mem_current = self._get_memory_stats()
                             if mem_current.get("available"):
-                                logger.info(f"OCR chunk {chunk_idx + 1}: pages {start + 1}-{end}/{total_pages} | Memory: {mem_current.get('rss_mb', 0):.1f}MB RSS")
+                                logger.info(
+                                    f"OCR chunk {chunks_completed}/{total_chunks} ({progress_pct:.1f}%) | "
+                                    f"Pages {start + 1}-{end}/{total_pages} | "
+                                    f"Memory: {mem_current.get('rss_mb', 0):.1f}MB RSS | "
+                                    f"ETA: {eta_seconds:.0f}s"
+                                )
                         else:
-                            logger.info(f"OCR chunk processed: pages {start + 1}-{end}/{total_pages}")
+                            logger.info(
+                                f"OCR chunk {chunks_completed}/{total_chunks} ({progress_pct:.1f}%) | "
+                                f"Pages {start + 1}-{end}/{total_pages} | "
+                                f"ETA: {eta_seconds:.0f}s"
+                            )
+                    
+                    # Clean up full document from memory
+                    del doc_full
+                    gc.collect()
 
                     # Merge pages
                     export_merged = self._export_merge(exports)

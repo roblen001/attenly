@@ -1,5 +1,5 @@
 """
-Centralized Configuration for Attenly Backend
+Centralized Configuration for Attenly Backend (updated for small, fast docTR defaults)
 """
 
 import os
@@ -85,14 +85,14 @@ PDF_EXTRACT_IMAGES = False
 OCR_CACHE_DIR = os.getenv("DOCTR_CACHE_DIR", "/cache/attenly/doctr")
 OCR_CUDA_DEVICES = ""  # force CPU path
 
-# Processing Limits (Optimized for 1GB RAM Koyeb instances)
-OCR_MAX_PAGES_PER_REQUEST = int(os.getenv("OCR_MAX_PAGES", "30"))  # Reduced from 150 to 30
+# Processing Limits (optimized for small Koyeb instances)
+OCR_MAX_PAGES_PER_REQUEST = int(os.getenv("OCR_MAX_PAGES", "30"))
 OCR_MAX_FILE_SIZE_MB = int(os.getenv("OCR_MAX_FILE_SIZE_MB", "60"))
 
-# Memory Management Configuration (Optimized for 2GB+ RAM instances)
+# Memory Management
 OCR_ENABLE_REQUEST_QUEUE = os.getenv("OCR_ENABLE_REQUEST_QUEUE", "false").lower() in ("1", "true", "yes")
-OCR_MAX_CONCURRENT_REQUESTS = int(os.getenv("OCR_MAX_CONCURRENT_REQUESTS", "2"))
-OCR_UNLOAD_MODELS_AFTER_USE = os.getenv("OCR_UNLOAD_MODELS_AFTER_USE", "false").lower() in ("1", "true", "yes")
+OCR_MAX_CONCURRENT_REQUESTS = int(os.getenv("OCR_MAX_CONCURRENT_REQUESTS", "1"))  # default 1 to avoid contention
+OCR_UNLOAD_MODELS_AFTER_USE = os.getenv("OCR_UNLOAD_MODELS_AFTER_USE", "true").lower() in ("1", "true", "yes")
 OCR_FORCE_GC_FREQUENCY = int(os.getenv("OCR_FORCE_GC_FREQUENCY", "1"))  # Force GC every N chunks
 
 # Quality Thresholds
@@ -104,29 +104,44 @@ OCR_BASE_TIMEOUT_SECONDS = int(os.getenv("OCR_BASE_TIMEOUT", "180"))
 OCR_TIMEOUT_PER_50_PAGES = int(os.getenv("OCR_TIMEOUT_PER_50_PAGES", "180"))
 OCR_MAX_TIMEOUT_SECONDS = int(os.getenv("OCR_MAX_TIMEOUT", "900"))
 
-# Model Architecture (Optimized for speed on clean printed documents)
-OCR_DET_ARCH = "db_mobilenet_v3_large"  # Faster than db_resnet50, good accuracy for clean text
-OCR_RECO_ARCH = "parseq"
+# ---------------------------
+# docTR model architectures
+# ---------------------------
+# Smallest/fastest recommended pair for CPU:
+#   - Detection: db_mobilenet_v3_large
+#   - Recognition: crnn_mobilenet_v3_small
+OCR_DET_ARCH = os.getenv("OCR_DET_ARCH", "db_mobilenet_v3_large")
+OCR_RECO_ARCH = os.getenv("OCR_RECO_ARCH", "crnn_mobilenet_v3_small")
 
-# Batch sizes (Optimized for 2GB+ RAM instances)
-OCR_DET_BATCH_SIZE = int(os.getenv("OCR_DET_BATCH_SIZE", "2"))  # Increased from 1 for better throughput
-OCR_RECO_BATCH_SIZE = int(os.getenv("OCR_RECO_BATCH_SIZE", "32"))  # Increased from 8 to 32 for better throughput
+# Batch sizes (conservative defaults for 1–2 GB RAM)
+OCR_DET_BATCH_SIZE = int(os.getenv("OCR_DET_BATCH_SIZE", "1"))
+OCR_RECO_BATCH_SIZE = int(os.getenv("OCR_RECO_BATCH_SIZE", "32"))
 
-# PDF scale for quality (Optimized for 2GB+ RAM instances and clean printed documents)
-OCR_PDF_SCALE = float(os.getenv("OCR_PDF_SCALE", "1.2"))  # Optimized for speed, sufficient for clean printed text
+# ---------------------------
+# Rendering / scaling policy
+# ---------------------------
+# Prefer pixel-budgeted rendering to prevent OOM.
+# If PDF_USE_PIXEL_BUDGET=true, PDF_TARGET_DPI and PDF_MAX_MEGAPIXELS take precedence
+# over OCR_PDF_SCALE. Keep OCR_PDF_SCALE for backward compatibility.
+PDF_USE_PIXEL_BUDGET = os.getenv("PDF_USE_PIXEL_BUDGET", "true").lower() in ("1", "true", "yes")
+PDF_TARGET_DPI = int(os.getenv("PDF_TARGET_DPI", "200"))
+PDF_MAX_MEGAPIXELS = float(os.getenv("PDF_MAX_MEGAPIXELS", "1.6"))  # ~1.6 MP/page ≈ stable on tiny CPUs
 
-# Chunked processing (Optimized for 2GB+ RAM with single PDF load optimization)
-OCR_PAGE_CHUNK_SIZE = int(os.getenv("OCR_PAGE_CHUNK_SIZE", "3"))  # Balanced for memory management
+# Legacy scale knob (ignored if pixel budget is enabled)
+OCR_PDF_SCALE = float(os.getenv("OCR_PDF_SCALE", "1.2"))
 
-# Longer docs auto-reduce scale further
-OCR_LONG_DOC_PAGE_THRESHOLD = int(os.getenv("OCR_LONG_DOC_PAGE_THRESHOLD", "40"))  # Earlier threshold for faster processing
-OCR_REDUCED_SCALE_FOR_LONG_DOCS = float(os.getenv("OCR_REDUCED_SCALE_FOR_LONG_DOCS", "1.8"))  # Lower scale for speed
+# Chunked processing
+OCR_PAGE_CHUNK_SIZE = int(os.getenv("OCR_PAGE_CHUNK_SIZE", "1"))  # safest on tiny instances
+
+# Longer docs auto-reduce scale further (only relevant if not using pixel budget)
+OCR_LONG_DOC_PAGE_THRESHOLD = int(os.getenv("OCR_LONG_DOC_PAGE_THRESHOLD", "40"))
+OCR_REDUCED_SCALE_FOR_LONG_DOCS = float(os.getenv("OCR_REDUCED_SCALE_FOR_LONG_DOCS", "1.8"))
 
 # AMP off on CPU for stability/accuracy
 OCR_ENABLE_MIXED_PRECISION = os.getenv("OCR_ENABLE_MIXED_PRECISION", "false").lower() in ("1", "true", "yes")
 
-# CPU threads for PyTorch (Optimized for 2-CPU Koyeb instances)
-OCR_TORCH_NUM_THREADS = int(os.getenv("OCR_TORCH_NUM_THREADS", "2"))  # Utilize both CPUs
+# CPU threads for PyTorch / BLAS (keep to 1 on tiny instances to avoid oversubscription)
+OCR_TORCH_NUM_THREADS = int(os.getenv("OCR_TORCH_NUM_THREADS", "1"))
 
 # =============================================================================
 # DATABASE CONFIGURATION
@@ -236,6 +251,13 @@ def validate_config():
     if OCR_TORCH_NUM_THREADS < 1:
         errors.append("OCR_TORCH_NUM_THREADS must be at least 1")
 
+    # Pixel budget / rendering
+    if PDF_TARGET_DPI < 72:
+        errors.append("PDF_TARGET_DPI must be at least 72")
+    if PDF_MAX_MEGAPIXELS <= 0.5:
+        errors.append("PDF_MAX_MEGAPIXELS must be greater than 0.5")
+    # Note: OCR_PDF_SCALE is ignored if PDF_USE_PIXEL_BUDGET is true
+
     # Quote extraction
     if QUOTE_CONTEXT_CHARS < 0:
         errors.append("QUOTE_CONTEXT_CHARS must be non-negative")
@@ -293,6 +315,9 @@ def get_config_summary() -> dict:
             "det_bs": OCR_DET_BATCH_SIZE,
             "reco_bs": OCR_RECO_BATCH_SIZE,
             "scale": OCR_PDF_SCALE,
+            "use_pixel_budget": PDF_USE_PIXEL_BUDGET,
+            "target_dpi": PDF_TARGET_DPI,
+            "max_megapixels": PDF_MAX_MEGAPIXELS,
             "page_chunk_size": OCR_PAGE_CHUNK_SIZE,
             "max_pages_per_request": OCR_MAX_PAGES_PER_REQUEST,
             "long_doc_page_threshold": OCR_LONG_DOC_PAGE_THRESHOLD,
@@ -311,20 +336,23 @@ def get_config_summary() -> dict:
 # =============================================================================
 
 # 1GB RAM Koyeb instance (OPTIMIZED FOR OOM PREVENTION):
+# - OCR_DET_ARCH=db_mobilenet_v3_large
+# - OCR_RECO_ARCH=crnn_mobilenet_v3_small
+# - PDF_USE_PIXEL_BUDGET=true
+# - PDF_TARGET_DPI=200
+# - PDF_MAX_MEGAPIXELS=1.6
 # - OCR_MAX_PAGES=30 (hard limit for safety)
-# - OCR_DET_BATCH_SIZE=1, OCR_RECO_BATCH_SIZE=8
-# - OCR_PDF_SCALE=1.8 (lower resolution for memory savings)
+# - OCR_DET_BATCH_SIZE=1, OCR_RECO_BATCH_SIZE=32
 # - OCR_PAGE_CHUNK_SIZE=1 (single page chunks)
-# - OCR_TORCH_NUM_THREADS=1 to minimize overhead
+# - OCR_TORCH_NUM_THREADS=1 (and also set OMP/OPENBLAS/MKL/NUMEXPR to 1 in env)
 # - OCR_ENABLE_REQUEST_QUEUE=true (serialize OCR requests)
 # - OCR_MAX_CONCURRENT_REQUESTS=1 (prevent concurrent overload)
 # - OCR_UNLOAD_MODELS_AFTER_USE=true (free memory after each document)
 # - OCR_FORCE_GC_FREQUENCY=1 (aggressive garbage collection)
 #
 # For 2GB+ RAM instances (better performance):
-# - OCR_MAX_PAGES=100
-# - OCR_RECO_BATCH_SIZE=16
-# - OCR_PDF_SCALE=2.5
-# - OCR_PAGE_CHUNK_SIZE=3
+# - PDF_MAX_MEGAPIXELS=2.0
+# - OCR_RECO_BATCH_SIZE=32
+# - OCR_PAGE_CHUNK_SIZE=2–3
 # - OCR_ENABLE_REQUEST_QUEUE=false (allow concurrent processing)
 # - OCR_UNLOAD_MODELS_AFTER_USE=false (keep models loaded for speed)

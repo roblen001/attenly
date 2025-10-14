@@ -2,193 +2,419 @@ You are an expert data extraction AI. Extract specific information for ALL quest
 
 
 === QUESTION 1 (ID: {{Test Question}}) ===
-QUESTION: summarize the content you have been provided with references
+QUESTION: Marsh does not guarantee that coverage can be placed on acceptable terms and is not responsible for the solvency
 
 RELEVANT CONTEXT FOR THIS QUESTION:
 === DOCUMENT SECTION 1 ===
-Source: stac-brokerage-uae-june-2021.pdf (Pages 1-1)
-assigned
-                                                            other duty to clients.
-     by  You  or Us  without the express written
-     consent of the other party.
-                                                       3.3   In respect of the Agreement, Marsh does not
-                                                            act on behalf of any insurer or other service
-1.2  By instructing Us to act, You will be deemed
-                                                            provider, is not bound to utilize any particular
-     to have accepted the terms of these STACs
-                                                            insurer or service provider, and  does  not
-     and to have requested  to deal with Us in
-                                                            have   the   authority  to  make    binding
-     English unless We  specifically agree with
-                                                            commitments   on  behalf of any  insurer or
-     You otherwise.
-                                                            service provider. In addition, Marsh does not
-                                                            guarantee  or make   any  representation or
-                                                            warranty  that coverage  or service can be
-        2.  ABOUT   MARSH
-                                                            placed on terms  acceptable to client. Marsh
-                                                            is not responsible for the solvency or ability to
-2.1  Marsh is an associate of Marsh & McLennan
-                                                            pay claims of any insurance carrier or for the
-     Companies,  Inc. In these STACs, the Marsh
-                                                            solvency or ability of any service provider to
-     Group    means     Marsh    &   McLennan
-                                                            provide service. Insurance carriers or service
-     Companies,    Inc., its  subsidiaries  and
-                                                            providers with which  client’s other risk or
-     associated companies.  To the extent legally
-                                                            insurance  coverage  or  other business  is
-     permissible, Marsh may   use offices in the
-                                                            placed will be deemed acceptable to client, in
-     Marsh   Group  or  the  services  of  other
-                                                            the absence  of contrary written instructions
-     intermediaries external to the Marsh Group,
-                                                            from client.
-     when  in  Marsh’s  professional judgement
-     those services are necessary or appropriate.
-                                                               4.  OUR   SERVICES
-        3.  FOR  WHOM    DO WE   ACT?
-                                                       Marketing  and  Placement  Services
-3.1  Marsh generally acts for and in the interest of
-     its clients. Marsh will not deliberately put itself 4.1 Marsh will act as Your insurance broker. We
-     in a position where its interests, or its duty to      will discuss Your  insurance  requirements
+Source: stac-brokerage-uae-june-2021-scan.pdf (Pages 1-2)
+of any insurer or other service
+provider, is not bound to utilize any particular
+insurer or service provider, and does not
+have the authority to make binding
+commitments on behalf of any insurer or
+service provider. In addition, Marsh does not
+guarantee or make any representation or
+warranty that coverage or service can be
+placed on terms acceptable to client. Marsh
+is not responsible for the solvency or ability to
+pay claims of any insurance carrier or for the
+solvency or ability of any service provider to
+provide service. Insurance carriers or service
+providers with which client's other risk or
+insurance coverage, or other business is
+placed will be deemed acceptable to client, in
+the absence of contrary written instructions
+other duty to clients.
+You otherwise.
+2. ABOUT MARSH
+2.1 Marsh is an associate of Marsh & McLennan
+Companies, Inc. In these STACS, the Marsh
+Group means Marsh & McLennan
+Companies, Inc., its subsidiaries and
+associated companies. To the extent legally
+permissible, Marsh may use offices in the
+Marsh Group or the services of other
+intermediaries external to the Marsh Group,
+when in Marsh's professional judgement
+those services are necessary or appropriate.
+3. FOR WHOM DO WE ACT?
+3.1 Marsh generally acts for and in the interest of
+its clients. Marsh will not deliberately put itself
+in a position where its interests, or its duty to
+another party, prevent it from discharging its
+duty to clients. Marsh maintains internal
+procedures and controls to identify and
+manage any potential conflicts, so that at all
+times the interests of all Marsh's clients are
+from client.
+4. OUR SERVICES
+Marketing and Placement Services
+4.1 Marsh will act as Your insurance broker. We
+will discuss Your insurance requirements
+with You, including the scope of cover, limits
+sought and cost of cover.
+4.2 We will keep You informed of Our progress
+and identify where We are unable to obtain
+all or part of the cover sought by You. We will
+reasonably protected.
+
+--- PAGE 2 ---
+use reasonable endeavours to implement
+Your insurance program, subject to available
+insurers, before the intended date of
+inception, renewal or extension of cover
+(whichever is appropriate). We cannot
+however be responsible for the
+consequences of late instructions or the
+4.3 We will provide You with the information You
 === END SECTION 1 ===
 
 === DOCUMENT SECTION 2 ===
-Source: stac-brokerage-uae-june-2021.pdf (Pages 2-2)
-if needed but We  are not
-                                                           able to complete  the document  for You. In
-4.5  As part of Our negotiations with insurers on
-                                                           most  cases, the information You provide will
-     Your behalf, Marsh may on occasion be able
-                                                           be the basis of or form part of the insurance
-     to  obtain  more   favourable  terms  and
-                                                           policy.
-     conditions for Your placement by providing
-     insurers with certain types of information.
-                                                       5.2 Marsh  shall use and You  agree Marsh  can
-     Where  Marsh believes Your interests would
-                                                           rely upon, all information, material and data
-     be advanced  by doing so, You authorise Us
-                                                           (including personal data) supplied by You or
-     to do the following:
-                                                           on   Your   behalf  without  independently
-        a)  at the outset of the negotiations, to
-                                                           verifying the  accuracy,  completeness   or
-            provide insurers with the terms of the
-                                                           timeliness of it except to the extent required
-            expiring policy, including  pricing,
-                                                           by    generally    accepted    professional
-            and/or a pricing objective for Your
-                                                           standards    and   practices.      If  any
-            placement;
-                                                           documentation  or information supplied to Us
-        b)  during negotiations, to provide one or
-                                                           at any time is incomplete, inaccurate or not
-            more  insurers with the terms  of a
-                                                           up-to-date, or its provision is unreasonably
-            quote received from another insurer,
-                                                           delayed, then We  will not be responsible for
-            where in Our judgement doing so may
-                                                           any errors, delays or liability arising therefrom
-            lead to improved terms for You; and
-                                                           and  will be entitled to charge You in respect
-        c)  at the end  of the  negotiations, to
-                                                           of  any  resulting additional work actually
-            provide one or more insurers with an
-                                                           carried out. You understand that the failure to
-            opportunity to submit an  improved
-                                                           provide,  or cause  to  provide, complete,
-            quote after all other quotes have been
-                                                           accurate,     up-to-date,    and     timely
-            received.
-                                                           documentation    and   information  to  Us
-                                                           (including from incumbent service providers),
-                                                           an insurer, or other service provider, whether
+Source: stac-brokerage-uae-june-2021-scan.pdf (Pages 1-2)
+parties.
+Quotations
+4.7 Marsh does not guarantee premiums quoted
+by insurers. All premium quotations provided
+by insurers are subject to subsequent
+acceptance by insurers, unless otherwise
+stated. All premiums quoted include Our
+brokerage where applicable.
+5. OUR RESPECTIVE
+RESPONSIBILITIES
+Proposal Forms
+5.1 For certain classes of insurance You
+required to complete a proposal may form,
+questionnaire or similar document. We will
+provide guidance if needed but We are not
+able to complete the document for You. In
+most cases, the information You provide will
+be the basis of or form part of the insurance
+rely upon, all information, material agree and data
+(including personal data) supplied by You or
+on Your behalf without independently
+verifying the accuracy, completeness or
+timeliness of it except to the extent required
+by generally accepted professional
+standards and practices.
+documentation or information supplied to Us
+at any time is incomplete, inaccurate or not
+up-to-date, or its provision is unreasonably
+delayed, then We will not be responsible for
+any errors, delays or liability arising therefrom
+and will be entitled to charge You in respect
+of any resulting additional work actually
+carried out. You understand that the failure to
+provide, or cause to provide, complete,
+accurate, up-to-date, and
+documentation and information to Us
+(including from incumbent service providers),
+an insurer, or other service provider, whether
+intentional or by error, could result in
+impairment or voiding of coverage or service,
+or errors, omissions and deficiencies in
+and may result in the insurer denying a
+claim or avoiding the
+the policy from inception). policy
+be
+policy.
+5.2 Marsh shall use and You
+Marsh can
+to do the following:
+If any
+placement;
+received.
+timely
 Market Security
-                                                           intentional or  by  error
+4.6 We assess insurers and markets with whom
+We place business, using public information
+including that produced by recognised rating
+agencies. We do not, however, guarantee or
+otherwise warrant the solvency of any insurer
+or market used for Your requirements. The
+services
+any
+(cancelling
+Page 2 of8
 === END SECTION 2 ===
 
 === DOCUMENT SECTION 3 ===
-Source: stac-brokerage-uae-june-2021.pdf (Pages 8-8)
---- PAGE 8 ---
-        17. INTELLECTUAL     PROPERTY                       either Party  may   elect to  escalate  the
-                                                            resolution of such dispute by submitting the
-                                                            dispute in writing to senior executives from
-17.1 Marsh   shall retain  all ownership,   title,
-                                                            each Party who will promptly meet and confer
-     copyright and   other  intellectual property
-                                                            in an effort to resolve the dispute and any
-     rights in all materials developed, designed or
-                                                            dispute not solved  in accordance  with the
-     created by Marsh (or members  of the Marsh
-                                                            foregoing provisions shall be submitted to the
-     Group)  before  or  during the  Agreement
-                                                            jurisdiction of the courts of Dubai.
-     including   without    limitation  in   all
-     methodologies, methods   of analysis, ideas,
-     concepts,   know-how,     models,    tools,
-                                                               19. COMPLIANCE     WITH  LAWS
-     techniques, skills, knowledge and experience
-     and any graphic or digitized representations.
-     To the extent any material forming part of the    19.1  The  Marsh   Group  is required  to act in
-     services   incorporates   any   intellectual           accordance  with the  laws, regulations and
-     property rights, Marsh grants  You  a non-             requests of regulatory authorities operating in
-     exclusive, perpetual, non-transferable and             various jurisdictions which relate amongst
-     royalty free licence to use those materials,           other things, to the  prevention of money
-     but only for the purposes for which they were          laundering,  terrorist financing  and   the
-     created under this Agreement.                          provision of financial services to any persons
-                                                            or entities that might be subject to sanctions.
-17.2 Where   Marsh   is  requested  to  use   or            Marsh  may  take  actions at the request of
-     incorporate Your intellectual property in the          regulatory authorities and other companies,
-     provision of the services, You hereby grant            within the Marsh  Group  of companies, and
-     Marsh non-exclusive, perpetual, transferable           these  actions  may   include  delaying  or
-     licence to use such material solely for use in         rejecting Your requests.
-     connection with the Agreement.
-                                                       19.2 To  prevent or detect theft and fraud and to
-17.3 You  agree   to not  publish  or otherwise             assist  in verifying
+Source: stac-brokerage-uae-june-2021-scan.pdf (Pages 1-2)
+will
+reasonably protected.
+
+--- PAGE 2 ---
+use reasonable endeavours to implement
+Your insurance program, subject to available
+insurers, before the intended date of
+inception, renewal or extension of cover
+(whichever is appropriate). We cannot
+however be responsible for the
+consequences of late instructions or the
+4.3 We will provide You with the information You
+need to make a decision about insurance
+cover available. All decisions regarding the
+amount, type or terms of insurance covers
+shall be Your sole responsibility. While Marsh
+may provide advice and recommendations,
+You must decide on the specific coverage
+that is appropriate for Your particular
+circumstances and financial position.
+4.4 Marsh does not assume any liability for the
+effectiveness or completeness of Your
+existing insurance program (If any) or any
+insurance policies placed by You directly or
+by another insurance broker or for any acts
+or omissions occurring prior to the date of
+commencement of Marsh's Agreement.
+4.5 As part of Our negotiations with insurers on
+Your behalf, Marsh may on occasion be able
+to obtain more favourable terms and
+conditions for Your placement by providing
+insurers with certain types of information.
+Where Marsh believes Your interests would
+be advanced by doing so, You authorise Us
+a) at the outset of the negotiations, to
+provide insurers with the terms of the
+expiring policy, including pricing,
+and/or a pricing objective for Your
+b) during negotiations, to provide one or
+more insurers with the terms of a
+quote received from another insurer,
+where in Ourj judgement doing so may
+lead to improved terms for You; and
+c) at the end of the negotiations, to
+provide one or more insurers with an
+opportunity to submit an improved
+quote after all other quotes have been
+decision regarding suitability of any insurer or
+market rests with You. If You have any
+concerns, regarding any insurers chosen for
+Your insurance requirements You must
+advise Us as soon as possible and We will
+discuss them with You.
+actions of third parties.
+Quotations
+4.7 Marsh does not guarantee premiums quoted
+by insurers. All premium quotations provided
+by insurers are subject to subsequent
+acceptance by insurers, unless otherwise
+stated. All premiums quoted include Our
+brokerage where applicable.
+5. OUR RESPECTIVE
+RESPONSIBILITIES
+Proposal Forms
+5.1 For certain classes of insurance You
+required to
 === END SECTION 3 ===
 
 === DOCUMENT SECTION 4 ===
-Source: stac-brokerage-uae-june-2021.pdf (Pages 4-4)
-more  specific term of the
-6.1  We   are required  to keep  Client Money
-                                                           Agreement,  Our remuneration  is based on
-     separate from  Our  own   money.  We   will
-                                                           brokerage which is payable out of premium
-     normally do this by holding money in a client
-                                                           paid by You  and allowed  by the insurer(s)
-     bank account.
-                                                           with whom   Your  cover  is arranged.  On
-                                                           occasions, We may  be remunerated  by both
-6.2  Any interest earned on Client Money will be
-                                                           brokerage  and  a fee. In this connection,
-     retained by Us  subject to local regulatory
-                                                           Marsh may  be paid separately by insurers a
-     requirements.
-                                                           fee for risk management services related to
-                                                           Your  cover. We  may  also  charge You   a
-                                                           separate  fee  for claims  preparation  or
-        7. CURRENCY
-                                                           additional claim services which  shall be
-                                                           agreed by You  and Us separately in writing.
-7.1  Where  We  are able  to deal in a currency            Brokerage and  fees are fully earned at the
-     other than the local currency, We are  not            time of placement of the policy and We are
-     responsible for any shortfall in payments,            entitled to retain all fees and brokerage in
-     including premiums   or  claims payments              respect of the full policy period for cover
-     arising from movements in foreign exchange            placed by Us.
-     rates.
-                                                      9.2  In the event of a mid-term adjustment, We
-7.2  We  may need  to convert currency You have            may be entitled to further brokerage from any
-     sent  Us  into another  currency  for  the            additional premium payable.
-     purposes of carrying out Your transaction. If
-     We  have converted but not paid such money       9.3  There will be no return of brokerage or Our
-     to insurers or other third parties (and are not       fee  once  the policy is  placed  and  the
-     legally obliged to do so) and You request Us          insurance  is later varied, terminated  or
-     to return such money to You, then You agree           otherwise cancelled, unless such  return is
-     that We will return such money to You in the          required by local laws.
-     currency
+Source: stac-brokerage-uae-june-2021-scan.pdf (Pages 5-6)
+--- PAGE 5 ---
+arrangements do not influence Marsh's
+advice to clients when acting as their
+insurance intermediary. Marsh and the Marsh
+Group are committed to serving each of their
+clients in an objective manner and
+maintaining the confidentiality of each of their
+10.2 Where applicable or permitted under the law,
+the payment which Marsh or other members
+of the Marsh Group receive from a particular
+insurer for services provided in a given
+period may be a management or
+administration fee or it may be based upon
+the profitability or volume of insurance
+business placed with that insurer during that
+period. When providing these services to
+insurers We will always use reasonable
+endeavours to avoid a conflict of interest. If
+We consider that a conflict has arisen, then
+We shall take no further action on behalf of
+the insurer unless You agree in writing that
+10.3 Marsh or other members of the Marsh Group
+may receive separate compensation from
+insurers for providing consulting, technical,
+data analytics or other services. The services
+are designed to improve the offering
+available to Our clients, assist insurers in
+identifying new opportunities and enhance
+insurers' operational efficiency. The scope
+and nature of the services vary by insurer
+10.4 Unless prohibited to do so by local laws, We
+underwriters with whom We have placed
+insurance or reinsurance and may receive
+remuneration byt fees and/or brokerage for sO
+10.5 ltr may be appropriate for Us to use a member
+of the Marsh Group or another intermediary
+to assist Us in fulfilling Your insurance
+requirements. These companies may receive
+additional remuneration for the services they
+10.6 Marsh and other members of the Marsh
+Group may be compensated in a variety of
+ways, including commissions and fees paid
+by insurance companies and fees paid by
+clients. For further information on Our
+11. CANCELLATION OF THIS
+AGREEMENT
+11.1 This Agreement
+other.
+be terminated either
+may
+by
+party giving a 90 days' written notice to the
+11.2 Subject to payment of any outstanding fees
+due to Us, Marsh will assist in arranging a
+smooth transfer of Your business. After
+termination, unless otherwise agreed, Marsh
+will cease to handle claims relating to policies
+placed by Marsh on Your behalf.
+11.3 In addition, either Party may terminate this
+Agreement immediately on written notice, if
+a) commits a
 === END SECTION 4 ===
+
+=== DOCUMENT SECTION 5 ===
+Source: stac-brokerage-uae-june-2021-scan.pdf (Pages 5-6)
+11.2 Subject to payment of any outstanding fees
+due to Us, Marsh will assist in arranging a
+smooth transfer of Your business. After
+termination, unless otherwise agreed, Marsh
+will cease to handle claims relating to policies
+placed by Marsh on Your behalf.
+11.3 In addition, either Party may terminate this
+Agreement immediately on written notice, if
+a) commits a material breach of
+provisions, and in the case of a
+breach capable of remedy, fails to
+remedy it within thirty (30) days of
+receipt of a written notice from the
+other Party setting out in reasonable
+detail particulars of the breach; or
+b) becomes insolvent,
+unable to pay its debts as they fall
+due, goes into liquidation, or makes
+any voluntary arrangement with its
+creditors, becomes subject to an
+administration order or has a
+receiver appointed over its assets.
+11.4 Upon the effective date of termination, Marsh
+will cease to provide
+unless otherwise agreed any and the STACS
+shall survive until such services are
+completed or the Parties
+services shall
+termination of this Agreement shall not
+relieve client of its obligations to pay () for
+services rendered and expenses incurred by
+Marsh or Marsh Group up to and including
+the effective date of such termination or
+termination fees to the extent provided in the (i)
+applicable Scope of Services. The STACS
+that by their nature and for any reason are
+intended to survive and extend beyond the
+termination, cancellation or expiration of this
+Agreement, shall remain in effect beyond
+12. LIMITATION OF LIABILITY
+12.1 The maximum aggregate liability of Marsh
+and any other member of the Marsh Group
+relating to or arising out of the services
+provided under this Agreement and any other
+client's information.
+the other Party:
+its
+any of
+We
+may proceed.
+or bankrupt, or
+and geography.
+may also
+doing.
+act
+of the services
+that
+agree
+the
+as reinsurance brokers to
+no longer be needed. Any
+provide.
+such time.
+compensation
+ww.me.marsh.com
+please
+visit
+Page 5ofs
+
+--- PAGE 6 ---
+agreement relating to the provision of
+Marsh's services to You shall be limited to
+the amount of USD 1,000,000.
+12.2 This limitation applies to all causes of action
+including, without limitation, breach of
+contract, breach of warranty, negligence
+=== END SECTION 5 ===
+
+=== DOCUMENT SECTION 6 ===
+Source: stac-brokerage-uae-june-2021-scan.pdf (Pages 5-6)
+.
+compensation
+ww.me.marsh.com
+please
+visit
+Page 5ofs
+
+--- PAGE 6 ---
+agreement relating to the provision of
+Marsh's services to You shall be limited to
+the amount of USD 1,000,000.
+12.2 This limitation applies to all causes of action
+including, without limitation, breach of
+contract, breach of warranty, negligence,
+strict liability, misrepresentation and other
+12.3 In no event will Marsh or any member of the
+Marsh Group be liable for any special,
+indirect, incidental or consequential or
+punitive damages or for any lost profits or
+other economici loss relating to, arising out of
+or in connection with this Agreement or the
+services provided under it.
+12.4 This clause will not apply to any liability,
+which cannot lawfully be excluded or limited.
+12.5 You accept that Marsh has an interest in
+limiting the exposure. of its directors,
+employees, consultants and affiliates to
+litigation, and agree that You will not bring, or
+assist in bringing, any claim against any of
+Marsh's affiliates, or personally against any
+of Marsh's individual directors, employees or
+consultants, in connection with the
+performance of the services under this
+Agreement. The provisions of this clause are
+intended to be for the benefit of such
+directors, employees, consultants and
+affiliates who shall have the right to rely on
+documentation. passing between Us.
+14. CONFIDENTIALITY
+14.1 We will treat any information in Our
+possession, which relates to Your business
+as confidential. It will be necessary for Us to
+disclose information that You consider
+confidential to insurers or other parties, when
+acting on Your behalf, where We
+consider such information to be reasonably material to
+the risks being covered, or for internal review
+and audit purposes.
+14.2 Likewise, We may disclose to third parties
+certain industry wide statistics or other
+information, which may include information
+relating to You. Any sensitive information will
+be handled appropriately and information
+specific to You will not be identified without
+14.3 We may reference Your company's name
+andi on any marketing materials that We
+give logo to You or third parties. If You do not wish
+logo, then please advise company's Your usual Marsh
+14.4 The provisions of clauses 14.1 and 14.2
+above will not apply to the information to
+=== END SECTION 6 ===
 
 
 

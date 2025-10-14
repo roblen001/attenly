@@ -2,103 +2,193 @@ You are an expert data extraction AI. Extract specific information for ALL quest
 
 
 === QUESTION 1 (ID: {{Test Question}}) ===
-QUESTION: summarize
+QUESTION: summarize the content you have been provided with references
 
 RELEVANT CONTEXT FOR THIS QUESTION:
 === DOCUMENT SECTION 1 ===
-Source: 1_sample-tables-scan.pdf (Pages 1-1)
---- PAGE 1 ---
-  Design
-                and     build
-  accessible
-                      PDF      tables
-  Sample
-              tables
- Table  1
- Column   header  (TH)
-                          Column           (TH)
-                                   header
-                                                   Column           (TH)
-                                                            header
-      header
- Row          (TH)
-                                   (TD)
-                          Data cell
-                                                            (TD)
-                                                   Data
-                                                        cell
-      header(TH)
- Row
-                          Data cell (TD)
-                                                            (TD)
-                                                   Data cell
- Table    example
-       2:           of footnotes
-                                 referenced  from
-                                                  within
-                                                           table
-                                                          a
- Expenditure    function
-             by
-                          million
-                        £
-                                                     2009/10
-                                                                2010/11
- Policy
-       functions
-                          Financial
-                                                        22.5
-                                                                   30.57
-                         Information
-                                                       10.2        14.8
-                          Contingency
-                                                        2.6
-                                                                    1.2
- Remunerated  functions
-                         Agency
-                                 services
-                                         3
-                                                       44.7
-                                                                  35.91
-                         Payments
-                                                       22.41      19.88
-                         Banking
-                                                      22.90
-                                                                  44.23
-                         Other
-                                                      12.69
-                                                                  10.32
-(1) Provisional
-             total    publication
-                 as of          date.
-(2)
-   Costs associated
-                  with on-going
-                              information
-                                         programmes.
-(3)
-   From the management accounts,
-                                net of recoveries, including
-                                                        interest
-                                                               charges.
-                  Table
-                         3: "film credits" style layout
-                     Main
-                          character
-                                     Daniel
-                                          Radcliffe
-                         Sidekick
-                                 1  Rupert Grint
-                         Sidekick
-                                  2 Emma  Watson
-                      Lovable ogre  Robbie
-                                           Coltrane
-                         Professor  Maggie
-                                           Smith
-                       Headmaster
-                                    Richard
-                                           Harris
+Source: stac-brokerage-uae-june-2021.pdf (Pages 1-1)
+assigned
+                                                            other duty to clients.
+     by  You  or Us  without the express written
+     consent of the other party.
+                                                       3.3   In respect of the Agreement, Marsh does not
+                                                            act on behalf of any insurer or other service
+1.2  By instructing Us to act, You will be deemed
+                                                            provider, is not bound to utilize any particular
+     to have accepted the terms of these STACs
+                                                            insurer or service provider, and  does  not
+     and to have requested  to deal with Us in
+                                                            have   the   authority  to  make    binding
+     English unless We  specifically agree with
+                                                            commitments   on  behalf of any  insurer or
+     You otherwise.
+                                                            service provider. In addition, Marsh does not
+                                                            guarantee  or make   any  representation or
+                                                            warranty  that coverage  or service can be
+        2.  ABOUT   MARSH
+                                                            placed on terms  acceptable to client. Marsh
+                                                            is not responsible for the solvency or ability to
+2.1  Marsh is an associate of Marsh & McLennan
+                                                            pay claims of any insurance carrier or for the
+     Companies,  Inc. In these STACs, the Marsh
+                                                            solvency or ability of any service provider to
+     Group    means     Marsh    &   McLennan
+                                                            provide service. Insurance carriers or service
+     Companies,    Inc., its  subsidiaries  and
+                                                            providers with which  client’s other risk or
+     associated companies.  To the extent legally
+                                                            insurance  coverage  or  other business  is
+     permissible, Marsh may   use offices in the
+                                                            placed will be deemed acceptable to client, in
+     Marsh   Group  or  the  services  of  other
+                                                            the absence  of contrary written instructions
+     intermediaries external to the Marsh Group,
+                                                            from client.
+     when  in  Marsh’s  professional judgement
+     those services are necessary or appropriate.
+                                                               4.  OUR   SERVICES
+        3.  FOR  WHOM    DO WE   ACT?
+                                                       Marketing  and  Placement  Services
+3.1  Marsh generally acts for and in the interest of
+     its clients. Marsh will not deliberately put itself 4.1 Marsh will act as Your insurance broker. We
+     in a position where its interests, or its duty to      will discuss Your  insurance  requirements
 === END SECTION 1 ===
+
+=== DOCUMENT SECTION 2 ===
+Source: stac-brokerage-uae-june-2021.pdf (Pages 2-2)
+if needed but We  are not
+                                                           able to complete  the document  for You. In
+4.5  As part of Our negotiations with insurers on
+                                                           most  cases, the information You provide will
+     Your behalf, Marsh may on occasion be able
+                                                           be the basis of or form part of the insurance
+     to  obtain  more   favourable  terms  and
+                                                           policy.
+     conditions for Your placement by providing
+     insurers with certain types of information.
+                                                       5.2 Marsh  shall use and You  agree Marsh  can
+     Where  Marsh believes Your interests would
+                                                           rely upon, all information, material and data
+     be advanced  by doing so, You authorise Us
+                                                           (including personal data) supplied by You or
+     to do the following:
+                                                           on   Your   behalf  without  independently
+        a)  at the outset of the negotiations, to
+                                                           verifying the  accuracy,  completeness   or
+            provide insurers with the terms of the
+                                                           timeliness of it except to the extent required
+            expiring policy, including  pricing,
+                                                           by    generally    accepted    professional
+            and/or a pricing objective for Your
+                                                           standards    and   practices.      If  any
+            placement;
+                                                           documentation  or information supplied to Us
+        b)  during negotiations, to provide one or
+                                                           at any time is incomplete, inaccurate or not
+            more  insurers with the terms  of a
+                                                           up-to-date, or its provision is unreasonably
+            quote received from another insurer,
+                                                           delayed, then We  will not be responsible for
+            where in Our judgement doing so may
+                                                           any errors, delays or liability arising therefrom
+            lead to improved terms for You; and
+                                                           and  will be entitled to charge You in respect
+        c)  at the end  of the  negotiations, to
+                                                           of  any  resulting additional work actually
+            provide one or more insurers with an
+                                                           carried out. You understand that the failure to
+            opportunity to submit an  improved
+                                                           provide,  or cause  to  provide, complete,
+            quote after all other quotes have been
+                                                           accurate,     up-to-date,    and     timely
+            received.
+                                                           documentation    and   information  to  Us
+                                                           (including from incumbent service providers),
+                                                           an insurer, or other service provider, whether
+Market Security
+                                                           intentional or  by  error
+=== END SECTION 2 ===
+
+=== DOCUMENT SECTION 3 ===
+Source: stac-brokerage-uae-june-2021.pdf (Pages 8-8)
+--- PAGE 8 ---
+        17. INTELLECTUAL     PROPERTY                       either Party  may   elect to  escalate  the
+                                                            resolution of such dispute by submitting the
+                                                            dispute in writing to senior executives from
+17.1 Marsh   shall retain  all ownership,   title,
+                                                            each Party who will promptly meet and confer
+     copyright and   other  intellectual property
+                                                            in an effort to resolve the dispute and any
+     rights in all materials developed, designed or
+                                                            dispute not solved  in accordance  with the
+     created by Marsh (or members  of the Marsh
+                                                            foregoing provisions shall be submitted to the
+     Group)  before  or  during the  Agreement
+                                                            jurisdiction of the courts of Dubai.
+     including   without    limitation  in   all
+     methodologies, methods   of analysis, ideas,
+     concepts,   know-how,     models,    tools,
+                                                               19. COMPLIANCE     WITH  LAWS
+     techniques, skills, knowledge and experience
+     and any graphic or digitized representations.
+     To the extent any material forming part of the    19.1  The  Marsh   Group  is required  to act in
+     services   incorporates   any   intellectual           accordance  with the  laws, regulations and
+     property rights, Marsh grants  You  a non-             requests of regulatory authorities operating in
+     exclusive, perpetual, non-transferable and             various jurisdictions which relate amongst
+     royalty free licence to use those materials,           other things, to the  prevention of money
+     but only for the purposes for which they were          laundering,  terrorist financing  and   the
+     created under this Agreement.                          provision of financial services to any persons
+                                                            or entities that might be subject to sanctions.
+17.2 Where   Marsh   is  requested  to  use   or            Marsh  may  take  actions at the request of
+     incorporate Your intellectual property in the          regulatory authorities and other companies,
+     provision of the services, You hereby grant            within the Marsh  Group  of companies, and
+     Marsh non-exclusive, perpetual, transferable           these  actions  may   include  delaying  or
+     licence to use such material solely for use in         rejecting Your requests.
+     connection with the Agreement.
+                                                       19.2 To  prevent or detect theft and fraud and to
+17.3 You  agree   to not  publish  or otherwise             assist  in verifying
+=== END SECTION 3 ===
+
+=== DOCUMENT SECTION 4 ===
+Source: stac-brokerage-uae-june-2021.pdf (Pages 4-4)
+more  specific term of the
+6.1  We   are required  to keep  Client Money
+                                                           Agreement,  Our remuneration  is based on
+     separate from  Our  own   money.  We   will
+                                                           brokerage which is payable out of premium
+     normally do this by holding money in a client
+                                                           paid by You  and allowed  by the insurer(s)
+     bank account.
+                                                           with whom   Your  cover  is arranged.  On
+                                                           occasions, We may  be remunerated  by both
+6.2  Any interest earned on Client Money will be
+                                                           brokerage  and  a fee. In this connection,
+     retained by Us  subject to local regulatory
+                                                           Marsh may  be paid separately by insurers a
+     requirements.
+                                                           fee for risk management services related to
+                                                           Your  cover. We  may  also  charge You   a
+                                                           separate  fee  for claims  preparation  or
+        7. CURRENCY
+                                                           additional claim services which  shall be
+                                                           agreed by You  and Us separately in writing.
+7.1  Where  We  are able  to deal in a currency            Brokerage and  fees are fully earned at the
+     other than the local currency, We are  not            time of placement of the policy and We are
+     responsible for any shortfall in payments,            entitled to retain all fees and brokerage in
+     including premiums   or  claims payments              respect of the full policy period for cover
+     arising from movements in foreign exchange            placed by Us.
+     rates.
+                                                      9.2  In the event of a mid-term adjustment, We
+7.2  We  may need  to convert currency You have            may be entitled to further brokerage from any
+     sent  Us  into another  currency  for  the            additional premium payable.
+     purposes of carrying out Your transaction. If
+     We  have converted but not paid such money       9.3  There will be no return of brokerage or Our
+     to insurers or other third parties (and are not       fee  once  the policy is  placed  and  the
+     legally obliged to do so) and You request Us          insurance  is later varied, terminated  or
+     to return such money to You, then You agree           otherwise cancelled, unless such  return is
+     that We will return such money to You in the          required by local laws.
+     currency
+=== END SECTION 4 ===
 
 
 

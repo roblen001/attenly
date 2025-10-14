@@ -89,11 +89,11 @@ OCR_CUDA_DEVICES = ""  # force CPU path
 OCR_MAX_PAGES_PER_REQUEST = int(os.getenv("OCR_MAX_PAGES", "30"))  # Reduced from 150 to 30
 OCR_MAX_FILE_SIZE_MB = int(os.getenv("OCR_MAX_FILE_SIZE_MB", "60"))
 
-# Memory Management Configuration
-OCR_ENABLE_REQUEST_QUEUE = os.getenv("OCR_ENABLE_REQUEST_QUEUE", "true").lower() in ("1", "true", "yes")
-OCR_MAX_CONCURRENT_REQUESTS = int(os.getenv("OCR_MAX_CONCURRENT_REQUESTS", "1"))
-OCR_UNLOAD_MODELS_AFTER_USE = os.getenv("OCR_UNLOAD_MODELS_AFTER_USE", "true").lower() in ("1", "true", "yes")
-OCR_FORCE_GC_FREQUENCY = int(os.getenv("OCR_FORCE_GC_FREQUENCY", "1"))  # Force GC every N pages
+# Memory Management Configuration (Optimized for 2GB+ RAM instances)
+OCR_ENABLE_REQUEST_QUEUE = os.getenv("OCR_ENABLE_REQUEST_QUEUE", "false").lower() in ("1", "true", "yes")
+OCR_MAX_CONCURRENT_REQUESTS = int(os.getenv("OCR_MAX_CONCURRENT_REQUESTS", "2"))
+OCR_UNLOAD_MODELS_AFTER_USE = os.getenv("OCR_UNLOAD_MODELS_AFTER_USE", "false").lower() in ("1", "true", "yes")
+OCR_FORCE_GC_FREQUENCY = int(os.getenv("OCR_FORCE_GC_FREQUENCY", "1"))  # Force GC every N chunks
 
 # Quality Thresholds
 OCR_CONFIDENCE_THRESHOLD = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "0.55"))
@@ -104,29 +104,29 @@ OCR_BASE_TIMEOUT_SECONDS = int(os.getenv("OCR_BASE_TIMEOUT", "180"))
 OCR_TIMEOUT_PER_50_PAGES = int(os.getenv("OCR_TIMEOUT_PER_50_PAGES", "180"))
 OCR_MAX_TIMEOUT_SECONDS = int(os.getenv("OCR_MAX_TIMEOUT", "900"))
 
-# Model Architecture
-OCR_DET_ARCH = "db_resnet50"
+# Model Architecture (Optimized for speed on clean printed documents)
+OCR_DET_ARCH = "db_mobilenet_v3_large"  # Faster than db_resnet50, good accuracy for clean text
 OCR_RECO_ARCH = "parseq"
 
-# Small CPU-friendly batch sizes (Optimized for 1GB RAM)
-OCR_DET_BATCH_SIZE = int(os.getenv("OCR_DET_BATCH_SIZE", "1"))
-OCR_RECO_BATCH_SIZE = int(os.getenv("OCR_RECO_BATCH_SIZE", "8"))  # Reduced from 16 to 8
+# Batch sizes (Optimized for 2GB+ RAM instances)
+OCR_DET_BATCH_SIZE = int(os.getenv("OCR_DET_BATCH_SIZE", "2"))  # Increased from 1 for better throughput
+OCR_RECO_BATCH_SIZE = int(os.getenv("OCR_RECO_BATCH_SIZE", "32"))  # Increased from 8 to 32 for better throughput
 
-# Lower DPI on default; reduces RAM & CPU (Optimized for 1GB RAM)
-OCR_PDF_SCALE = float(os.getenv("OCR_PDF_SCALE", "1.8"))  # Reduced from 2.5 to 1.8
+# PDF scale for quality (Optimized for 2GB+ RAM instances and clean printed documents)
+OCR_PDF_SCALE = float(os.getenv("OCR_PDF_SCALE", "1.2"))  # Optimized for speed, sufficient for clean printed text
 
-# Chunked processing (keep memory bounded) - Single page for minimal memory
-OCR_PAGE_CHUNK_SIZE = int(os.getenv("OCR_PAGE_CHUNK_SIZE", "1"))  # Reduced from 3 to 1
+# Chunked processing (Optimized for 2GB+ RAM with single PDF load optimization)
+OCR_PAGE_CHUNK_SIZE = int(os.getenv("OCR_PAGE_CHUNK_SIZE", "3"))  # Balanced for memory management
 
 # Longer docs auto-reduce scale further
-OCR_LONG_DOC_PAGE_THRESHOLD = int(os.getenv("OCR_LONG_DOC_PAGE_THRESHOLD", "60"))
-OCR_REDUCED_SCALE_FOR_LONG_DOCS = float(os.getenv("OCR_REDUCED_SCALE_FOR_LONG_DOCS", "2.5"))
+OCR_LONG_DOC_PAGE_THRESHOLD = int(os.getenv("OCR_LONG_DOC_PAGE_THRESHOLD", "40"))  # Earlier threshold for faster processing
+OCR_REDUCED_SCALE_FOR_LONG_DOCS = float(os.getenv("OCR_REDUCED_SCALE_FOR_LONG_DOCS", "1.8"))  # Lower scale for speed
 
 # AMP off on CPU for stability/accuracy
 OCR_ENABLE_MIXED_PRECISION = os.getenv("OCR_ENABLE_MIXED_PRECISION", "false").lower() in ("1", "true", "yes")
 
-# Limit CPU threads to prevent oversubscription on tiny instances
-OCR_TORCH_NUM_THREADS = int(os.getenv("OCR_TORCH_NUM_THREADS", "1"))
+# CPU threads for PyTorch (Optimized for 2-CPU Koyeb instances)
+OCR_TORCH_NUM_THREADS = int(os.getenv("OCR_TORCH_NUM_THREADS", "2"))  # Utilize both CPUs
 
 # =============================================================================
 # DATABASE CONFIGURATION

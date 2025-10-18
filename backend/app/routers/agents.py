@@ -1,7 +1,8 @@
 import logging
 import time
+import re
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Depends, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import json
 from pathlib import Path
 from typing import List, Optional
@@ -642,6 +643,78 @@ async def get_document_content(document_id: str, current_user = Depends(get_curr
         logging.error(f"Failed to get content for document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve document content: {str(e)}")
 
+@router.get("/documents/{document_id}/file")
+async def get_document_file(document_id: str, request: Request, current_user = Depends(get_current_user)):
+    """Stream original PDF file for current session documents"""
+    user_id = current_user.id
+    
+    # Check if user has uploaded files
+    if user_id not in uploaded_files_storage:
+        raise HTTPException(status_code=404, detail="No documents found for this user")
+    
+    # Check if document exists
+    if document_id not in uploaded_files_storage[user_id]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    file_record = uploaded_files_storage[user_id][document_id]
+    
+    # Check if document was successfully processed
+    if file_record["status"] != "uploaded":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document not available. Status: {file_record['status']}"
+        )
+    
+    # Check if this is an OCR document (no original PDF available)
+    processing_stats = file_record.get("processing_stats", {})
+    processor_used = processing_stats.get("processor_used", "")
+    
+    if "OCR" in processor_used:
+        raise HTTPException(
+            status_code=415,
+            detail="This document was processed via OCR. Original PDF not available. Please use the text content viewer instead."
+        )
+    
+    # Get PDF bytes
+    pdf_bytes = file_record.get("content")
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="PDF content not found")
+    
+    # Prepare response with Range support for PDF seeking
+    total_size = len(pdf_bytes)
+    range_header = request.headers.get("Range")
+    
+    headers = {
+        "Content-Type": "application/pdf",
+        "Accept-Ranges": "bytes",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges"
+    }
+    
+    # Handle Range requests for PDF seeking (used by PDF.js for navigation)
+    if range_header and (match := re.match(r"bytes=(\d+)-(\d*)", range_header)):
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else total_size - 1
+        end = min(end, total_size - 1)
+        
+        return Response(
+            content=pdf_bytes[start:end+1],
+            status_code=206,  # Partial Content
+            media_type="application/pdf",
+            headers={
+                **headers,
+                "Content-Range": f"bytes {start}-{end}/{total_size}",
+                "Content-Length": str(end - start + 1)
+            }
+        )
+    
+    # Return full PDF
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={**headers, "Content-Length": str(total_size)}
+    )
+
 @router.post("/{agent_id}/process")
 async def process_agent_documents(agent_id: str, request: Request, current_user = Depends(get_current_user)):
     """Process uploaded documents with specific agent for data extraction and cache results"""
@@ -1023,6 +1096,8 @@ async def save_current_report(
     
     # Get document content from uploaded_files_storage (CRITICAL for quote viewing!)
     document_contents = {}
+    pdf_binaries = {}  # NEW: Collect PDF binaries for native PDF viewing
+    
     for doc_id in cached_report["document_ids"]:
         if user_id in uploaded_files_storage and doc_id in uploaded_files_storage[user_id]:
             # Get full document content (same as /agents/documents/{doc_id}/content)
@@ -1041,9 +1116,15 @@ async def save_current_report(
                 if content_type == "pdf_ocr" or processor_used == "OCR Processor":
                     # Use OCR content retrieval (reuses existing OCR logic)
                     document_content = get_ocr_document_content(file_record, doc_id)
+                    # OCR documents don't have original PDFs - skip PDF binary collection
                 else:
                     # Use existing PDF processor method (default fallback)
                     document_content = get_pdf_document_content(file_record, doc_id)
+                    
+                    # NEW: Collect PDF binary for native PDF viewing (only for PDF documents)
+                    if content and isinstance(content, bytes):
+                        pdf_binaries[doc_id] = content
+                        logging.info(f"Collected PDF binary for {doc_id} ({len(content)} bytes)")
                 
                 # Use the result directly from the helper functions
                 document_contents[doc_id] = document_content
@@ -1056,7 +1137,7 @@ async def save_current_report(
         raise HTTPException(status_code=400, detail="No document content available to save with report")
     
     try:
-        # Save to Supabase
+        # Save to Supabase with PDF binaries
         report_id = supabase_service.save_report(
             user_jwt=jwt_token,
             user_id=user_id,
@@ -1064,10 +1145,11 @@ async def save_current_report(
             agent_name=agent.name,
             report_name=request.report_name,
             report_data=cached_report["report_data"],
-            document_contents=document_contents
+            document_contents=document_contents,
+            pdf_binaries=pdf_binaries  # NEW: Pass PDF binaries
         )
         
-        logging.info(f"Successfully saved report {report_id} for user {user_id}")
+        logging.info(f"Successfully saved report {report_id} for user {user_id} with {len(pdf_binaries)} PDF binaries")
         
         return {
             "success": True,
@@ -1162,6 +1244,69 @@ async def get_saved_document_content(
     except Exception as e:
         logging.error(f"Failed to fetch document content for saved report: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch document content")
+
+@router.get("/reports/saved/{report_id}/documents/{document_id}/file")
+async def get_saved_document_file(
+    report_id: str,
+    document_id: str,
+    request: Request,
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
+    """Stream PDF file for saved report documents (NEW: supports native PDF viewing)"""
+    user_id = current_user.id
+    
+    try:
+        # Retrieve PDF binary from Supabase
+        pdf_binary = supabase_service.get_saved_document_pdf(jwt_token, user_id, report_id, document_id)
+        
+        if pdf_binary is None:
+            # No PDF available - could be OCR document or pre-migration report
+            raise HTTPException(
+                status_code=404,
+                detail="Original PDF not available for this document. This may be an OCR-processed document or a report saved before PDF storage was enabled. Please use the text-based content viewer instead."
+            )
+        
+        # Serve PDF with Range header support (same as current session PDFs)
+        total_size = len(pdf_binary)
+        range_header = request.headers.get("Range")
+        
+        headers = {
+            "Content-Type": "application/pdf",
+            "Accept-Ranges": "bytes",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges"
+        }
+        
+        # Handle Range requests for PDF seeking (used by PDF.js for navigation)
+        if range_header and (match := re.match(r"bytes=(\d+)-(\d*)", range_header)):
+            start = int(match.group(1))
+            end = int(match.group(2)) if match.group(2) else total_size - 1
+            end = min(end, total_size - 1)
+            
+            return Response(
+                content=pdf_binary[start:end+1],
+                status_code=206,  # Partial Content
+                media_type="application/pdf",
+                headers={
+                    **headers,
+                    "Content-Range": f"bytes {start}-{end}/{total_size}",
+                    "Content-Length": str(end - start + 1)
+                }
+            )
+        
+        # Return full PDF
+        return Response(
+            content=pdf_binary,
+            media_type="application/pdf",
+            headers={**headers, "Content-Length": str(total_size)}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error retrieving saved document PDF {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document PDF")
 
 @router.delete("/reports/saved/{report_id}")
 async def delete_saved_report(

@@ -2,6 +2,7 @@
 
 import os
 import logging
+import base64
 from typing import List, Dict, Optional, Any
 from supabase import create_client, Client
 from datetime import datetime
@@ -26,8 +27,9 @@ class SupabaseService:
         return client
 
     def save_report(self, user_jwt: str, user_id: str, agent_id: str, agent_name: str, 
-                   report_name: str, report_data: dict, document_contents: dict) -> str:
-        """Save a complete report with document content to Supabase using user JWT"""
+                   report_name: str, report_data: dict, document_contents: dict, 
+                   pdf_binaries: Optional[Dict[str, bytes]] = None) -> str:
+        """Save a complete report with document content and PDF binaries to Supabase using user JWT"""
         try:
             # Create user-context client for RLS compliance
             user_client = self._create_user_client(user_jwt)
@@ -50,7 +52,7 @@ class SupabaseService:
             report_id = result.data[0]["id"]
             logging.info(f"Saved report with ID: {report_id} for user: {user_id}")
             
-            # Insert document content records
+            # Insert document content records with optional PDF binaries
             for doc_id, doc_content in document_contents.items():
                 doc_insert = {
                     "report_id": report_id,
@@ -62,6 +64,16 @@ class SupabaseService:
                     "total_characters": doc_content["total_characters"],
                     "metadata": doc_content["metadata"]
                 }
+                
+                # Add PDF binary if available (will be None for OCR documents)
+                # Base64 encode the binary data for JSON serialization
+                if pdf_binaries and doc_id in pdf_binaries:
+                    pdf_bytes = pdf_binaries[doc_id]
+                    pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+                    doc_insert["pdf_binary"] = pdf_base64
+                    logging.info(f"Saving PDF binary for {doc_id} ({len(pdf_bytes)} bytes, {len(pdf_base64)} chars base64)")
+                else:
+                    logging.info(f"No PDF binary for {doc_id} (likely OCR document)")
                 
                 doc_result = user_client.table("saved_report_documents").insert(doc_insert).execute()
                 
@@ -157,6 +169,54 @@ class SupabaseService:
             
         except Exception as e:
             logging.error(f"Error fetching document content: {e}")
+            return None
+
+    def get_saved_document_pdf(self, user_jwt: str, user_id: str, report_id: str, document_id: str) -> Optional[bytes]:
+        """Get PDF binary for a saved report document using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # First verify the report belongs to the user (RLS will handle this automatically)
+            report_result = user_client.table("saved_reports")\
+                .select("id")\
+                .eq("id", report_id)\
+                .eq("user_id", user_id)\
+                .single()\
+                .execute()
+            
+            if not report_result.data:
+                logging.warning(f"Report {report_id} not found for user {user_id}")
+                return None
+            
+            # Get PDF binary (RLS will ensure user can only access their documents)
+            doc_result = user_client.table("saved_report_documents")\
+                .select("pdf_binary")\
+                .eq("report_id", report_id)\
+                .eq("document_id", document_id)\
+                .single()\
+                .execute()
+            
+            if not doc_result.data:
+                logging.warning(f"Document {document_id} not found for report {report_id}")
+                return None
+            
+            pdf_base64 = doc_result.data.get("pdf_binary")
+            
+            if pdf_base64 is None:
+                logging.info(f"No PDF binary available for document {document_id} (likely OCR document or pre-migration report)")
+                return None
+            
+            # Decode base64 string back to bytes
+            try:
+                pdf_binary = base64.b64decode(pdf_base64)
+                logging.info(f"Retrieved and decoded PDF binary for document {document_id} ({len(pdf_binary)} bytes)")
+                return pdf_binary
+            except Exception as decode_error:
+                logging.error(f"Failed to decode PDF binary for document {document_id}: {decode_error}")
+                return None
+            
+        except Exception as e:
+            logging.error(f"Error fetching PDF binary: {e}")
             return None
 
     def update_saved_report(self, user_jwt: str, user_id: str, report_id: str, report_data: Optional[Dict[str, Any]] = None, report_name: Optional[str] = None) -> bool:

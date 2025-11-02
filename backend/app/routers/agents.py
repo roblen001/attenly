@@ -42,6 +42,25 @@ def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authori
         )
     return authorization.split(" ")[1]
 
+def extract_auth_tokens(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_refresh_token: Optional[str] = Header(None, alias="X-Refresh-Token")
+) -> tuple[str, str]:
+    """Extract both access and refresh tokens from headers"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    access_token = authorization.split(" ")[1]
+    refresh_token = x_refresh_token or ""
+    
+    if not refresh_token:
+        logging.warning("No refresh token provided - Storage operations may fail")
+    
+    return access_token, refresh_token
+
 def calculate_content_hash(content: bytes) -> str:
     """Calculate SHA-256 hash of file content for duplicate detection"""
     return hashlib.sha256(content).hexdigest()
@@ -167,12 +186,6 @@ def get_ocr_document_content(file_record: dict, document_id: str) -> dict:
         raise HTTPException(status_code=500, detail="Failed to extract readable content from OCR document")
     
     # Build full document text with page markers (same format as PDF)
-
-    print("==============DEBUG==============")
-    print(ocr_data)
-
-    print("================keys==============")
-    print(ocr_data.keys())
     full_text = ""
     pages_info = []
     
@@ -1074,17 +1087,16 @@ async def save_current_report(
     request: SaveReportRequest,
     http_request: Request,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    auth_tokens: tuple[str, str] = Depends(extract_auth_tokens)
 ):
     """Save currently cached report AND document content to Supabase"""
     user_id = current_user.id
+    access_token, refresh_token = auth_tokens
     
     # Get agent configuration using internal helper with proper auth
     try:
-        # Extract JWT token from request headers for custom agent access
-        auth_header = http_request.headers.get("Authorization")
-        jwt_token_for_agent = extract_jwt_token(auth_header) if auth_header else None
-        agent_dict = _get_agent_by_id_internal(agent_id, user_id, jwt_token_for_agent)
+        # Use access token for agent lookup
+        agent_dict = _get_agent_by_id_internal(agent_id, user_id, access_token)
         agent = Agent(**agent_dict)
     except HTTPException as e:
         raise e
@@ -1137,16 +1149,17 @@ async def save_current_report(
         raise HTTPException(status_code=400, detail="No document content available to save with report")
     
     try:
-        # Save to Supabase with PDF binaries
+        # Save to Supabase with PDF binaries - pass both tokens for Storage operations
         report_id = supabase_service.save_report(
-            user_jwt=jwt_token,
+            user_jwt=access_token,
             user_id=user_id,
             agent_id=agent_id,
             agent_name=agent.name,
             report_name=request.report_name,
             report_data=cached_report["report_data"],
             document_contents=document_contents,
-            pdf_binaries=pdf_binaries  # NEW: Pass PDF binaries
+            pdf_binaries=pdf_binaries,  # PDF binaries for Storage
+            refresh_token=refresh_token  # NEW: Pass refresh token for Storage authentication
         )
         
         logging.info(f"Successfully saved report {report_id} for user {user_id} with {len(pdf_binaries)} PDF binaries")
@@ -1253,60 +1266,91 @@ async def get_saved_document_file(
     current_user = Depends(get_current_user),
     jwt_token: str = Depends(extract_jwt_token)
 ):
-    """Stream PDF file for saved report documents (NEW: supports native PDF viewing)"""
+    """Stream PDF file for saved report documents (uses Supabase Storage with signed URLs)"""
+    from fastapi.responses import RedirectResponse
     user_id = current_user.id
     
     try:
-        # Retrieve PDF binary from Supabase
-        pdf_binary = supabase_service.get_saved_document_pdf(jwt_token, user_id, report_id, document_id)
+        # Get document metadata to check for Storage path
+        user_client = supabase_service._create_user_client(jwt_token)
         
-        if pdf_binary is None:
-            # No PDF available - could be OCR document or pre-migration report
-            raise HTTPException(
-                status_code=404,
-                detail="Original PDF not available for this document. This may be an OCR-processed document or a report saved before PDF storage was enabled. Please use the text-based content viewer instead."
-            )
+        # Verify report ownership
+        report_result = user_client.table("saved_reports")\
+            .select("id")\
+            .eq("id", report_id)\
+            .eq("user_id", user_id)\
+            .single()\
+            .execute()
         
-        # Serve PDF with Range header support (same as current session PDFs)
-        total_size = len(pdf_binary)
-        range_header = request.headers.get("Range")
+        if not report_result.data:
+            raise HTTPException(status_code=404, detail="Report not found")
         
-        headers = {
-            "Content-Type": "application/pdf",
-            "Accept-Ranges": "bytes",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges"
-        }
+        # Get document Storage metadata
+        doc_result = user_client.table("saved_report_documents")\
+            .select("storage_path, content_hash, filename")\
+            .eq("report_id", report_id)\
+            .eq("document_id", document_id)\
+            .single()\
+            .execute()
         
-        # Handle Range requests for PDF seeking (used by PDF.js for navigation)
-        if range_header and (match := re.match(r"bytes=(\d+)-(\d*)", range_header)):
-            start = int(match.group(1))
-            end = int(match.group(2)) if match.group(2) else total_size - 1
-            end = min(end, total_size - 1)
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        storage_path = doc_result.data.get("storage_path")
+        
+        # Check if document has Storage path (new documents)
+        if storage_path:
+            # Generate signed URL and redirect
+            from app.services.supabase_storage_service import get_storage_service
+            from app.config import STORAGE_SIGNED_URL_EXPIRY_SECONDS
             
-            return Response(
-                content=pdf_binary[start:end+1],
-                status_code=206,  # Partial Content
-                media_type="application/pdf",
-                headers={
-                    **headers,
-                    "Content-Range": f"bytes {start}-{end}/{total_size}",
-                    "Content-Length": str(end - start + 1)
+            storage_service = get_storage_service()
+            
+            try:
+                signed_url = storage_service.get_signed_url(
+                    access_token=jwt_token,
+                    refresh_token="",
+                    user_id=user_id,
+                    storage_path=storage_path,
+                    expiry_seconds=STORAGE_SIGNED_URL_EXPIRY_SECONDS
+                )
+                
+                # Add content-hash as ETag for caching if available
+                headers = {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "ETag"
                 }
-            )
+                
+                content_hash = doc_result.data.get("content_hash")
+                if content_hash:
+                    headers["ETag"] = f'"{content_hash[:16]}"'
+                
+                # Redirect to signed URL (307 preserves method and body)
+                logging.info(f"Redirecting to signed URL for document {document_id}")
+                return RedirectResponse(
+                    url=signed_url,
+                    status_code=307,
+                    headers=headers
+                )
+                
+            except Exception as storage_error:
+                logging.error(f"Failed to get signed URL for {document_id}: {storage_error}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to generate secure access URL for document"
+                )
         
-        # Return full PDF
-        return Response(
-            content=pdf_binary,
-            media_type="application/pdf",
-            headers={**headers, "Content-Length": str(total_size)}
+        # No Storage path - likely OCR document
+        raise HTTPException(
+            status_code=404,
+            detail="Original PDF not available for this document. This may be an OCR-processed document. Please use the text-based content viewer instead."
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error retrieving saved document PDF {document_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve document PDF")
+        logging.error(f"Error retrieving saved document file {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document file")
 
 @router.delete("/reports/saved/{report_id}")
 async def delete_saved_report(

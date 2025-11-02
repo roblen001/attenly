@@ -35,70 +35,17 @@ class SupabaseStorageService:
         
         logging.info("Supabase Storage service initialized with RLS enforcement")
     
-    def _create_user_client(self, access_token: str, refresh_token: str) -> Client:
-        """
-        Create a Supabase client with authenticated session for RLS compliance
-        
-        Properly authenticates both PostgREST and Storage operations by:
-        1. Passing Authorization header through ClientOptions (for Storage)
-        2. Using set_session() for auth state management (for PostgREST)
-        
-        Args:
-            access_token: User's access token (JWT)
-            refresh_token: User's refresh token
-            
-        Returns:
-            Supabase client configured with authenticated session for both database and Storage
-        """
-        # DEBUG: Log token information
-        logging.info(f"🔐 Creating user client:")
-        logging.info(f"   - access_token present: {bool(access_token)}, length: {len(access_token) if access_token else 0}")
-        logging.info(f"   - refresh_token present: {bool(refresh_token)}, length: {len(refresh_token) if refresh_token else 0}")
-        
-        # CRITICAL: Pass Authorization header through ClientOptions
-        # This ensures storage3 client has the JWT token for RLS enforcement
-        from supabase.lib.client_options import ClientOptions
-        
-        options = ClientOptions(
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "X-Client-Info": "supabase-py/2.3.0"  # Preserve default header
-            }
-        )
-        
-        logging.info("🔐 Creating client with Authorization header in options...")
-        client = create_client(self.supabase_url, self.supabase_anon_key, options)
-        
-        # Use set_session() for auth state management (PostgREST)
-        try:
-            logging.info("🔐 Calling auth.set_session()...")
-            client.auth.set_session(access_token, refresh_token)
-            logging.info("✓ set_session() completed successfully")
-            
-            # Verify session was set
-            current_session = client.auth.get_session()
-            logging.info(f"✓ Session verification: user={current_session.user.id if current_session and current_session.user else 'None'}")
-            logging.info("✓ Client fully authenticated for both database and storage operations")
-            
-        except Exception as e:
-            logging.error(f"❌ set_session() failed: {e}")
-            logging.error(f"   Error type: {type(e).__name__}")
-            raise
-        
-        return client
     
     def _create_storage_client(self, access_token: str) -> StorageClient:
         """
         Create a dedicated Storage client with explicit authentication headers
-        
-        This ensures the Storage API receives proper JWT authentication, so Postgres
-        sees the request as 'authenticated' role and RLS policies pass.
+        for RLS enforcement.
         
         Args:
             access_token: User's access token (JWT)
             
         Returns:
-            StorageClient configured with explicit Authorization and apikey headers
+            StorageClient configured with Authorization and apikey headers
         """
         return StorageClient(
             f"{self.supabase_url}/storage/v1",
@@ -147,52 +94,32 @@ class SupabaseStorageService:
         report_id: str
     ) -> Dict[str, str]:
         """
-        Upload PDF to Supabase Storage with content-addressed naming using authenticated session for RLS
+        Upload PDF to Supabase Storage with content-addressed naming.
         
-        Features:
-        - Content-hash based naming for deduplication
-        - Automatic path construction with user isolation
-        - Skips upload if file already exists (deduplication)
-        - Uses authenticated session to enforce RLS policies
+        Uses SHA-256 hash for deduplication and enforces RLS policies.
         
         Args:
-            access_token: User's access token (JWT)
-            refresh_token: User's refresh token
-            user_id: User ID for RLS path isolation
-            document_id: Document identifier (for logging)
+            access_token: User's JWT access token
+            refresh_token: User's refresh token (unused, kept for API compatibility)
+            user_id: User ID for path isolation
+            document_id: Document identifier
             pdf_bytes: Raw PDF binary data
             report_id: Report ID for organization
             
         Returns:
-            Dictionary with storage metadata:
-            {
-                "storage_path": "path/to/file.pdf",
-                "content_hash": "sha256_hash",
-                "bucket": "report-documents",
-                "stored_at": "2025-11-01T20:00:00Z"
-            }
+            Dictionary with storage metadata including storage_path and content_hash
             
         Raises:
-            ValueError: If upload fails or RLS policy rejects
-            Exception: If Storage unavailable
+            ValueError: If upload fails or RLS rejects
         """
         try:
-            # DEBUG: Log upload attempt details
-            logging.info(f"📤 UPLOAD ATTEMPT - user_id: {user_id}, report_id: {report_id}, document_id: {document_id}")
-            logging.info(f"📤 PDF size: {len(pdf_bytes)} bytes")
-            
-            # Create user-context client for RLS compliance
-            user_client = self._create_user_client(access_token, refresh_token)
-            
             # Calculate content hash
             content_hash = self._calculate_content_hash(pdf_bytes)
-            logging.info(f"📤 Content hash: {content_hash[:16]}...")
             
             # Construct storage path
             storage_path = self._construct_storage_path(user_id, report_id, content_hash)
-            logging.info(f"📤 Storage path: {storage_path}")
             
-            # Create dedicated Storage client with explicit headers for RLS enforcement
+            # Create Storage client with JWT authentication
             storage = self._create_storage_client(access_token)
             
             # Check if file already exists (deduplication)
@@ -201,17 +128,13 @@ class SupabaseStorageService:
                     path=f"{user_id}/{report_id}"
                 )
                 
-                # Check if our file already exists
                 file_exists = any(
                     file.get("name") == f"{content_hash}.pdf" 
                     for file in existing_file
                 )
                 
                 if file_exists:
-                    logging.info(
-                        f"File already exists in Storage (deduplication): {storage_path}"
-                    )
-                    # File exists, skip upload but return metadata
+                    logging.info(f"File already exists in Storage: {storage_path}")
                     return {
                         "storage_path": storage_path,
                         "content_hash": content_hash,
@@ -220,70 +143,9 @@ class SupabaseStorageService:
                         "duplicate": True
                     }
             except Exception as e:
-                # If list fails, continue with upload (better to upload than fail)
                 logging.warning(f"Failed to check for existing file: {e}")
             
-            # Upload to Storage with dedicated storage client (RLS enforced)
-            logging.info(f"📤 Attempting upload to bucket '{self.bucket_name}' at path '{storage_path}'")
-            logging.info(f"📤 File options: contentType=application/pdf, size={len(pdf_bytes)}")
-            
-            # Safety assertions to prevent RLS failures
-            assert storage_path and not storage_path.startswith("/"), "storage_path must not start with '/'"
-            assert storage_path.split("/", 1)[0] == user_id, "first path segment must be the user_id"
-            assert access_token and access_token.count(".") == 2, "access_token looks malformed"
-            
-            # DEBUG: Verify all RLS policy conditions before upload
-            # Get current session to verify user ID
-            current_session = user_client.auth.get_session()
-            session_user_id = current_session.user.id if current_session and current_session.user else None
-            
-            # Prepare debug output
-            debug_output = []
-            debug_output.append("=" * 70)
-            debug_output.append("🔍 RLS POLICY CONDITION VERIFICATION")
-            debug_output.append(f"Timestamp: {datetime.now().isoformat()}")
-            debug_output.append("=" * 70)
-            debug_output.append(f"1️⃣  bucket_id = 'report-documents'")
-            debug_output.append(f"    ✓ Our bucket: '{self.bucket_name}'")
-            debug_output.append(f"    ✓ Match: {self.bucket_name == 'report-documents'}")
-            debug_output.append("")
-            debug_output.append(f"2️⃣  (storage.foldername(name))[1] = auth.uid()::text")
-            debug_output.append(f"    ✓ Storage path: '{storage_path}'")
-            debug_output.append(f"    ✓ First folder (user_id): '{user_id}'")
-            debug_output.append(f"    ✓ Expected auth.uid(): '{user_id}'")
-            debug_output.append(f"    ✓ Session user ID: '{session_user_id}'")
-            debug_output.append(f"    ✓ Match: {user_id == session_user_id}")
-            debug_output.append(f"    ⚠️  CRITICAL: If session_user_id is None, auth.uid() will be NULL -> RLS FAILS")
-            debug_output.append("")
-            debug_output.append(f"3️⃣  (metadata->>'mimetype') = 'application/pdf'")
-            debug_output.append(f"    ✓ Content-Type: 'application/pdf'")
-            debug_output.append(f"    ✓ Match: True")
-            debug_output.append("")
-            debug_output.append(f"4️⃣  ((metadata->>'size'))::bigint <= 104857600")
-            debug_output.append(f"    ✓ File size: {len(pdf_bytes)} bytes")
-            debug_output.append(f"    ✓ Size limit: 104857600 bytes (100MB)")
-            debug_output.append(f"    ✓ Under limit: {len(pdf_bytes) <= 104857600}")
-            debug_output.append("")
-            debug_output.append("🔑 JWT Token Info:")
-            debug_output.append(f"    ✓ Access token length: {len(access_token)}")
-            debug_output.append(f"    ✓ Token prefix (first 20 chars): '{access_token[:20]}...'")
-            debug_output.append(f"    ✓ Authorization header format: 'Bearer {access_token[:20]}...'")
-            debug_output.append("=" * 70)
-            debug_output.append("")
-            
-            # Write to both console log and file
-            for line in debug_output:
-                logging.info(line)
-            
-            # Write to debug file
-            try:
-                with open("rls_debug.txt", "a", encoding="utf-8") as f:
-                    f.write("\n".join(debug_output))
-                    f.write("\n\n")
-                logging.info("✓ RLS debug info written to rls_debug.txt")
-            except Exception as file_error:
-                logging.warning(f"Failed to write debug file: {file_error}")
-            
+            # Upload to Storage
             response = storage.from_(self.bucket_name).upload(
                 path=storage_path,
                 file=pdf_bytes,
@@ -293,19 +155,10 @@ class SupabaseStorageService:
                 }
             )
             
-            # DEBUG: Log full response details
-            logging.info(f"📤 Upload response type: {type(response)}")
-            logging.info(f"📤 Upload response: {response}")
-            
-            # Check for upload errors
             if hasattr(response, 'error') and response.error:
-                logging.error(f"❌ Upload failed with error: {response.error}")
                 raise ValueError(f"Storage upload failed: {response.error}")
             
-            logging.info(
-                f"Uploaded PDF to Storage: {storage_path} "
-                f"({len(pdf_bytes)} bytes, hash: {content_hash[:8]}...)"
-            )
+            logging.info(f"Uploaded PDF to Storage: {storage_path} ({len(pdf_bytes)} bytes)")
             
             return {
                 "storage_path": storage_path,
@@ -316,10 +169,7 @@ class SupabaseStorageService:
             }
             
         except Exception as e:
-            logging.error(f"❌ UPLOAD EXCEPTION for document {document_id}: {type(e).__name__}: {e}")
-            logging.error(f"❌ Exception details: {repr(e)}")
-            import traceback
-            logging.error(f"❌ Stack trace:\n{traceback.format_exc()}")
+            logging.error(f"Failed to upload document {document_id}: {e}")
             raise
     
     def get_signed_url(
@@ -331,16 +181,11 @@ class SupabaseStorageService:
         expiry_seconds: int = 3600
     ) -> str:
         """
-        Generate temporary signed URL for secure document access using authenticated session for RLS
-        
-        Security:
-        - Verifies user_id matches path prefix (user isolation)
-        - Uses user JWT to enforce RLS policies
-        - URL expires after expiry_seconds
+        Generate temporary signed URL for secure document access.
         
         Args:
-            access_token: User's access token (JWT)
-            refresh_token: User's refresh token
+            access_token: User's JWT access token
+            refresh_token: User's refresh token (unused, kept for API compatibility)
             user_id: User ID for access verification
             storage_path: Storage path from database
             expiry_seconds: URL validity period (default 1 hour)
@@ -349,7 +194,7 @@ class SupabaseStorageService:
             Signed URL string valid for expiry_seconds
             
         Raises:
-            ValueError: If user doesn't own document, path invalid, or RLS rejects
+            ValueError: If user doesn't own document or RLS rejects
         """
         try:
             # Verify user owns this document (path-based security)
@@ -389,11 +234,11 @@ class SupabaseStorageService:
     
     def download_document(self, access_token: str, refresh_token: str, user_id: str, storage_path: str) -> bytes:
         """
-        Download PDF from Storage using authenticated session for RLS
+        Download PDF from Storage.
         
         Args:
-            access_token: User's access token (JWT)
-            refresh_token: User's refresh token
+            access_token: User's JWT access token
+            refresh_token: User's refresh token (unused, kept for API compatibility)
             user_id: User ID for access verification
             storage_path: Storage path from database
             
@@ -401,7 +246,7 @@ class SupabaseStorageService:
             PDF binary data as bytes
             
         Raises:
-            ValueError: If user doesn't own document, download fails, or RLS rejects
+            ValueError: If user doesn't own document or download fails
         """
         try:
             # Verify user owns this document (path-based security)
@@ -432,19 +277,16 @@ class SupabaseStorageService:
     
     def delete_document(self, access_token: str, refresh_token: str, user_id: str, storage_path: str) -> bool:
         """
-        Delete document from Storage using authenticated session for RLS
+        Delete document from Storage.
         
         Args:
-            access_token: User's access token (JWT)
-            refresh_token: User's refresh token
+            access_token: User's JWT access token
+            refresh_token: User's refresh token (unused, kept for API compatibility)
             user_id: User ID for access verification
             storage_path: Storage path from database
             
         Returns:
             True if deletion successful, False otherwise
-            
-        Raises:
-            ValueError: If user doesn't own document or RLS rejects
         """
         try:
             # Verify user owns this document (path-based security)
@@ -475,11 +317,11 @@ class SupabaseStorageService:
     
     def cleanup_report_documents(self, access_token: str, refresh_token: str, user_id: str, report_id: str) -> int:
         """
-        Delete all documents for a report from Storage using authenticated session for RLS
+        Delete all documents for a report from Storage.
         
         Args:
-            access_token: User's access token (JWT)
-            refresh_token: User's refresh token
+            access_token: User's JWT access token
+            refresh_token: User's refresh token (unused, kept for API compatibility)
             user_id: User ID for access verification
             report_id: Report ID to clean up
             

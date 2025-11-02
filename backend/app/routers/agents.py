@@ -33,7 +33,7 @@ report_cache_storage = {}
 document_processor = DocumentProcessor()
 
 def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authorization")) -> str:
-    """Extract JWT token from Authorization header"""
+    """Extract JWT access token from Authorization header"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=401,
@@ -46,18 +46,17 @@ def extract_auth_tokens(
     authorization: Optional[str] = Header(None, alias="Authorization"),
     x_refresh_token: Optional[str] = Header(None, alias="X-Refresh-Token")
 ) -> tuple[str, str]:
-    """Extract both access and refresh tokens from headers"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-    access_token = authorization.split(" ")[1]
+    """
+    Extract both access and refresh tokens from headers.
+    
+    Returns:
+        Tuple of (access_token, refresh_token). Refresh token may be empty string.
+    """
+    access_token = extract_jwt_token(authorization)
     refresh_token = x_refresh_token or ""
     
     if not refresh_token:
-        logging.warning("No refresh token provided - Storage operations may fail")
+        logging.warning("No refresh token provided - some Storage operations may fail")
     
     return access_token, refresh_token
 

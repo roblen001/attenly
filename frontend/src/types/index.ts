@@ -56,6 +56,8 @@ export interface DocumentInfo {
   filename: string;
   pages: number[];
   chunk_count: number;
+  storage_path?: string;  // Supabase Storage path
+  content_hash?: string;  // SHA-256 hash for verification
 }
 
 export interface DocumentContext {

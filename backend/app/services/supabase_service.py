@@ -63,10 +63,6 @@ class SupabaseService:
                     "report_id": report_id,
                     "document_id": doc_id,
                     "filename": doc_content["filename"],
-                    "full_text": doc_content["full_text"],
-                    "pages_info": doc_content["pages"],
-                    "total_pages": doc_content["total_pages"],
-                    "total_characters": doc_content["total_characters"],
                     "metadata": doc_content["metadata"]
                 }
                 
@@ -183,14 +179,9 @@ class SupabaseService:
             
             doc_data = doc_result.data
             
-            # Format response to match existing DocumentContent structure
             return {
                 "document_id": doc_data["document_id"],
                 "filename": doc_data["filename"],
-                "full_text": doc_data["full_text"],
-                "pages": doc_data["pages_info"],
-                "total_pages": doc_data["total_pages"],
-                "total_characters": doc_data["total_characters"],
                 "metadata": doc_data["metadata"]
             }
             
@@ -289,12 +280,29 @@ class SupabaseService:
             logging.error(f"Error updating saved report {report_id}: {e}")
             return False
 
-    def delete_saved_report(self, user_jwt: str, user_id: str, report_id: str) -> bool:
-        """Delete a saved report and its associated documents using user JWT"""
+    def delete_saved_report(self, user_jwt: str, user_id: str, report_id: str, refresh_token: str = "") -> bool:
+        """Delete a saved report, its associated documents, and PDFs from Storage using user JWT"""
         try:
             user_client = self._create_user_client(user_jwt)
             
-            # Verify ownership and delete (RLS will handle access control)
+            # First, clean up PDFs from Storage before deleting database records
+            from app.services.supabase_storage_service import get_storage_service
+            storage_service = get_storage_service()
+            
+            try:
+                deleted_count = storage_service.cleanup_report_documents(
+                    access_token=user_jwt,
+                    refresh_token=refresh_token,
+                    user_id=user_id,
+                    report_id=report_id
+                )
+                logging.info(f"Cleaned up {deleted_count} PDFs from Storage for report {report_id}")
+            except Exception as storage_error:
+                # Log storage cleanup error but continue with database deletion
+                # This ensures orphaned DB records don't remain if storage fails
+                logging.error(f"Failed to cleanup Storage for report {report_id}: {storage_error}")
+            
+            # Delete database records (cascade will delete saved_report_documents)
             result = user_client.table("saved_reports")\
                 .delete()\
                 .eq("id", report_id)\
@@ -302,7 +310,7 @@ class SupabaseService:
                 .execute()
             
             if result.data:
-                logging.info(f"Deleted saved report {report_id}")
+                logging.info(f"Deleted saved report {report_id} from database")
                 return True
             else:
                 logging.warning(f"Report {report_id} not found or not owned by user {user_id}")

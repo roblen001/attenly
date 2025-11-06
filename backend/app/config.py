@@ -19,6 +19,14 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # =============================================================================
+# SUPABASE STORAGE CONFIGURATION
+# =============================================================================
+
+STORAGE_BUCKET_NAME = os.getenv("STORAGE_BUCKET_NAME", "report-documents")
+STORAGE_SIGNED_URL_EXPIRY_SECONDS = int(os.getenv("STORAGE_SIGNED_URL_EXPIRY_SECONDS", "3600"))  # 1 hour
+STORAGE_MAX_FILE_SIZE_MB = int(os.getenv("STORAGE_MAX_FILE_SIZE_MB", "100"))
+
+# =============================================================================
 # LLM SERVICE CONFIGURATION
 # =============================================================================
 

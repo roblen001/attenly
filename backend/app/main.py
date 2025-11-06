@@ -66,11 +66,12 @@ if os.getenv("ENV") != "production":
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=False,   # you’re using bearer tokens
+    allow_credentials=False,   # you're using bearer tokens
     allow_methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS"],
     allow_headers=[
         "Authorization","Content-Type","X-Correlation-ID","Idempotency-Key",
-        "Accept","Origin","User-Agent","Apikey","X-Client-Info","Prefer","Range"
+        "Accept","Origin","User-Agent","Apikey","X-Client-Info","Prefer","Range",
+        "X-Refresh-Token"  # Allow refresh token header for Storage authentication
     ],
     expose_headers=["Content-Range","X-Content-Range"],
     max_age=86400,

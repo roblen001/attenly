@@ -1,7 +1,8 @@
 import logging
 import time
+import re
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Depends, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import json
 from pathlib import Path
 from typing import List, Optional
@@ -28,11 +29,15 @@ uploaded_files_storage = {}
 # In-memory storage for cached report data (user-based)
 report_cache_storage = {}
 
+# In-memory storage for preloaded PDFs from saved reports (user-based)
+# Structure: {user_id: {report_id: {document_id: {"content": bytes, "filename": str, "size": int, "loaded_at": float}}}}
+preloaded_reports_cache = {}
+
 # Initialize document processor
 document_processor = DocumentProcessor()
 
 def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authorization")) -> str:
-    """Extract JWT token from Authorization header"""
+    """Extract JWT access token from Authorization header"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=401,
@@ -40,6 +45,24 @@ def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authori
             headers={"WWW-Authenticate": "Bearer"}
         )
     return authorization.split(" ")[1]
+
+def extract_auth_tokens(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_refresh_token: Optional[str] = Header(None, alias="X-Refresh-Token")
+) -> tuple[str, str]:
+    """
+    Extract both access and refresh tokens from headers.
+    
+    Returns:
+        Tuple of (access_token, refresh_token). Refresh token may be empty string.
+    """
+    access_token = extract_jwt_token(authorization)
+    refresh_token = x_refresh_token or ""
+    
+    if not refresh_token:
+        logging.warning("No refresh token provided - some Storage operations may fail")
+    
+    return access_token, refresh_token
 
 def calculate_content_hash(content: bytes) -> str:
     """Calculate SHA-256 hash of file content for duplicate detection"""
@@ -166,12 +189,6 @@ def get_ocr_document_content(file_record: dict, document_id: str) -> dict:
         raise HTTPException(status_code=500, detail="Failed to extract readable content from OCR document")
     
     # Build full document text with page markers (same format as PDF)
-
-    print("==============DEBUG==============")
-    print(ocr_data)
-
-    print("================keys==============")
-    print(ocr_data.keys())
     full_text = ""
     pages_info = []
     
@@ -642,6 +659,78 @@ async def get_document_content(document_id: str, current_user = Depends(get_curr
         logging.error(f"Failed to get content for document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve document content: {str(e)}")
 
+@router.get("/documents/{document_id}/file")
+async def get_document_file(document_id: str, request: Request, current_user = Depends(get_current_user)):
+    """Stream original PDF file for current session documents"""
+    user_id = current_user.id
+    
+    # Check if user has uploaded files
+    if user_id not in uploaded_files_storage:
+        raise HTTPException(status_code=404, detail="No documents found for this user")
+    
+    # Check if document exists
+    if document_id not in uploaded_files_storage[user_id]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    file_record = uploaded_files_storage[user_id][document_id]
+    
+    # Check if document was successfully processed
+    if file_record["status"] != "uploaded":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document not available. Status: {file_record['status']}"
+        )
+    
+    # Check if this is an OCR document (no original PDF available)
+    processing_stats = file_record.get("processing_stats", {})
+    processor_used = processing_stats.get("processor_used", "")
+    
+    if "OCR" in processor_used:
+        raise HTTPException(
+            status_code=415,
+            detail="This document was processed via OCR. Original PDF not available. Please use the text content viewer instead."
+        )
+    
+    # Get PDF bytes
+    pdf_bytes = file_record.get("content")
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="PDF content not found")
+    
+    # Prepare response with Range support for PDF seeking
+    total_size = len(pdf_bytes)
+    range_header = request.headers.get("Range")
+    
+    headers = {
+        "Content-Type": "application/pdf",
+        "Accept-Ranges": "bytes",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges"
+    }
+    
+    # Handle Range requests for PDF seeking (used by PDF.js for navigation)
+    if range_header and (match := re.match(r"bytes=(\d+)-(\d*)", range_header)):
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else total_size - 1
+        end = min(end, total_size - 1)
+        
+        return Response(
+            content=pdf_bytes[start:end+1],
+            status_code=206,  # Partial Content
+            media_type="application/pdf",
+            headers={
+                **headers,
+                "Content-Range": f"bytes {start}-{end}/{total_size}",
+                "Content-Length": str(end - start + 1)
+            }
+        )
+    
+    # Return full PDF
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={**headers, "Content-Length": str(total_size)}
+    )
+
 @router.post("/{agent_id}/process")
 async def process_agent_documents(agent_id: str, request: Request, current_user = Depends(get_current_user)):
     """Process uploaded documents with specific agent for data extraction and cache results"""
@@ -1001,17 +1090,15 @@ async def save_current_report(
     request: SaveReportRequest,
     http_request: Request,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    auth_tokens: tuple[str, str] = Depends(extract_auth_tokens)
 ):
-    """Save currently cached report AND document content to Supabase"""
+    """Save currently cached report to Supabase with PDF binaries"""
     user_id = current_user.id
+    access_token, refresh_token = auth_tokens
     
     # Get agent configuration using internal helper with proper auth
     try:
-        # Extract JWT token from request headers for custom agent access
-        auth_header = http_request.headers.get("Authorization")
-        jwt_token_for_agent = extract_jwt_token(auth_header) if auth_header else None
-        agent_dict = _get_agent_by_id_internal(agent_id, user_id, jwt_token_for_agent)
+        agent_dict = _get_agent_by_id_internal(agent_id, user_id, access_token)
         agent = Agent(**agent_dict)
     except HTTPException as e:
         raise e
@@ -1021,53 +1108,50 @@ async def save_current_report(
     if not cached_report:
         raise HTTPException(status_code=400, detail="No cached report to save. Please generate a report first.")
     
-    # Get document content from uploaded_files_storage (CRITICAL for quote viewing!)
+    # Build minimal document contents and collect PDF binaries
     document_contents = {}
+    pdf_binaries = {}
+    
     for doc_id in cached_report["document_ids"]:
         if user_id in uploaded_files_storage and doc_id in uploaded_files_storage[user_id]:
-            # Get full document content (same as /agents/documents/{doc_id}/content)
             file_record = uploaded_files_storage[user_id][doc_id]
-            content = file_record["content"]
             
-            try:
-                # Use same processor-aware approach as get_document_content endpoint
-                processing_stats = file_record.get("processing_stats", {})
-                content_type = processing_stats.get("content_type")
-                processor_used = processing_stats.get("processor_used")
-                
-                logging.info(f"Saving content for document {doc_id}: processor='{processor_used}', content_type='{content_type}'")
-                
-                # Route to appropriate processor-specific content retrieval
-                if content_type == "pdf_ocr" or processor_used == "OCR Processor":
-                    # Use OCR content retrieval (reuses existing OCR logic)
-                    document_content = get_ocr_document_content(file_record, doc_id)
-                else:
-                    # Use existing PDF processor method (default fallback)
-                    document_content = get_pdf_document_content(file_record, doc_id)
-                
-                # Use the result directly from the helper functions
-                document_contents[doc_id] = document_content
-                
-            except Exception as e:
-                logging.error(f"Failed to process document {doc_id} for saving: {e}")
-                continue
+            # Build minimal document content (no full_text extraction)
+            document_contents[doc_id] = {
+                "filename": file_record["name"],
+                "metadata": {
+                    "size": file_record["size"],
+                    "type": file_record["type"],
+                    "processing_stats": file_record.get("processing_stats", {})
+                }
+            }
+            
+            # Collect PDF binary only for non-OCR documents
+            processing_stats = file_record.get("processing_stats", {})
+            processor_used = processing_stats.get("processor_used", "")
+            
+            if "OCR" not in processor_used and file_record.get("content"):
+                pdf_binaries[doc_id] = file_record["content"]
+                logging.info(f"Collected PDF binary for {doc_id} ({len(file_record['content'])} bytes)")
     
     if not document_contents:
         raise HTTPException(status_code=400, detail="No document content available to save with report")
     
     try:
-        # Save to Supabase
+        # Save to Supabase with PDF binaries
         report_id = supabase_service.save_report(
-            user_jwt=jwt_token,
+            user_jwt=access_token,
             user_id=user_id,
             agent_id=agent_id,
             agent_name=agent.name,
             report_name=request.report_name,
             report_data=cached_report["report_data"],
-            document_contents=document_contents
+            document_contents=document_contents,
+            pdf_binaries=pdf_binaries,
+            refresh_token=refresh_token
         )
         
-        logging.info(f"Successfully saved report {report_id} for user {user_id}")
+        logging.info(f"Successfully saved report {report_id} for user {user_id} with {len(pdf_binaries)} PDF binaries")
         
         return {
             "success": True,
@@ -1163,17 +1247,325 @@ async def get_saved_document_content(
         logging.error(f"Failed to fetch document content for saved report: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch document content")
 
+@router.post("/reports/saved/{report_id}/preload-documents")
+async def preload_saved_report_documents(
+    report_id: str,
+    current_user = Depends(get_current_user),
+    auth_tokens: tuple[str, str] = Depends(extract_auth_tokens)
+):
+    """Preload all PDFs for a saved report into memory for fast quote viewing"""
+    user_id = current_user.id
+    access_token, refresh_token = auth_tokens
+    
+    try:
+        # Get document IDs from the report
+        user_client = supabase_service._create_user_client(access_token)
+        
+        # Verify report ownership
+        report_result = user_client.table("saved_reports")\
+            .select("id")\
+            .eq("id", report_id)\
+            .eq("user_id", user_id)\
+            .single()\
+            .execute()
+        
+        if not report_result.data:
+            raise HTTPException(status_code=404, detail="Report not found")
+        
+        # Get all documents for this report that have PDF storage paths
+        docs_result = user_client.table("saved_report_documents")\
+            .select("document_id, storage_path, filename, metadata")\
+            .eq("report_id", report_id)\
+            .execute()
+        
+        if not docs_result.data:
+            return {
+                "success": True,
+                "documents_loaded": 0,
+                "total_size_mb": 0,
+                "message": "No documents to preload"
+            }
+        
+        # Initialize user cache if needed
+        if user_id not in preloaded_reports_cache:
+            preloaded_reports_cache[user_id] = {}
+        
+        if report_id not in preloaded_reports_cache[user_id]:
+            preloaded_reports_cache[user_id][report_id] = {}
+        
+        # Fetch PDFs from Storage
+        from app.services.supabase_storage_service import get_storage_service
+        storage_service = get_storage_service()
+        
+        loaded_count = 0
+        total_size = 0
+        skipped_count = 0
+        
+        for doc in docs_result.data:
+            document_id = doc["document_id"]
+            storage_path = doc.get("storage_path")
+            
+            # Skip if no storage path (OCR documents)
+            if not storage_path:
+                logging.info(f"Skipping document {document_id} - no storage path (OCR document)")
+                skipped_count += 1
+                continue
+            
+            # Skip if already cached
+            if document_id in preloaded_reports_cache[user_id][report_id]:
+                logging.info(f"Document {document_id} already cached, skipping")
+                continue
+            
+            try:
+                # Download PDF from Storage
+                pdf_bytes = storage_service.download_file(
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    user_id=user_id,
+                    storage_path=storage_path
+                )
+                
+                if pdf_bytes:
+                    # Cache the PDF in memory
+                    preloaded_reports_cache[user_id][report_id][document_id] = {
+                        "content": pdf_bytes,
+                        "filename": doc.get("filename", "unknown.pdf"),
+                        "size": len(pdf_bytes),
+                        "loaded_at": time.time(),
+                        "storage_path": storage_path
+                    }
+                    
+                    loaded_count += 1
+                    total_size += len(pdf_bytes)
+                    
+                    logging.info(f"Preloaded PDF {document_id}: {doc.get('filename')} ({len(pdf_bytes)} bytes)")
+                
+            except Exception as e:
+                logging.error(f"Failed to preload document {document_id}: {e}")
+                # Continue with other documents even if one fails
+                continue
+        
+        # Log summary
+        total_size_mb = total_size / (1024 * 1024)
+        logging.info(f"Preload complete for report {report_id}: {loaded_count} documents, {total_size_mb:.2f} MB, {skipped_count} skipped")
+        
+        return {
+            "success": True,
+            "documents_loaded": loaded_count,
+            "documents_skipped": skipped_count,
+            "total_size_bytes": total_size,
+            "total_size_mb": round(total_size_mb, 2),
+            "message": f"Preloaded {loaded_count} PDFs for fast quote viewing"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to preload documents for report {report_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to preload documents: {str(e)}")
+
+
+@router.delete("/reports/saved/{report_id}/unload-documents")
+async def unload_saved_report_documents(
+    report_id: str,
+    current_user = Depends(get_current_user)
+):
+    """Unload preloaded PDFs for a saved report from memory"""
+    user_id = current_user.id
+    
+    # Check if user has preloaded reports
+    if user_id not in preloaded_reports_cache:
+        return {
+            "success": True,
+            "documents_unloaded": 0,
+            "memory_freed_mb": 0,
+            "message": "No preloaded documents for this user"
+        }
+    
+    # Check if report has preloaded documents
+    if report_id not in preloaded_reports_cache[user_id]:
+        return {
+            "success": True,
+            "documents_unloaded": 0,
+            "memory_freed_mb": 0,
+            "message": "No preloaded documents for this report"
+        }
+    
+    # Calculate memory freed
+    documents_cache = preloaded_reports_cache[user_id][report_id]
+    total_size = sum(doc["size"] for doc in documents_cache.values())
+    doc_count = len(documents_cache)
+    
+    # Remove from cache
+    del preloaded_reports_cache[user_id][report_id]
+    
+    # If no more reports for this user, clean up user entry
+    if not preloaded_reports_cache[user_id]:
+        del preloaded_reports_cache[user_id]
+    
+    total_size_mb = total_size / (1024 * 1024)
+    logging.info(f"Unloaded {doc_count} PDFs for report {report_id}, freed {total_size_mb:.2f} MB")
+    
+    return {
+        "success": True,
+        "documents_unloaded": doc_count,
+        "memory_freed_bytes": total_size,
+        "memory_freed_mb": round(total_size_mb, 2),
+        "message": f"Unloaded {doc_count} PDFs, freed {total_size_mb:.2f} MB"
+    }
+
+
+@router.get("/reports/saved/{report_id}/documents/{document_id}/file")
+async def get_saved_document_file(
+    report_id: str,
+    document_id: str,
+    request: Request,
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
+    """Stream PDF file for saved report documents (checks preload cache first, then uses Supabase Storage)"""
+    from fastapi.responses import RedirectResponse
+    user_id = current_user.id
+    
+    # FIRST: Check preload cache for instant delivery
+    if (user_id in preloaded_reports_cache and 
+        report_id in preloaded_reports_cache[user_id] and 
+        document_id in preloaded_reports_cache[user_id][report_id]):
+        
+        cached_doc = preloaded_reports_cache[user_id][report_id][document_id]
+        pdf_bytes = cached_doc["content"]
+        total_size = len(pdf_bytes)
+        
+        logging.info(f"Serving preloaded PDF {document_id} from memory cache ({total_size} bytes)")
+        
+        # Prepare response headers
+        headers = {
+            "Content-Type": "application/pdf",
+            "Accept-Ranges": "bytes",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges"
+        }
+        
+        # Handle Range requests for PDF seeking
+        range_header = request.headers.get("Range")
+        if range_header and (match := re.match(r"bytes=(\d+)-(\d*)", range_header)):
+            start = int(match.group(1))
+            end = int(match.group(2)) if match.group(2) else total_size - 1
+            end = min(end, total_size - 1)
+            
+            return Response(
+                content=pdf_bytes[start:end+1],
+                status_code=206,  # Partial Content
+                media_type="application/pdf",
+                headers={
+                    **headers,
+                    "Content-Range": f"bytes {start}-{end}/{total_size}",
+                    "Content-Length": str(end - start + 1)
+                }
+            )
+        
+        # Return full PDF from cache
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={**headers, "Content-Length": str(total_size)}
+        )
+    
+    # FALLBACK: Not in cache, use Storage with signed URL redirect
+    try:
+        # Get document metadata to check for Storage path
+        user_client = supabase_service._create_user_client(jwt_token)
+        
+        # Verify report ownership
+        report_result = user_client.table("saved_reports")\
+            .select("id")\
+            .eq("id", report_id)\
+            .eq("user_id", user_id)\
+            .single()\
+            .execute()
+        
+        if not report_result.data:
+            raise HTTPException(status_code=404, detail="Report not found")
+        
+        # Get document Storage metadata
+        doc_result = user_client.table("saved_report_documents")\
+            .select("storage_path, content_hash, filename")\
+            .eq("report_id", report_id)\
+            .eq("document_id", document_id)\
+            .single()\
+            .execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        storage_path = doc_result.data.get("storage_path")
+        
+        # Check if document has Storage path (new documents)
+        if storage_path:
+            # Generate signed URL and redirect
+            from app.services.supabase_storage_service import get_storage_service
+            from app.config import STORAGE_SIGNED_URL_EXPIRY_SECONDS
+            
+            storage_service = get_storage_service()
+            
+            try:
+                signed_url = storage_service.get_signed_url(
+                    access_token=jwt_token,
+                    refresh_token="",
+                    user_id=user_id,
+                    storage_path=storage_path,
+                    expiry_seconds=STORAGE_SIGNED_URL_EXPIRY_SECONDS
+                )
+                
+                # Add content-hash as ETag for caching if available
+                headers = {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "ETag"
+                }
+                
+                content_hash = doc_result.data.get("content_hash")
+                if content_hash:
+                    headers["ETag"] = f'"{content_hash[:16]}"'
+                
+                # Redirect to signed URL (307 preserves method and body)
+                logging.info(f"Redirecting to signed URL for document {document_id}")
+                return RedirectResponse(
+                    url=signed_url,
+                    status_code=307,
+                    headers=headers
+                )
+                
+            except Exception as storage_error:
+                logging.error(f"Failed to get signed URL for {document_id}: {storage_error}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to generate secure access URL for document"
+                )
+        
+        # No Storage path - likely OCR document
+        raise HTTPException(
+            status_code=404,
+            detail="Original PDF not available for this document. This may be an OCR-processed document. Please use the text-based content viewer instead."
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error retrieving saved document file {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document file")
+
 @router.delete("/reports/saved/{report_id}")
 async def delete_saved_report(
     report_id: str, 
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    auth_tokens: tuple[str, str] = Depends(extract_auth_tokens)
 ):
-    """Delete a saved report and its associated documents"""
+    """Delete a saved report, its associated documents, and PDFs from Storage"""
     user_id = current_user.id
+    access_token, refresh_token = auth_tokens
     
     try:
-        success = supabase_service.delete_saved_report(jwt_token, user_id, report_id)
+        success = supabase_service.delete_saved_report(access_token, user_id, report_id, refresh_token)
         
         if not success:
             raise HTTPException(status_code=404, detail="Saved report not found or access denied")

@@ -2,6 +2,7 @@
 
 import os
 import logging
+import base64
 from typing import List, Dict, Optional, Any
 from supabase import create_client, Client
 from datetime import datetime
@@ -26,8 +27,10 @@ class SupabaseService:
         return client
 
     def save_report(self, user_jwt: str, user_id: str, agent_id: str, agent_name: str, 
-                   report_name: str, report_data: dict, document_contents: dict) -> str:
-        """Save a complete report with document content to Supabase using user JWT"""
+                   report_name: str, report_data: dict, document_contents: dict, 
+                   pdf_binaries: Optional[Dict[str, bytes]] = None,
+                   refresh_token: str = "") -> str:
+        """Save a complete report with document content and PDF binaries to Supabase Storage using authenticated session"""
         try:
             # Create user-context client for RLS compliance
             user_client = self._create_user_client(user_jwt)
@@ -50,18 +53,50 @@ class SupabaseService:
             report_id = result.data[0]["id"]
             logging.info(f"Saved report with ID: {report_id} for user: {user_id}")
             
-            # Insert document content records
+            # Import Storage service for PDF uploads
+            from app.services.supabase_storage_service import get_storage_service
+            storage_service = get_storage_service()
+            
+            # Insert document content records with Storage uploads for PDFs
             for doc_id, doc_content in document_contents.items():
                 doc_insert = {
                     "report_id": report_id,
                     "document_id": doc_id,
                     "filename": doc_content["filename"],
-                    "full_text": doc_content["full_text"],
-                    "pages_info": doc_content["pages"],
-                    "total_pages": doc_content["total_pages"],
-                    "total_characters": doc_content["total_characters"],
                     "metadata": doc_content["metadata"]
                 }
+                
+                # Upload PDF to Storage if available (will be None for OCR documents)
+                if pdf_binaries and doc_id in pdf_binaries:
+                    pdf_bytes = pdf_binaries[doc_id]
+                    
+                    try:
+                        # Upload to Supabase Storage with authenticated session (RLS enforced)
+                        storage_metadata = storage_service.upload_document(
+                            access_token=user_jwt,
+                            refresh_token=refresh_token,
+                            user_id=user_id,
+                            document_id=doc_id,
+                            pdf_bytes=pdf_bytes,
+                            report_id=report_id
+                        )
+                        
+                        # Store Storage metadata in database
+                        doc_insert["storage_path"] = storage_metadata["storage_path"]
+                        doc_insert["content_hash"] = storage_metadata["content_hash"]
+                        doc_insert["storage_bucket"] = storage_metadata["bucket"]
+                        doc_insert["stored_at"] = storage_metadata["stored_at"]
+                        
+                        logging.info(
+                            f"Uploaded {doc_id} to Storage: {storage_metadata['storage_path']} "
+                            f"({len(pdf_bytes)} bytes, duplicate: {storage_metadata.get('duplicate', False)})"
+                        )
+                    except Exception as e:
+                        # Log error but don't fail the entire save operation
+                        logging.error(f"Storage upload failed for {doc_id}: {e}")
+                        # Document will be saved without PDF (storage_path will be NULL)
+                else:
+                    logging.info(f"No PDF binary for {doc_id} (likely OCR document)")
                 
                 doc_result = user_client.table("saved_report_documents").insert(doc_insert).execute()
                 
@@ -144,19 +179,74 @@ class SupabaseService:
             
             doc_data = doc_result.data
             
-            # Format response to match existing DocumentContent structure
             return {
                 "document_id": doc_data["document_id"],
                 "filename": doc_data["filename"],
-                "full_text": doc_data["full_text"],
-                "pages": doc_data["pages_info"],
-                "total_pages": doc_data["total_pages"],
-                "total_characters": doc_data["total_characters"],
                 "metadata": doc_data["metadata"]
             }
             
         except Exception as e:
             logging.error(f"Error fetching document content: {e}")
+            return None
+
+    def get_saved_document_pdf(self, user_jwt: str, user_id: str, report_id: str, document_id: str) -> Optional[bytes]:
+        """Get PDF binary for a saved report document from Supabase Storage using user JWT"""
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # First verify the report belongs to the user (RLS will handle this automatically)
+            report_result = user_client.table("saved_reports")\
+                .select("id")\
+                .eq("id", report_id)\
+                .eq("user_id", user_id)\
+                .single()\
+                .execute()
+            
+            if not report_result.data:
+                logging.warning(f"Report {report_id} not found for user {user_id}")
+                return None
+            
+            # Get Storage metadata (RLS will ensure user can only access their documents)
+            doc_result = user_client.table("saved_report_documents")\
+                .select("storage_path, content_hash")\
+                .eq("report_id", report_id)\
+                .eq("document_id", document_id)\
+                .single()\
+                .execute()
+            
+            if not doc_result.data:
+                logging.warning(f"Document {document_id} not found for report {report_id}")
+                return None
+            
+            storage_path = doc_result.data.get("storage_path")
+            
+            if not storage_path:
+                logging.info(f"No Storage path available for document {document_id} (likely OCR document)")
+                return None
+            
+            # Download from Supabase Storage with user JWT (RLS enforced)
+            try:
+                from app.services.supabase_storage_service import get_storage_service
+                storage_service = get_storage_service()
+                
+                pdf_binary = storage_service.download_document(user_jwt, user_id, storage_path)
+                
+                # Verify content hash if available
+                content_hash = doc_result.data.get("content_hash")
+                if content_hash:
+                    if not storage_service.verify_content_hash(pdf_binary, content_hash):
+                        logging.error(f"Content hash mismatch for document {document_id}")
+                        raise ValueError("Content verification failed")
+                
+                logging.info(f"Retrieved PDF from Storage: {storage_path} ({len(pdf_binary)} bytes)")
+                return pdf_binary
+                
+            except Exception as download_error:
+                logging.error(f"Failed to download PDF from Storage for document {document_id}: {download_error}")
+                return None
+            
+        except Exception as e:
+            logging.error(f"Error fetching PDF from Storage: {e}")
             return None
 
     def update_saved_report(self, user_jwt: str, user_id: str, report_id: str, report_data: Optional[Dict[str, Any]] = None, report_name: Optional[str] = None) -> bool:
@@ -190,12 +280,29 @@ class SupabaseService:
             logging.error(f"Error updating saved report {report_id}: {e}")
             return False
 
-    def delete_saved_report(self, user_jwt: str, user_id: str, report_id: str) -> bool:
-        """Delete a saved report and its associated documents using user JWT"""
+    def delete_saved_report(self, user_jwt: str, user_id: str, report_id: str, refresh_token: str = "") -> bool:
+        """Delete a saved report, its associated documents, and PDFs from Storage using user JWT"""
         try:
             user_client = self._create_user_client(user_jwt)
             
-            # Verify ownership and delete (RLS will handle access control)
+            # First, clean up PDFs from Storage before deleting database records
+            from app.services.supabase_storage_service import get_storage_service
+            storage_service = get_storage_service()
+            
+            try:
+                deleted_count = storage_service.cleanup_report_documents(
+                    access_token=user_jwt,
+                    refresh_token=refresh_token,
+                    user_id=user_id,
+                    report_id=report_id
+                )
+                logging.info(f"Cleaned up {deleted_count} PDFs from Storage for report {report_id}")
+            except Exception as storage_error:
+                # Log storage cleanup error but continue with database deletion
+                # This ensures orphaned DB records don't remain if storage fails
+                logging.error(f"Failed to cleanup Storage for report {report_id}: {storage_error}")
+            
+            # Delete database records (cascade will delete saved_report_documents)
             result = user_client.table("saved_reports")\
                 .delete()\
                 .eq("id", report_id)\
@@ -203,7 +310,7 @@ class SupabaseService:
                 .execute()
             
             if result.data:
-                logging.info(f"Deleted saved report {report_id}")
+                logging.info(f"Deleted saved report {report_id} from database")
                 return True
             else:
                 logging.warning(f"Report {report_id} not found or not owned by user {user_id}")

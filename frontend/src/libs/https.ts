@@ -46,6 +46,10 @@ export async function api(path: string, init: ApiOptions = {}) {
   // Add Authorization header if user is authenticated
   if (session?.access_token) {
     (headers as Record<string, string>).Authorization = `Bearer ${session.access_token}`;
+    // Add refresh token for Storage operations (required by supabase-py set_session)
+    if (session?.refresh_token) {
+      (headers as Record<string, string>)['X-Refresh-Token'] = session.refresh_token;
+    }
   } else {
     console.warn('No valid session found for API call to:', path);
   }

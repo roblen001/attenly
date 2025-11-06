@@ -26,6 +26,7 @@ export const useReportData = (params: UseReportDataParams) => {
   const [error, setError] = useState<string | null>(null);
   const [reportType, setReportType] = useState<'current' | 'saved' | null>(null);
   const [reportInfo, setReportInfo] = useState<{ id: string; name: string } | null>(null);
+  const [preloadStatus, setPreloadStatus] = useState<'idle' | 'loading' | 'complete' | 'error'>('idle');
 
   useEffect(() => {
     const fetchReportData = async () => {
@@ -58,6 +59,9 @@ export const useReportData = (params: UseReportDataParams) => {
           result = await response.json();
           setReportData(result.report_data);
           setReportInfo({ id: result.id, name: result.report_name });
+          
+          // Auto-preload PDFs for fast quote viewing (waits before hiding loading)
+          await preloadDocuments(reportId);
           
         } else if (agentId) {
           // Fetch current report
@@ -92,12 +96,52 @@ export const useReportData = (params: UseReportDataParams) => {
     fetchReportData();
   }, [params.agentId, params.reportId, authLoading, session]);
 
+  // Preload documents for saved reports
+  const preloadDocuments = async (reportId: string) => {
+    try {
+      setPreloadStatus('loading');
+      console.log(`[Preload] Starting PDF preload for report ${reportId}...`);
+      
+      const response = await api(`/agents/reports/saved/${reportId}/preload-documents`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to preload documents');
+      }
+      
+      const result = await response.json();
+      console.log(`[Preload] Successfully preloaded ${result.documents_loaded} PDFs (${result.total_size_mb} MB)`);
+      setPreloadStatus('complete');
+      
+    } catch (err) {
+      console.warn('[Preload] Failed to preload documents:', err);
+      // Don't fail the report loading if preload fails - quotes will just be slower
+      setPreloadStatus('error');
+    }
+  };
+
+  // Cleanup: Unload preloaded documents when component unmounts (for saved reports)
+  useEffect(() => {
+    return () => {
+      if (reportType === 'saved' && params.reportId && preloadStatus === 'complete') {
+        // Cleanup preloaded documents from memory
+        api(`/agents/reports/saved/${params.reportId}/unload-documents`, {
+          method: 'DELETE',
+        }).catch(() => {
+          // Ignore errors - this is just cleanup
+        });
+      }
+    };
+  }, [reportType, params.reportId, preloadStatus]);
+
   return {
     reportData,
     setReportData,
     loading,
     error,
     reportType,
-    reportInfo
+    reportInfo,
+    preloadStatus
   };
 };

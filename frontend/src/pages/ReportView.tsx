@@ -40,7 +40,7 @@ export default function ReportView() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Custom hooks for data and state management
-  const { reportData, setReportData, loading, error, reportType, reportInfo } = useReportData(reportParams);
+  const { reportData, setReportData, loading, error, reportType } = useReportData(reportParams);
   const {
     editingAnswer,
     editedAnswerText,

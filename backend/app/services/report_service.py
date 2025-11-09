@@ -25,7 +25,8 @@ class ReportService:
         self.llm_service = llm_service
     
     async def generate_report(self, agent: Agent, vector_store: VectorStore, 
-                       document_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+                       document_ids: Optional[List[str]] = None,
+                       bbox_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generate a complete report with extracted data and source quotes
         
@@ -33,6 +34,7 @@ class ReportService:
             agent: Agent configuration with questions and template
             vector_store: User's vector store instance
             document_ids: Optional list of specific document IDs to process
+            bbox_data: Optional dictionary mapping document_ids to their bounding box data for OCR documents
             
         Returns:
             Complete report data with answers, quotes, and metadata
@@ -66,7 +68,7 @@ class ReportService:
             
             # Process questions through LLM service with individual contexts
             llm_results = self.llm_service.process_agent_questions(
-                questions_with_chunks, document_context
+                questions_with_chunks, document_context, bbox_data
             )
             
             # LLM service now only returns successful results or raises an exception
@@ -198,6 +200,7 @@ class ReportService:
                         logger.warning(f"Source chunk {source_chunk.get('chunk_id', 'unknown')} missing document_id")
                         continue  # Skip chunks without document_id
                     
+                    # Build quote with all fields from source_chunk, including bbox data
                     quote = {
                         "id": str(uuid.uuid4()),
                         "index": quote_counter,
@@ -207,6 +210,17 @@ class ReportService:
                         "page_range": source_chunk["page_range"],
                         "relevance_score": source_chunk.get("relevance_score", 0.0)
                     }
+                    
+                    # Preserve bbox-related fields if present (from OCR documents)
+                    if "exact_text" in source_chunk:
+                        quote["exact_text"] = source_chunk["exact_text"]
+                    if "precise_page" in source_chunk:
+                        quote["precise_page"] = source_chunk["precise_page"]
+                    if "has_bounding_boxes" in source_chunk:
+                        quote["has_bounding_boxes"] = source_chunk["has_bounding_boxes"]
+                    if "word_spans" in source_chunk:
+                        quote["word_spans"] = source_chunk["word_spans"]
+                    
                     question_quotes.append(quote)
                     all_quotes.append(quote)
                     quote_counter += 1

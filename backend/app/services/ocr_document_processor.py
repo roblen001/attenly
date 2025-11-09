@@ -244,9 +244,17 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
                     "quality_metrics": ocr_result.quality_metrics
                 }
             
-            # Convert to Attenly schema
+            # Convert to Attenly schema with bounding boxes
+            # Generate document_id from filename for bbox tracking
+            import uuid
+            document_id = str(uuid.uuid4())
+            
             try:
-                attently_data = self.ocr_service.convert_to_attenly_schema(ocr_result.doctr_export, filename)
+                attently_data = self.ocr_service.convert_to_attenly_schema(
+                    ocr_result.doctr_export, 
+                    filename,
+                    document_id
+                )
             except Exception as schema_error:
                 error_msg = f"Failed to convert OCR results to internal format: {str(schema_error)}"
                 logger.error(error_msg)

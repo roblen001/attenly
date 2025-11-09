@@ -659,6 +659,45 @@ async def get_document_content(document_id: str, current_user = Depends(get_curr
         logging.error(f"Failed to get content for document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve document content: {str(e)}")
 
+@router.get("/documents/{document_id}/bboxes")
+async def get_document_bboxes(document_id: str, current_user = Depends(get_current_user)):
+    """Get bounding box data for a current session document (OCR documents only)"""
+    user_id = current_user.id
+    
+    # Check if user has uploaded files
+    if user_id not in uploaded_files_storage:
+        raise HTTPException(status_code=404, detail="No documents found for this user")
+    
+    # Check if document exists
+    if document_id not in uploaded_files_storage[user_id]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    file_record = uploaded_files_storage[user_id][document_id]
+    
+    # Check if document was successfully processed
+    if file_record["status"] != "uploaded":
+        raise HTTPException(status_code=400, detail=f"Document not available. Status: {file_record['status']}")
+    
+    # Get extracted document data
+    extracted_data = file_record.get("extracted_document_data", {})
+    
+    # Check if this document has bounding boxes (OCR documents)
+    if "bounding_boxes" not in extracted_data:
+        raise HTTPException(
+            status_code=404,
+            detail="No bounding box data available for this document. This feature is only available for OCR-processed documents."
+        )
+    
+    bbox_data = extracted_data["bounding_boxes"]
+    
+    logging.info(f"Retrieved bbox data for document {document_id} ({file_record['name']})")
+    
+    return {
+        "document_id": document_id,
+        "filename": file_record["name"],
+        "bounding_boxes": bbox_data
+    }
+
 @router.get("/documents/{document_id}/file")
 async def get_document_file(document_id: str, request: Request, current_user = Depends(get_current_user)):
     """Stream original PDF file for current session documents"""
@@ -681,17 +720,7 @@ async def get_document_file(document_id: str, request: Request, current_user = D
             detail=f"Document not available. Status: {file_record['status']}"
         )
     
-    # Check if this is an OCR document (no original PDF available)
-    processing_stats = file_record.get("processing_stats", {})
-    processor_used = processing_stats.get("processor_used", "")
-    
-    if "OCR" in processor_used:
-        raise HTTPException(
-            status_code=415,
-            detail="This document was processed via OCR. Original PDF not available. Please use the text content viewer instead."
-        )
-    
-    # Get PDF bytes
+    # Get PDF bytes (now supports both native PDF and OCR documents)
     pdf_bytes = file_record.get("content")
     if not pdf_bytes:
         raise HTTPException(status_code=404, detail="PDF content not found")
@@ -770,10 +799,25 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
         # Generate report using report service (LLM processing happens here)
         document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
         
+        # Collect bounding box data from uploaded files (for OCR documents)
+        bbox_data = {}
+        for file_record in successfully_uploaded_files:
+            doc_id = file_record["id"]
+            extracted_data = file_record.get("extracted_document_data", {})
+            
+            # Check if this document has bounding boxes (OCR documents)
+            if "bounding_boxes" in extracted_data:
+                bbox_data[doc_id] = extracted_data["bounding_boxes"]
+                logging.info(f"Collected bbox data for document {doc_id} ({file_record['name']})")
+        
+        if bbox_data:
+            logging.info(f"📦 Collected bbox data for {len(bbox_data)} OCR documents")
+        
         report_result = await report_service.generate_report(
             agent=agent,
             vector_store=vector_store,
-            document_ids=document_ids
+            document_ids=document_ids,
+            bbox_data=bbox_data if bbox_data else None
         )
         
         if not report_result["success"]:
@@ -850,6 +894,20 @@ async def test_single_question(
         # Get document IDs
         document_ids = [file_record["id"] for file_record in successfully_uploaded_files]
         
+        # Collect bounding box data from uploaded files (for OCR documents)
+        bbox_data = {}
+        for file_record in successfully_uploaded_files:
+            doc_id = file_record["id"]
+            extracted_data = file_record.get("extracted_document_data", {})
+            
+            # Check if this document has bounding boxes (OCR documents)
+            if "bounding_boxes" in extracted_data:
+                bbox_data[doc_id] = extracted_data["bounding_boxes"]
+                logging.info(f"Collected bbox data for test document {doc_id} ({file_record['name']})")
+        
+        if bbox_data:
+            logging.info(f"📦 Collected bbox data for {len(bbox_data)} OCR documents in test flow")
+        
         # Search for relevant chunks for this question
         relevant_chunks = await vector_store.search_chunks(
             query=question_text,
@@ -894,6 +952,53 @@ async def test_single_question(
         if not question_result:
             raise HTTPException(status_code=500, detail="No result returned for test question")
         
+        # Apply bbox matching if we have OCR documents with bounding boxes
+        if bbox_data and question_result.get("source_chunks"):
+            from app.services.bbox_matcher import BBoxMatcher
+            
+            logging.info(f"Applying bbox matching to {len(question_result['source_chunks'])} quotes in test flow")
+            
+            bbox_matcher = BBoxMatcher()
+            enhanced_chunks = []
+            
+            for chunk in question_result["source_chunks"]:
+                enhanced_chunk = chunk.copy()
+                
+                document_id = chunk.get("document_id")
+                exact_text = chunk.get("exact_text", "")
+                precise_page = chunk.get("precise_page")
+                
+                # Check if this document has bbox data
+                if document_id and document_id in bbox_data:
+                    document_bboxes = bbox_data[document_id]
+                    
+                    try:
+                        # Use bbox matcher to find word spans for this quote
+                        word_spans = bbox_matcher.match_quote_to_words(
+                            quote_text=exact_text,
+                            document_bboxes=document_bboxes,
+                            page_number=precise_page
+                        )
+                        
+                        if word_spans:
+                            enhanced_chunk["has_bounding_boxes"] = True
+                            enhanced_chunk["word_spans"] = word_spans
+                            logging.info(f"✓ Matched test quote to {len(word_spans)} word spans")
+                        else:
+                            enhanced_chunk["has_bounding_boxes"] = False
+                            
+                    except Exception as e:
+                        logging.warning(f"Failed to match test quote to bboxes: {e}")
+                        enhanced_chunk["has_bounding_boxes"] = False
+                else:
+                    enhanced_chunk["has_bounding_boxes"] = False
+                
+                enhanced_chunks.append(enhanced_chunk)
+            
+            question_result["source_chunks"] = enhanced_chunks
+            bbox_matched = sum(1 for c in enhanced_chunks if c.get("has_bounding_boxes"))
+            logging.info(f"📦 Test BBox Enhancement: {bbox_matched}/{len(enhanced_chunks)} quotes matched")
+        
         # Format quotes for frontend (same format as report preview)
         formatted_quotes = []
         for i, source_chunk in enumerate(question_result.get("source_chunks", [])):
@@ -905,7 +1010,9 @@ async def test_single_question(
                 "page_range": source_chunk["page_range"],
                 "precise_page": source_chunk.get("precise_page"),
                 "relevance_score": source_chunk.get("relevance_score", 0.0),
-                "quote_index": i + 1
+                "quote_index": i + 1,
+                "has_bounding_boxes": source_chunk.get("has_bounding_boxes", False),
+                "word_spans": source_chunk.get("word_spans", [])
             })
         
         return {
@@ -1126,11 +1233,8 @@ async def save_current_report(
                 }
             }
             
-            # Collect PDF binary only for non-OCR documents
-            processing_stats = file_record.get("processing_stats", {})
-            processor_used = processing_stats.get("processor_used", "")
-            
-            if "OCR" not in processor_used and file_record.get("content"):
+            # Collect PDF binary for all documents (including OCR)
+            if file_record.get("content"):
                 pdf_binaries[doc_id] = file_record["content"]
                 logging.info(f"Collected PDF binary for {doc_id} ({len(file_record['content'])} bytes)")
     
@@ -1414,6 +1518,67 @@ async def unload_saved_report_documents(
         "message": f"Unloaded {doc_count} PDFs, freed {total_size_mb:.2f} MB"
     }
 
+
+@router.get("/reports/saved/{report_id}/documents/{document_id}/bboxes")
+async def get_saved_document_bboxes(
+    report_id: str,
+    document_id: str,
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
+    """Get bounding box data for a saved report document (OCR documents only)"""
+    user_id = current_user.id
+    
+    try:
+        # Get document metadata from saved report
+        user_client = supabase_service._create_user_client(jwt_token)
+        
+        # Verify report ownership
+        report_result = user_client.table("saved_reports")\
+            .select("id")\
+            .eq("id", report_id)\
+            .eq("user_id", user_id)\
+            .single()\
+            .execute()
+        
+        if not report_result.data:
+            raise HTTPException(status_code=404, detail="Report not found")
+        
+        # Get document metadata (which includes bounding boxes if available)
+        doc_result = user_client.table("saved_report_documents")\
+            .select("document_id, filename, metadata")\
+            .eq("report_id", report_id)\
+            .eq("document_id", document_id)\
+            .single()\
+            .execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        metadata = doc_result.data.get("metadata", {})
+        
+        # Check if this document has bounding boxes (stored in metadata)
+        if "bounding_boxes" not in metadata:
+            raise HTTPException(
+                status_code=404,
+                detail="No bounding box data available for this document. This feature is only available for OCR-processed documents."
+            )
+        
+        bbox_data = metadata["bounding_boxes"]
+        
+        logging.info(f"Retrieved bbox data for saved document {document_id} in report {report_id}")
+        
+        return {
+            "document_id": document_id,
+            "filename": doc_result.data.get("filename", "Unknown"),
+            "bounding_boxes": bbox_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to get bbox data for saved document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve bounding box data")
 
 @router.get("/reports/saved/{report_id}/documents/{document_id}/file")
 async def get_saved_document_file(

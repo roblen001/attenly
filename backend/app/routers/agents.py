@@ -1223,6 +1223,46 @@ async def get_saved_report(
         logging.error(f"Failed to fetch saved report {report_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch saved report")
 
+@router.get("/reports/saved/{report_id}/with-audit")
+async def get_report_with_audit(
+    report_id: str,
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_jwt_token)
+):
+    """
+    Get saved report with audit trail changes for track changes view.
+    
+    Returns the report data along with all changes from the AI baseline,
+    formatted for frontend audit trail visualization.
+    """
+    user_id = current_user.id
+    
+    try:
+        audit_data = supabase_service.get_report_with_audit_changes(
+            jwt_token,
+            user_id,
+            report_id
+        )
+        
+        if not audit_data:
+            raise HTTPException(status_code=404, detail="Saved report not found")
+        
+        return {
+            "success": True,
+            "report_id": audit_data["report_id"],
+            "report_name": audit_data["report_name"],
+            "agent_name": audit_data["agent_name"],
+            "report_data": audit_data["report_data"],
+            "changes": audit_data["changes"],
+            "has_changes": audit_data["has_changes"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to fetch audit data for report {report_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch audit trail data")
+
 @router.get("/reports/saved/{report_id}/documents/{document_id}/content")
 async def get_saved_document_content(
     report_id: str, 

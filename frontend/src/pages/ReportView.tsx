@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import DocumentViewer from '../components/report/DocumentViewer';
 import LoadingState from '../components/report/LoadingState';
 import ErrorState from '../components/report/ErrorState';
@@ -22,15 +22,32 @@ import { useReportData } from '../hooks/useReportData';
 import { useAnswerEditing } from '../hooks/useAnswerEditing';
 import { useQuoteInteraction } from '../hooks/useQuoteInteraction';
 import { api } from '../libs/https';
+import type { ReportViewMode, AuditChange } from '../types';
 import './ReportView.css';
 
 export default function ReportView() {
   const { agentId, reportId } = useParams<{ agentId?: string; reportId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
 
-  // Determine report type and parameters
+  // Determine report type first (needed for view mode calculation)
   const isSavedReport = location.pathname.includes('/report/saved/');
+
+  // Determine view mode from query parameter
+  const mode: ReportViewMode = searchParams.get('mode') === 'audit' ? 'audit' : 'normal';
+  const isAuditMode = mode === 'audit';
+
+  // Determine actual view mode for ReportContent component
+  // - Normal mode (current OR saved reports) = editable with green boxes
+  // - Audit mode = audit trail view with track changes
+  const viewMode: 'editable' | 'readonly' | 'audit' = isAuditMode ? 'audit' : 'editable';
+
+  // Audit trail state
+  const [auditChanges, setAuditChanges] = useState<Record<string, AuditChange[]>>({});
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Determine report parameters
   const reportParams = isSavedReport ? { reportId } : { agentId };
 
   // Modal state
@@ -55,6 +72,25 @@ export default function ReportView() {
     handleQuoteClick,
     handleCloseDocumentViewer
   } = useQuoteInteraction(reportData);
+
+  // Fetch audit trail data when in audit mode
+  useEffect(() => {
+    if (isAuditMode && isSavedReport && reportId && !loading) {
+      const fetchAuditData = async () => {
+        try {
+          const response = await api(`/agents/reports/saved/${reportId}/with-audit`);
+          if (response.ok) {
+            const data = await response.json();
+            setAuditChanges(data.changes || {});
+            setHasChanges(data.has_changes || false);
+          }
+        } catch (err) {
+          console.error('Failed to fetch audit data:', err);
+        }
+      };
+      fetchAuditData();
+    }
+  }, [isAuditMode, isSavedReport, reportId, loading]);
 
   // Clear report cache when user leaves the page (only for current reports)
   useEffect(() => {
@@ -89,6 +125,14 @@ export default function ReportView() {
         .catch(err => console.warn('Cache cleanup failed:', err));
     }
     navigate('/dashboard');
+  };
+
+  // Toggle between normal and audit modes for saved reports
+  const handleToggleAuditMode = () => {
+    if (!isSavedReport || !reportId) return;
+    
+    const newMode = isAuditMode ? 'normal' : 'audit';
+    navigate(`/report/saved/${reportId}?mode=${newMode}`);
   };
 
   // Show download modal
@@ -306,16 +350,36 @@ export default function ReportView() {
       <ReportActionsBar 
         onDownloadPDF={handleDownloadPDF} 
         onSaveReport={handleSaveReport}
-        showSaveButton={true}
+        showSaveButton={reportType === 'current' || (isSavedReport && !isAuditMode)}
+        viewMode={mode}
+        onToggleAuditMode={isSavedReport ? handleToggleAuditMode : undefined}
       />
 
       <div className="report-main">
         <div className="report-container">
-          <ReportInstructions />
+          {!isAuditMode && <ReportInstructions />}
+          {isAuditMode && hasChanges && (
+            <div className="audit-mode-banner">
+              <span className="audit-badge">📋 Audit Trail Mode</span>
+              <p className="audit-legend">
+                <span className="legend-item"><span className="audit-trail-insert-sample">Green highlight</span> = Human added text</span>
+                {' · '}
+                <span className="legend-item"><span className="audit-trail-delete-sample">Red strikethrough</span> = Human deleted text</span>
+              </p>
+            </div>
+          )}
+          {isAuditMode && !hasChanges && (
+            <div className="audit-mode-banner no-changes">
+              <span className="audit-badge">📋 Audit Trail Mode</span>
+              <p>No changes detected - this report matches the original AI-generated content.</p>
+            </div>
+          )}
           <ReportContent 
             reportData={reportData}
             onAnswerEdit={handleEditAnswer}
             onQuoteClick={handleQuoteClick}
+            viewMode={viewMode}
+            auditChanges={auditChanges}
           />
         </div>
       </div>

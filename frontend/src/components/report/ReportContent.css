@@ -28,8 +28,17 @@
   min-height: 400px;
 }
 
-/* Editable Answer Styles - Override utility styles for better integration */
-.report-content .editable-answer {
+/* Answer Styles - Different classes for different view modes */
+
+/* Base answer content styling */
+.report-content .answer-content {
+  display: inline;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Editable mode - green boxes with hover for current reports */
+.report-content .answer-editable {
   position: relative;
   display: inline;
   background: var(--primary-green-light);
@@ -40,12 +49,21 @@
   cursor: pointer;
 }
 
-.report-content .editable-answer:hover {
+.report-content .answer-editable:hover {
   background: var(--primary-green-light);
   border-color: var(--primary-green);
 }
 
-.report-content .answer-content {
+/* Readonly mode - clean text with no styling for saved reports */
+.report-content .answer-readonly {
+  display: inline;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Audit mode - no background, only track change highlights */
+.report-content .answer-audit {
+  display: inline;
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -63,6 +81,74 @@
   background-color: #e3f2fd;
   border-radius: 3px;
   padding: 1px 2px;
+}
+
+/* Audit Trail Styles - Track Changes Visualization */
+.audit-mode-banner {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.audit-mode-banner.no-changes {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-color: #bbf7d0;
+}
+
+.audit-badge {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 1.1em;
+  color: #0369a1;
+  margin-bottom: var(--spacing-sm);
+}
+
+.audit-legend {
+  margin: var(--spacing-sm) 0 0 0;
+  color: #64748b;
+  font-size: 0.95em;
+}
+
+.legend-item {
+  display: inline-block;
+}
+
+.audit-trail-insert,
+.audit-trail-insert-sample {
+  background-color: #d1fae5;
+  border-bottom: 2px solid #10b981;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-weight: 500;
+}
+
+.audit-trail-delete,
+.audit-trail-delete-sample {
+  background-color: #fee2e2;
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+  text-decoration-thickness: 2px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  color: #991b1b;
+  font-weight: 500;
+}
+
+.audit-trail-insert:hover,
+.audit-trail-delete:hover {
+  cursor: help;
+  opacity: 0.9;
+}
+
+/* Sample styles for legend (non-interactive) */
+.audit-trail-insert-sample,
+.audit-trail-delete-sample {
+  cursor: default;
+  display: inline;
+  white-space: nowrap;
 }
 
 /* Responsive Design */

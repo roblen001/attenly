@@ -88,6 +88,10 @@ export default function Dashboard() {
     navigate(`/report/saved/${reportId}`);
   };
 
+  const handleAuditSavedReport = (reportId: string) => {
+    navigate(`/report/saved/${reportId}?mode=audit`);
+  };
+
   const handleDeleteSavedReport = async (reportId: string) => {
     try {
       const response = await api(`/agents/reports/saved/${reportId}`, {
@@ -454,6 +458,7 @@ export default function Dashboard() {
                 onView={handleViewSavedReport}
                 onDelete={handleDeleteSavedReport}
                 onDownload={handleDownloadSavedReport}
+                onAudit={handleAuditSavedReport}
               />
             )}
           </div>

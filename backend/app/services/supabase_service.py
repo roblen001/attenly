@@ -527,7 +527,7 @@ class SupabaseService:
                 user_client.table("report_changes").insert(all_changes).execute()
                 logging.info(
                     f"Stored {len(all_changes)} changes across "
-                    f"{len(set(c['placeholder'] for c in all_changes))} answers"
+                    f"{len(set(c['answer_placeholder'] for c in all_changes))} answers"
                 )
             else:
                 logging.info(f"No changes detected for report {report_id}")
@@ -580,7 +580,7 @@ class SupabaseService:
                 "report_id": str,
                 "report_name": str,
                 "agent_name": str,
-                "report_data": dict,
+                "report_data": dict (with answer_plain added to each answer),
                 "changes": {placeholder: [AuditChange, ...]},
                 "has_changes": bool
             }
@@ -601,6 +601,20 @@ class SupabaseService:
                 return None
             
             report = report_result.data
+            report_data = report["report_data"]
+            
+            # Add plain text version to each answer for frontend offset alignment
+            if "answers" in report_data:
+                for placeholder, answer_data in report_data["answers"].items():
+                    answer_html = answer_data.get("answer", "")
+                    # Use same HTML stripping logic as diff computation
+                    answer_plain = self.diff_service.html_to_plain_text(answer_html)
+                    answer_data["answer_plain"] = answer_plain
+                    
+                    logging.debug(
+                        f"Added answer_plain for {placeholder}: "
+                        f"HTML len={len(answer_html)}, plain len={len(answer_plain)}"
+                    )
             
             # Get all changes for this report
             changes_result = user_client.table("report_changes")\
@@ -634,7 +648,7 @@ class SupabaseService:
                 "report_id": report["id"],
                 "report_name": report["report_name"],
                 "agent_name": report["agent_name"],
-                "report_data": report["report_data"],
+                "report_data": report_data,
                 "changes": changes_by_placeholder,
                 "has_changes": has_changes
             }

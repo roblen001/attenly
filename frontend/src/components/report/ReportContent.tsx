@@ -15,6 +15,7 @@
 import React, { useEffect, useMemo } from 'react';
 import type { ReportData, ReportAnswer, AuditChange } from '../../types';
 import { generatePopulatedHTML } from '../../utils/reportUtils';
+import { decorateWithAuditSpans } from '../../utils/auditDecorator';
 import './ReportContent.css';
 
 interface ReportContentProps {
@@ -105,8 +106,10 @@ const ReportContent: React.FC<ReportContentProps> = ({
       `class="${answerClass}"`
     );
     
-    // If in audit mode, apply track change decorations
+    // If in audit mode, apply track change decorations using the decorator utility
     if (viewMode === 'audit' && Object.keys(auditChanges).length > 0) {
+      console.log('[ReportContent] Entering audit mode rendering');
+      
       // Apply audit decorations to each answer with changes
       Object.entries(reportData.answers).forEach(([placeholder, answer]) => {
         const changes = auditChanges[placeholder];
@@ -115,28 +118,48 @@ const ReportContent: React.FC<ReportContentProps> = ({
           return; // Skip answers with no changes
         }
         
+        console.log(`[ReportContent] Processing answer ${placeholder} with ${changes.length} changes`);
+        
         // Find the answer content in the HTML using data-answer-id
         const answerIdPattern = new RegExp(
           `<span class="${answerClass}"[^>]*data-answer-id="${answer.id}"[^>]*>(.*?)</span>`,
           'gs'
         );
         
-        styledHTML = styledHTML.replace(answerIdPattern, (match, answerContent) => {
-          // Extract plain text from the answer content for offset calculations
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = answerContent;
-          const plainText = tempDiv.textContent || tempDiv.innerText || '';
+        styledHTML = styledHTML.replace(answerIdPattern, (matchedSpan, capturedContent) => {
+          // Use the plain text version provided by backend (guaranteed to match diff offsets)
+          // This is the same text that was used to compute the diff on the backend
+          const answerWithPlain = answer as ReportAnswer & { answer_plain?: string };
+          const plainText = answerWithPlain.answer_plain || answer.answer || '';
           
-          // Build decorated content
+          console.log(`[ReportContent] Matched span for ${placeholder}`);
+          console.log(`[ReportContent] Captured content: ${capturedContent}`);
+          console.log(`[ReportContent] Using answer_plain: ${plainText} (len=${plainText.length})`);
+          
+          // Extract superscripts from captured content to preserve them
+          const superscriptPattern = /<sup[^>]*class="quote-superscript"[^>]*>.*?<\/sup>/g;
+          const superscripts = capturedContent.match(superscriptPattern) || [];
+          const superscriptsHTML = superscripts.join('');
+          
+          console.log(`[ReportContent] Extracted ${superscripts.length} superscripts to preserve`);
+          
+          // Use the decorator utility for logging and validation
+          decorateWithAuditSpans(plainText, changes);
+          
+          // Build decorated HTML string with audit trail spans
           let decoratedContent = '';
           const sortedChanges = [...changes].sort((a, b) => a.start_offset - b.start_offset);
           let currentPosition = 0;
+          let lastProcessedOffset = -1;
           
           for (const change of sortedChanges) {
-            // Add unchanged text before this change
-            if (currentPosition < change.start_offset) {
+            // Add unchanged text before this change, but only if we haven't already processed this offset
+            // This prevents duplication when DELETE and INSERT occur at the same position
+            if (currentPosition < change.start_offset && lastProcessedOffset < change.start_offset) {
               const unchangedText = plainText.substring(currentPosition, change.start_offset);
               decoratedContent += unchangedText;
+              lastProcessedOffset = change.start_offset;
+              currentPosition = change.start_offset; // Advance position to prevent re-processing this range
             }
             
             if (change.change_type === 'insert') {
@@ -149,6 +172,7 @@ const ReportContent: React.FC<ReportContentProps> = ({
               // Delete: text doesn't exist in current version
               const tooltip = `Deleted by ${change.user_name} · ${new Date(change.created_at).toLocaleString()}`;
               decoratedContent += `<span class="audit-trail-delete" title="${tooltip}">${change.text_content}</span>`;
+              // Don't advance currentPosition for deletes (deleted text not in final string)
             }
           }
           
@@ -157,7 +181,10 @@ const ReportContent: React.FC<ReportContentProps> = ({
             decoratedContent += plainText.substring(currentPosition);
           }
           
-          // Return the decorated answer span
+          // Append the preserved superscripts at the end
+          decoratedContent += superscriptsHTML;
+          
+          // Return the completely new decorated answer span (this replaces matchedSpan entirely)
           return `<span class="${answerClass}" data-answer-id="${answer.id}">${decoratedContent}</span>`;
         });
       });

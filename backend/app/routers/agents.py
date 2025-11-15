@@ -94,20 +94,21 @@ def get_cached_report(user_id: str, agent_id: str) -> dict:
     logging.info(f"Retrieved cached report for user {user_id}, agent {agent_id}")
     return cached_data
 
-def cache_report(user_id: str, agent_id: str, report_data: dict) -> None:
-    """Store report data in cache for user and agent"""
+def cache_report(user_id: str, agent_id: str, report_data: dict, ai_baseline_answers: dict = None) -> None:
+    """Store report data AND AI baseline in cache for user and agent"""
     if user_id not in report_cache_storage:
         report_cache_storage[user_id] = {}
     
-    # Store the complete report data
+    # Store the complete report data with AI baseline
     report_cache_storage[user_id][agent_id] = {
         "report_data": report_data,
+        "ai_baseline_answers": ai_baseline_answers,  # NEW: Store AI baseline for audit trail
         "cached_at": report_data.get("generated_at"),
         "agent_id": agent_id,
         "document_ids": report_data.get("document_context", {}).get("document_ids", [])
     }
     
-    logging.info(f"Cached report for user {user_id}, agent {agent_id}")
+    logging.info(f"Cached report for user {user_id}, agent {agent_id} with AI baseline: {ai_baseline_answers is not None}")
 
 def clear_report_cache(user_id: str, agent_id: str = None) -> None:
     """Clear cached report data for user (specific agent or all agents)"""
@@ -779,9 +780,13 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
         if not report_result["success"]:
             raise HTTPException(status_code=500, detail=f"Document processing failed: {report_result.get('error', 'Unknown error')}")
         
-        # Cache the report data immediately after generation
-        cache_report(user_id, agent_id, report_result["report_data"])
-        logging.info(f"Report generated and cached for user {user_id}, agent {agent_id}")
+        # Extract AI baseline IMMEDIATELY after generation (before any user edits)
+        ai_baseline_answers = supabase_service._extract_baseline_answers(report_result["report_data"])
+        logging.info(f"Extracted AI baseline with {len(ai_baseline_answers)} answers for audit trail")
+        
+        # Cache the report data AND baseline immediately after generation
+        cache_report(user_id, agent_id, report_result["report_data"], ai_baseline_answers)
+        logging.info(f"Report generated and cached with AI baseline for user {user_id}, agent {agent_id}")
         
         return {
             "success": True,
@@ -1137,8 +1142,15 @@ async def save_current_report(
     if not document_contents:
         raise HTTPException(status_code=400, detail="No document content available to save with report")
     
+    # Extract cached AI baseline for audit trail
+    cached_ai_baseline = cached_report.get("ai_baseline_answers")
+    if cached_ai_baseline:
+        logging.info(f"Using cached AI baseline for save (first save scenario)")
+    else:
+        logging.warning(f"No cached AI baseline found - audit trail may not work correctly")
+    
     try:
-        # Save to Supabase with PDF binaries
+        # Save to Supabase with PDF binaries AND cached baseline
         report_id = supabase_service.save_report(
             user_jwt=access_token,
             user_id=user_id,
@@ -1148,7 +1160,8 @@ async def save_current_report(
             report_data=cached_report["report_data"],
             document_contents=document_contents,
             pdf_binaries=pdf_binaries,
-            refresh_token=refresh_token
+            refresh_token=refresh_token,
+            cached_ai_baseline=cached_ai_baseline  # NEW: Pass cached baseline
         )
         
         logging.info(f"Successfully saved report {report_id} for user {user_id} with {len(pdf_binaries)} PDF binaries")

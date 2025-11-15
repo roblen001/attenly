@@ -31,17 +31,19 @@ class SupabaseService:
     def save_report(self, user_jwt: str, user_id: str, agent_id: str, agent_name: str, 
                    report_name: str, report_data: dict, document_contents: dict, 
                    pdf_binaries: Optional[Dict[str, bytes]] = None,
-                   refresh_token: str = "", existing_report_id: Optional[str] = None) -> str:
+                   refresh_token: str = "", existing_report_id: Optional[str] = None,
+                   cached_ai_baseline: Optional[Dict[str, str]] = None) -> str:
         """
         Save a complete report with document content, PDF binaries, and audit trail.
         
         This method now handles audit trail functionality:
-        1. On first save: Captures AI baseline from report_data
+        1. On first save: Uses cached AI baseline from report generation (or extracts from report_data as fallback)
         2. On update: Computes diff between baseline and current content
         3. Replaces old changes with fresh diff on each save
         
         Args:
             existing_report_id: If provided, updates existing report instead of creating new one
+            cached_ai_baseline: Pre-captured AI baseline from report generation (for new saves)
         """
         try:
             # Create user-context client for RLS compliance
@@ -66,16 +68,22 @@ class SupabaseService:
                 except Exception as e:
                     logging.warning(f"Could not fetch existing baseline: {e}")
             
-            # Determine if we need to capture baseline (first save or no existing baseline)
-            should_capture_baseline = not is_update or existing_baseline is None
-            
-            # Extract baseline answers if this is first save
+            # Determine AI baseline to use
             ai_baseline_answers = None
-            if should_capture_baseline:
-                ai_baseline_answers = self._extract_baseline_answers(report_data)
-                logging.info(f"Captured AI baseline with {len(ai_baseline_answers)} answers")
-            else:
+            if is_update:
+                # For updates, use existing baseline
                 ai_baseline_answers = existing_baseline
+                if ai_baseline_answers:
+                    logging.info(f"Using existing baseline for report update")
+            else:
+                # For first save, prefer cached baseline (captured at generation time)
+                if cached_ai_baseline:
+                    ai_baseline_answers = cached_ai_baseline
+                    logging.info(f"Using cached AI baseline from generation ({len(cached_ai_baseline)} answers)")
+                else:
+                    # Fallback: extract from report_data (shouldn't happen in normal flow)
+                    ai_baseline_answers = self._extract_baseline_answers(report_data)
+                    logging.warning(f"No cached baseline provided, extracting from report_data (may include user edits)")
             
             # Prepare report insert/update data
             report_data_dict = {
@@ -87,8 +95,8 @@ class SupabaseService:
                 "generated_at": report_data.get("generated_at")
             }
             
-            # Add baseline if capturing
-            if should_capture_baseline:
+            # Add baseline for new saves (not updates)
+            if not is_update and ai_baseline_answers:
                 report_data_dict["ai_baseline_answers"] = ai_baseline_answers
             
             # Insert or update report record

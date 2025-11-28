@@ -191,25 +191,80 @@ export default function PdfViewerWithHighlights({
     return { collapsed, mapOrigToCollapsed, mapCollapsedToOrig };
   }
 
+  const convertHighlightToNormalizedBBox = (
+    highlightEl: HTMLElement,
+    pageEl: HTMLElement,
+    canvas: HTMLCanvasElement
+  ): number[] | null => {
+    try {
+      const pageRect = pageEl.getBoundingClientRect();
+      const highlightRect = highlightEl.getBoundingClientRect();
+      
+      // Calculate position relative to page element
+      const relativeX = highlightRect.left - pageRect.left;
+      const relativeY = highlightRect.top - pageRect.top;
+      
+      // Normalize to [0, 1] using page element dimensions (not canvas)
+      // This ensures we're working in the same coordinate space as the page layout
+      const x0Norm = relativeX / pageRect.width;
+      const y0Norm = relativeY / pageRect.height;
+      const x1Norm = (relativeX + highlightRect.width) / pageRect.width;
+      const y1Norm = (relativeY + highlightRect.height) / pageRect.height;
+      
+      // Log for debugging - verify normalized coordinates look reasonable
+      console.log('[PDF Highlight] Normalized bbox:', {
+        normalized: [x0Norm, y0Norm, x1Norm, y1Norm],
+        pageRect: { width: pageRect.width, height: pageRect.height },
+        highlightRect: { 
+          width: highlightRect.width, 
+          height: highlightRect.height,
+          left: relativeX,
+          top: relativeY
+        }
+      });
+      
+      return [x0Norm, y0Norm, x1Norm, y1Norm];
+    } catch (e) {
+      console.warn("Failed to convert highlight to bbox:", e);
+      return null;
+    }
+  };
+
   const waitForFirstHighlightAndCenter = async (
     viewerContainer: HTMLElement,
     timeoutMs = 3000
   ) => {
-    const q = () =>
-      viewerContainer.querySelector<HTMLElement>(".highlight.selected") ||
-      viewerContainer.querySelector<HTMLElement>(".highlight");
-
-    const already = q();
-    if (already) {
-      already.scrollIntoView({ block: "center", inline: "nearest" });
+    const findAndCenter = () => {
+      const highlight =
+        viewerContainer.querySelector<HTMLElement>(".highlight.selected") ||
+        viewerContainer.querySelector<HTMLElement>(".highlight");
+        
+      if (!highlight) return false;
+      
+      // Find the parent page element
+      const pageEl = highlight.closest<HTMLElement>(".page");
+      const canvas = pageEl?.querySelector<HTMLCanvasElement>("canvas");
+      
+      if (pageEl && canvas) {
+        // Convert highlight to normalized bbox and use same centering as OCR
+        const bbox = convertHighlightToNormalizedBBox(highlight, pageEl, canvas);
+        if (bbox) {
+          scrollContainerToBBox(viewerContainer, pageEl, canvas, bbox);
+          return true;
+        }
+      }
+      
+      // Fallback to scrollIntoView if bbox conversion fails
+      highlight.scrollIntoView({ block: "center", inline: "nearest" });
       return true;
-    }
+    };
+
+    const already = findAndCenter();
+    if (already) return true;
 
     return new Promise<boolean>((resolve) => {
       const obs = new MutationObserver(() => {
-        const found = q();
-        if (found) {
-          found.scrollIntoView({ block: "center", inline: "nearest" });
+        if (findAndCenter()) {
           obs.disconnect();
           resolve(true);
         }
@@ -741,7 +796,7 @@ export default function PdfViewerWithHighlights({
         scrollContainerToBBox(container, pageEl, canvas, firstSpan.bbox);
       }
     } else {
-      // Text-based PDF: use existing highlight element scrolling
+      // Text-based PDF: find next highlight and center using same logic as OCR
       const bus = eventBusRef.current;
       if (bus && quoteTextRaw) {
         bus.dispatch("findagain", {
@@ -751,13 +806,31 @@ export default function PdfViewerWithHighlights({
           phraseSearch: true,
         } as any);
         setTimeout(() => {
-          const sel =
+          const highlight =
             container.querySelector<HTMLElement>(".highlight.selected") ||
             container.querySelector<HTMLElement>(".highlight");
-          if (!sel) {
+            
+          if (!highlight) {
             console.warn("[PDF] Jump requested but no highlight present.");
+            return;
           }
-          sel?.scrollIntoView({ block: "center", inline: "nearest" });
+          
+          // Convert highlight to normalized bbox and use same centering as OCR
+          const pageEl = highlight.closest<HTMLElement>(".page");
+          const canvas = pageEl?.querySelector<HTMLCanvasElement>("canvas");
+          
+          if (pageEl && canvas) {
+            const bbox = convertHighlightToNormalizedBBox(highlight, pageEl, canvas);
+            if (bbox) {
+              scrollContainerToBBox(container, pageEl, canvas, bbox);
+            } else {
+              // Fallback to scrollIntoView if conversion fails
+              highlight.scrollIntoView({ block: "center", inline: "nearest" });
+            }
+          } else {
+            // Fallback to scrollIntoView if page elements not found
+            highlight.scrollIntoView({ block: "center", inline: "nearest" });
+          }
         }, 120);
       }
     }

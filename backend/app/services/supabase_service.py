@@ -6,6 +6,7 @@ import base64
 from typing import List, Dict, Optional, Any
 from supabase import create_client, Client
 from datetime import datetime
+from app.services.diff_service import DiffService
 
 class SupabaseService:
     def __init__(self):
@@ -17,7 +18,8 @@ class SupabaseService:
         
         self.supabase_url = SUPABASE_URL
         self.supabase_anon_key = SUPABASE_ANON_KEY
-        logging.info("Supabase service initialized with user JWT support")
+        self.diff_service = DiffService()
+        logging.info("Supabase service initialized with user JWT support and audit trail")
 
     def _create_user_client(self, user_jwt: str) -> Client:
         """Create a Supabase client with user JWT context for RLS compliance"""
@@ -29,14 +31,62 @@ class SupabaseService:
     def save_report(self, user_jwt: str, user_id: str, agent_id: str, agent_name: str, 
                    report_name: str, report_data: dict, document_contents: dict, 
                    pdf_binaries: Optional[Dict[str, bytes]] = None,
-                   refresh_token: str = "") -> str:
-        """Save a complete report with document content and PDF binaries to Supabase Storage using authenticated session"""
+                   refresh_token: str = "", existing_report_id: Optional[str] = None,
+                   cached_ai_baseline: Optional[Dict[str, str]] = None) -> str:
+        """
+        Save a complete report with document content, PDF binaries, and audit trail.
+        
+        This method now handles audit trail functionality:
+        1. On first save: Uses cached AI baseline from report generation (or extracts from report_data as fallback)
+        2. On update: Computes diff between baseline and current content
+        3. Replaces old changes with fresh diff on each save
+        
+        Args:
+            existing_report_id: If provided, updates existing report instead of creating new one
+            cached_ai_baseline: Pre-captured AI baseline from report generation (for new saves)
+        """
         try:
             # Create user-context client for RLS compliance
             user_client = self._create_user_client(user_jwt)
             
-            # Insert main report record
-            report_insert = {
+            is_update = existing_report_id is not None
+            
+            # For updates, fetch existing baseline
+            existing_baseline = None
+            if is_update:
+                try:
+                    existing_report = user_client.table("saved_reports")\
+                        .select("ai_baseline_answers")\
+                        .eq("id", existing_report_id)\
+                        .eq("user_id", user_id)\
+                        .single()\
+                        .execute()
+                    
+                    if existing_report.data:
+                        existing_baseline = existing_report.data.get("ai_baseline_answers")
+                        logging.info(f"Found existing baseline for report {existing_report_id}")
+                except Exception as e:
+                    logging.warning(f"Could not fetch existing baseline: {e}")
+            
+            # Determine AI baseline to use
+            ai_baseline_answers = None
+            if is_update:
+                # For updates, use existing baseline
+                ai_baseline_answers = existing_baseline
+                if ai_baseline_answers:
+                    logging.info(f"Using existing baseline for report update")
+            else:
+                # For first save, prefer cached baseline (captured at generation time)
+                if cached_ai_baseline:
+                    ai_baseline_answers = cached_ai_baseline
+                    logging.info(f"Using cached AI baseline from generation ({len(cached_ai_baseline)} answers)")
+                else:
+                    # Fallback: extract from report_data (shouldn't happen in normal flow)
+                    ai_baseline_answers = self._extract_baseline_answers(report_data)
+                    logging.warning(f"No cached baseline provided, extracting from report_data (may include user edits)")
+            
+            # Prepare report insert/update data
+            report_data_dict = {
                 "user_id": user_id,
                 "agent_id": agent_id,
                 "agent_name": agent_name,
@@ -45,13 +95,39 @@ class SupabaseService:
                 "generated_at": report_data.get("generated_at")
             }
             
-            result = user_client.table("saved_reports").insert(report_insert).execute()
+            # Add baseline for new saves (not updates)
+            if not is_update and ai_baseline_answers:
+                report_data_dict["ai_baseline_answers"] = ai_baseline_answers
             
-            if not result.data:
-                raise Exception("Failed to insert report record")
+            # Insert or update report record
+            if is_update:
+                result = user_client.table("saved_reports")\
+                    .update(report_data_dict)\
+                    .eq("id", existing_report_id)\
+                    .eq("user_id", user_id)\
+                    .execute()
+                report_id = existing_report_id
+                logging.info(f"Updated report with ID: {report_id} for user: {user_id}")
+            else:
+                result = user_client.table("saved_reports").insert(report_data_dict).execute()
+                if not result.data:
+                    raise Exception("Failed to insert report record")
+                report_id = result.data[0]["id"]
+                logging.info(f"Saved new report with ID: {report_id} for user: {user_id}")
             
-            report_id = result.data[0]["id"]
-            logging.info(f"Saved report with ID: {report_id} for user: {user_id}")
+            # Compute and store audit changes if we have baseline
+            if ai_baseline_answers:
+                try:
+                    self._compute_and_store_changes(
+                        user_client,
+                        user_id, 
+                        report_id,
+                        ai_baseline_answers,
+                        report_data
+                    )
+                except Exception as audit_error:
+                    # Log but don't fail the save operation
+                    logging.error(f"Failed to compute audit changes: {audit_error}")
             
             # Import Storage service for PDF uploads
             from app.services.supabase_storage_service import get_storage_service
@@ -250,7 +326,12 @@ class SupabaseService:
             return None
 
     def update_saved_report(self, user_jwt: str, user_id: str, report_id: str, report_data: Optional[Dict[str, Any]] = None, report_name: Optional[str] = None) -> bool:
-        """Update a saved report's data and/or name using user JWT"""
+        """
+        Update a saved report's data and/or name using user JWT.
+        
+        When report_data is updated, this method also computes and stores
+        audit trail changes by comparing the new data with the AI baseline.
+        """
         try:
             user_client = self._create_user_client(user_jwt)
             update_fields: Dict[str, Any] = {}
@@ -263,6 +344,24 @@ class SupabaseService:
                 logging.info("No fields provided to update for saved report")
                 return False
 
+            # If updating report_data, fetch existing baseline for audit trail computation
+            ai_baseline_answers = None
+            if report_data is not None:
+                try:
+                    existing_report = user_client.table("saved_reports")\
+                        .select("ai_baseline_answers")\
+                        .eq("id", report_id)\
+                        .eq("user_id", user_id)\
+                        .single()\
+                        .execute()
+                    
+                    if existing_report.data:
+                        ai_baseline_answers = existing_report.data.get("ai_baseline_answers")
+                        logging.info(f"Fetched AI baseline for audit trail computation on report {report_id}")
+                except Exception as e:
+                    logging.warning(f"Could not fetch baseline for audit trail: {e}")
+
+            # Update the report
             result = user_client.table("saved_reports")\
                 .update(update_fields)\
                 .eq("id", report_id)\
@@ -271,6 +370,22 @@ class SupabaseService:
 
             if result.data:
                 logging.info(f"Updated saved report {report_id} for user {user_id}")
+                
+                # Compute and store audit trail changes if we have baseline and report_data
+                if report_data is not None and ai_baseline_answers:
+                    try:
+                        self._compute_and_store_changes(
+                            user_client,
+                            user_id,
+                            report_id,
+                            ai_baseline_answers,
+                            report_data
+                        )
+                        logging.info(f"Successfully computed audit trail changes for report {report_id}")
+                    except Exception as audit_error:
+                        # Log but don't fail the update operation
+                        logging.error(f"Failed to compute audit changes during update: {audit_error}")
+                
                 return True
             else:
                 logging.warning(f"Update affected 0 rows for report {report_id} and user {user_id}")
@@ -319,6 +434,243 @@ class SupabaseService:
         except Exception as e:
             logging.error(f"Error deleting saved report {report_id}: {e}")
             return False
+
+    # Audit Trail Operations
+
+    def _extract_baseline_answers(self, report_data: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Extract plain text answers from ReportData structure for baseline storage.
+        
+        Args:
+            report_data: The full report data dictionary
+            
+        Returns:
+            Dictionary mapping placeholder to answer text: {"placeholder": "answer_text"}
+        """
+        baseline = {}
+        
+        try:
+            answers = report_data.get("answers", {})
+            for placeholder, answer_data in answers.items():
+                # Extract answer text (may be HTML)
+                answer_text = answer_data.get("answer", "")
+                baseline[placeholder] = answer_text
+            
+            logging.info(f"Extracted baseline for {len(baseline)} answers")
+            return baseline
+            
+        except Exception as e:
+            logging.error(f"Error extracting baseline answers: {e}")
+            return {}
+
+    def _compute_and_store_changes(
+        self,
+        user_client: Client,
+        user_id: str,
+        report_id: str,
+        baseline_answers: Dict[str, str],
+        current_report_data: Dict[str, Any]
+    ) -> None:
+        """
+        Compute differences and store in report_changes table.
+        
+        This method:
+        1. Deletes all existing changes for the report
+        2. Computes fresh diff: baseline → current for each answer
+        3. Inserts new changes into report_changes table
+        
+        Args:
+            user_client: Supabase client with user context
+            user_id: User ID for change attribution
+            report_id: Report ID
+            baseline_answers: Original AI-generated answers
+            current_report_data: Current report data with potentially edited answers
+        """
+        try:
+            # Extract current answers from report data
+            current_answers = {}
+            answers = current_report_data.get("answers", {})
+            for placeholder, answer_data in answers.items():
+                current_answers[placeholder] = answer_data.get("answer", "")
+            
+            # Delete existing changes for this report (we're replacing, not accumulating)
+            user_client.table("report_changes")\
+                .delete()\
+                .eq("report_id", report_id)\
+                .execute()
+            
+            logging.info(f"Deleted existing changes for report {report_id}")
+            
+            # Get user display name for attribution
+            user_name = self.get_user_display_name("", user_id)
+            
+            # Compute diffs for each answer
+            all_changes = []
+            for placeholder, baseline_text in baseline_answers.items():
+                # Get current text (default to baseline if answer was removed)
+                current_text = current_answers.get(placeholder, baseline_text)
+                
+                # Skip if no change
+                if not self.diff_service.has_changes(baseline_text, current_text):
+                    continue
+                
+                # Compute diff for this answer
+                changes = self.diff_service.compute_answer_diff(
+                    baseline_text,
+                    current_text,
+                    placeholder
+                )
+                
+                # Add user metadata to each change
+                for change in changes:
+                    change["report_id"] = report_id
+                    change["user_id"] = user_id
+                    change["user_name"] = user_name
+                    # created_at will be auto-set by database
+                
+                all_changes.extend(changes)
+            
+            # Insert all changes in bulk if any exist
+            if all_changes:
+                user_client.table("report_changes").insert(all_changes).execute()
+                logging.info(
+                    f"Stored {len(all_changes)} changes across "
+                    f"{len(set(c['answer_placeholder'] for c in all_changes))} answers"
+                )
+            else:
+                logging.info(f"No changes detected for report {report_id}")
+                
+        except Exception as e:
+            logging.error(f"Error computing/storing changes: {e}", exc_info=True)
+            raise
+
+    def get_user_display_name(self, user_jwt: str, user_id: str) -> str:
+        """
+        Get user display name for change attribution.
+        Falls back to user ID if name not available.
+        
+        Args:
+            user_jwt: User JWT token
+            user_id: User ID
+            
+        Returns:
+            User display name or user ID
+        """
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # Try to get user email from auth.users (may not have direct access)
+            # For now, just use user_id as fallback
+            # In production, you might query a users table or use Supabase Auth API
+            return user_id
+            
+        except Exception as e:
+            logging.warning(f"Could not get display name for user {user_id}: {e}")
+            return user_id
+
+    def get_report_with_audit_changes(
+        self,
+        user_jwt: str,
+        user_id: str,
+        report_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get report with all current changes for audit trail view.
+        
+        Args:
+            user_jwt: User JWT token
+            user_id: User ID
+            report_id: Report ID
+            
+        Returns:
+            Dictionary with structure:
+            {
+                "report_id": str,
+                "report_name": str,
+                "agent_name": str,
+                "report_data": dict (with answer_plain added to each answer),
+                "changes": {placeholder: [AuditChange, ...]},
+                "has_changes": bool
+            }
+        """
+        try:
+            user_client = self._create_user_client(user_jwt)
+            
+            # Get the saved report
+            report_result = user_client.table("saved_reports")\
+                .select("*")\
+                .eq("id", report_id)\
+                .eq("user_id", user_id)\
+                .single()\
+                .execute()
+            
+            if not report_result.data:
+                logging.warning(f"Report {report_id} not found for user {user_id}")
+                return None
+            
+            report = report_result.data
+            report_data = report["report_data"]
+            
+            # Add plain text version to each answer for frontend offset alignment
+            if "answers" in report_data:
+                for placeholder, answer_data in report_data["answers"].items():
+                    answer_html = answer_data.get("answer", "")
+                    # Use same HTML stripping logic as diff computation
+                    answer_plain = self.diff_service.html_to_plain_text(answer_html)
+                    answer_data["answer_plain"] = answer_plain
+                    
+                    logging.debug(
+                        f"Added answer_plain for {placeholder}: "
+                        f"HTML len={len(answer_html)}, plain len={len(answer_plain)}"
+                    )
+            
+            # Get all changes for this report
+            changes_result = user_client.table("report_changes")\
+                .select("*")\
+                .eq("report_id", report_id)\
+                .order("answer_placeholder")\
+                .order("start_offset")\
+                .execute()
+            
+            # Group changes by answer placeholder
+            changes_by_placeholder: Dict[str, List[Dict[str, Any]]] = {}
+            for change in changes_result.data or []:
+                placeholder = change["answer_placeholder"]
+                if placeholder not in changes_by_placeholder:
+                    changes_by_placeholder[placeholder] = []
+                
+                changes_by_placeholder[placeholder].append({
+                    "id": change["id"],
+                    "change_type": change["change_type"],
+                    "text_content": change["text_content"],
+                    "start_offset": change["start_offset"],
+                    "end_offset": change["end_offset"],
+                    "user_name": change.get("user_name", user_id),
+                    "created_at": change["created_at"],
+                    "answer_placeholder": placeholder
+                })
+            
+            has_changes = len(changes_result.data or []) > 0
+            
+            result = {
+                "report_id": report["id"],
+                "report_name": report["report_name"],
+                "agent_name": report["agent_name"],
+                "report_data": report_data,
+                "changes": changes_by_placeholder,
+                "has_changes": has_changes
+            }
+            
+            logging.info(
+                f"Fetched audit data for report {report_id}: "
+                f"{len(changes_by_placeholder)} placeholders with changes"
+            )
+            
+            return result
+            
+        except Exception as e:
+            logging.error(f"Error fetching report with audit changes: {e}")
+            return None
 
     # Custom Agent CRUD Operations
     

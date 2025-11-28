@@ -15,9 +15,10 @@ interface CompactReportListProps {
   onView: (reportId: string) => void;
   onDelete: (reportId: string) => void;
   onDownload: (reportId: string) => void;
+  onAudit: (reportId: string) => void;
 }
 
-export default function CompactReportList({ reports, onView, onDelete, onDownload }: CompactReportListProps) {
+export default function CompactReportList({ reports, onView, onDelete, onDownload, onAudit }: CompactReportListProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleView = (e: React.MouseEvent, report: SavedReport) => {
@@ -39,6 +40,11 @@ export default function CompactReportList({ reports, onView, onDelete, onDownloa
     }
 
     onDelete(report.id);
+  };
+
+  const handleAudit = (e: React.MouseEvent, report: SavedReport) => {
+    e.stopPropagation();
+    onAudit(report.id);
   };
 
   const formatDate = (dateString: string): string => {
@@ -128,6 +134,13 @@ export default function CompactReportList({ reports, onView, onDelete, onDownloa
                     title="View report"
                   >
                     <span className="btn-icon">👁️</span>
+                  </button>
+                  <button
+                    onClick={(e) => handleAudit(e, report)}
+                    className="btn btn-small btn-secondary"
+                    title="View audit trail"
+                  >
+                    <span className="btn-icon">📋</span>
                   </button>
                   <button
                     onClick={(e) => handleDownload(e, report)}

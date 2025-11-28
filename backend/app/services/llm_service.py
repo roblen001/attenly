@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from app.schemas import QuestionOut
 from app.services.performance_monitor import time_operation, get_performance_monitor
+from app.services.bbox_matcher import BBoxMatcher
 from app.config import (
     LLM_MODEL_NAME,
     GEMINI_API_KEY,
@@ -76,13 +77,15 @@ class LLMService:
             self.client = None
     
     def process_agent_questions(self, questions_with_chunks: List[Dict[str, Any]], 
-                              document_context: Dict[str, Any]) -> Dict[str, Any]:
+                              document_context: Dict[str, Any],
+                              bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Process all agent questions in a single batch request with question-specific contexts
         
         Args:
             questions_with_chunks: List of dicts with 'question' and 'relevant_chunks' for each question
             document_context: Additional context about the documents
+            bbox_data: Optional dictionary mapping document_ids to their bounding box data for OCR documents
             
         Returns:
             Dictionary with extracted answers and source references
@@ -98,9 +101,9 @@ class LLMService:
             raise ValueError("LLM service is not available. Please ensure GEMINI_API_KEY is configured and the service is properly initialized.")
         
         try:
-            # Process ALL questions in a single batch request with individual contexts
+            # Process ALL questions in a single batch request with individual contexts and bbox data
             batch_results = self._process_questions_batch_with_individual_contexts(
-                questions_with_chunks, document_context
+                questions_with_chunks, document_context, bbox_data
             )
             
             total_chunks = sum(len(item['relevant_chunks']) for item in questions_with_chunks)
@@ -159,7 +162,8 @@ class LLMService:
             raise ValueError(f"Failed to process questions in batch: {str(e)}")
     
     def _process_questions_batch_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]], 
-                                                        document_context: Dict) -> Dict[str, Any]:
+                                                        document_context: Dict,
+                                                        bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
         """Process all questions in a single batch request, each with its own relevant context"""
         
         performance_monitor = get_performance_monitor()
@@ -197,11 +201,11 @@ class LLMService:
             if not response or not response.text:
                 raise ValueError("Empty response from Gemini model")
             
-            # Parse the batch JSON response
+            # Parse the batch JSON response with bbox data
             with time_operation("llm_response_parsing", 
                               {"response_length": len(response.text)}) as timer:
                 batch_results = self._parse_batch_response_with_individual_contexts(
-                    response.text, questions_with_chunks
+                    response.text, questions_with_chunks, bbox_data
                 )
                 parsing_time = timer.stop().duration
             
@@ -269,7 +273,8 @@ You must respond with a valid JSON object containing answers for all questions u
         return {}
 
     def _parse_batch_response_with_individual_contexts(self, response_text: str, 
-                                                     questions_with_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+                                                     questions_with_chunks: List[Dict[str, Any]],
+                                                     bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
         """Parse batch JSON response for questions with individual contexts"""
         
         try:
@@ -289,7 +294,7 @@ You must respond with a valid JSON object containing answers for all questions u
                     # Create structured result with intelligent source chunks using answer quality analysis
                     results[placeholder] = {
                         "answer": answer,
-                        "source_chunks": self._get_source_chunks_for_question(relevant_chunks, answer, question.prompt),
+                        "source_chunks": self._get_source_chunks_for_question(relevant_chunks, answer, question.prompt, bbox_data),
                         "word_count": len(answer.split()) if answer else 0
                     }
                 else:
@@ -320,7 +325,8 @@ You must respond with a valid JSON object containing answers for all questions u
             
             return results
 
-    def _get_source_chunks_for_question(self, relevant_chunks: List[Dict], answer: str, question_prompt: str) -> List[Dict]:
+    def _get_source_chunks_for_question(self, relevant_chunks: List[Dict], answer: str, question_prompt: str,
+                                       bbox_data: Optional[Dict] = None) -> List[Dict]:
         """
         Get intelligent source chunks for a specific question using answer quality analysis and precise quote extraction
         
@@ -328,6 +334,7 @@ You must respond with a valid JSON object containing answers for all questions u
             relevant_chunks: List of relevant document chunks
             answer: The LLM's answer for quality analysis
             question_prompt: The original question prompt for quote extraction
+            bbox_data: Optional dictionary mapping document_ids to their bounding box data
             
         Returns:
             List of source chunk dictionaries with precise quotes or empty list if answer not found
@@ -341,8 +348,8 @@ You must respond with a valid JSON object containing answers for all questions u
             logger.info(f"Answer quality is {answer_quality.value}, returning empty source chunks for answer: {answer[:50]}...")
             return []
         
-        # For found answers, use precise quote extraction
-        precise_quotes = self._extract_precise_quotes(answer, relevant_chunks, question_prompt)
+        # For found answers, use precise quote extraction with bbox data
+        precise_quotes = self._extract_precise_quotes(answer, relevant_chunks, question_prompt, bbox_data)
         if precise_quotes:
             logger.info(f"Using {len(precise_quotes)} precise quotes for FOUND answer")
             return precise_quotes
@@ -733,17 +740,85 @@ IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make 
         # Final fallback: use start page
         return start_page
     
-    def _extract_precise_quotes(self, answer: str, relevant_chunks: List[Dict], question_prompt: str) -> List[Dict]:
+    def _enhance_quotes_with_bboxes(self, quotes: List[Dict], bbox_data: Dict) -> List[Dict]:
         """
-        Use LLM to identify specific text portions that support the answer
+        Enhance quotes with bounding box word spans for precise highlighting
+        
+        Args:
+            quotes: List of quote dictionaries from LLM extraction
+            bbox_data: Dictionary mapping document_ids to their DocumentBoundingBoxes data
+            
+        Returns:
+            Enhanced quotes with word_spans added where bbox matching succeeds
+        """
+        
+        if not bbox_data:
+            logger.info("No bbox data provided for quote enhancement")
+            return quotes
+        
+        bbox_matcher = BBoxMatcher()
+        enhanced_quotes = []
+        
+        for quote in quotes:
+            enhanced_quote = quote.copy()
+            
+            document_id = quote.get("document_id")
+            exact_text = quote.get("exact_text", "")
+            precise_page = quote.get("precise_page")
+            
+            # Check if this document has bbox data
+            if document_id and document_id in bbox_data:
+                document_bboxes = bbox_data[document_id]
+                
+                try:
+                    print("===============QUOTE TEXT=================")
+                    print(exact_text)
+                    # Use bbox matcher to find word spans for this quote
+                    word_spans = bbox_matcher.match_quote_to_words(
+                        quote_text=exact_text,
+                        document_bboxes=document_bboxes,
+                        page_number=precise_page  # Use precise page if available
+                    )
+                    print("================WORD SPANS===================")
+                    print(word_spans)
+                    if word_spans:
+                        # Add bbox information to quote
+                        enhanced_quote["has_bounding_boxes"] = True
+                        enhanced_quote["word_spans"] = word_spans
+                        logger.info(f"✓ Matched quote to {len(word_spans)} word spans with bboxes: '{exact_text[:50]}...'")
+                    else:
+                        # No bbox match found
+                        enhanced_quote["has_bounding_boxes"] = False
+                        logger.info(f"✗ No bbox match for quote: '{exact_text[:30]}...'")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to match quote to bboxes: {e}")
+                    enhanced_quote["has_bounding_boxes"] = False
+            else:
+                # No bbox data for this document
+                enhanced_quote["has_bounding_boxes"] = False
+            
+            enhanced_quotes.append(enhanced_quote)
+        
+        # Log summary
+        bbox_matched = sum(1 for q in enhanced_quotes if q.get("has_bounding_boxes"))
+        logger.info(f"📦 BBox Enhancement: {bbox_matched}/{len(quotes)} quotes matched to bounding boxes")
+        
+        return enhanced_quotes
+    
+    def _extract_precise_quotes(self, answer: str, relevant_chunks: List[Dict], question_prompt: str, 
+                               bbox_data: Optional[Dict] = None) -> List[Dict]:
+        """
+        Use LLM to identify specific text portions that support the answer, with optional bbox matching
         
         Args:
             answer: The extracted answer from the LLM
             relevant_chunks: List of relevant document chunks
             question_prompt: The original question prompt
+            bbox_data: Optional dictionary mapping document_ids to their bounding box data
             
         Returns:
-            List of precise quote dictionaries with supporting text
+            List of precise quote dictionaries with supporting text and optional word spans
         """
         
         if not relevant_chunks:
@@ -772,6 +847,10 @@ IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make 
             
             # Parse the quote extraction response
             precise_quotes = self._parse_quote_extraction_response(response.text, relevant_chunks)
+            
+            # Enhance quotes with bounding box word spans if available
+            if bbox_data:
+                precise_quotes = self._enhance_quotes_with_bboxes(precise_quotes, bbox_data)
             
             logger.info(f"Successfully extracted {len(precise_quotes)} precise quotes for answer: {answer[:50]}...")
             return precise_quotes

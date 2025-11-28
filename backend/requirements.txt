@@ -1,3 +1,6 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+--only-binary=torch,torchvision,opencv-python,PyMuPDF,chromadb
+
 annotated-types==0.7.0
 anyio==4.10.0
 bcrypt==4.0.1
@@ -60,8 +63,8 @@ google-generativeai==0.8.2
 
 # OCR processing
 python-doctr[torch]==0.8.1
-torch>=2.0.0,<3.0.0
-torchvision>=0.15.0,<1.0.0
+torch==2.0.1+cpu
+torchvision==0.15.2+cpu
 
 requests==2.32.3
 

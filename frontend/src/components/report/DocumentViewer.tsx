@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { Quote } from "../../types";
+import type { Quote, DocumentBoundingBoxes, WordSpan } from "../../types";
 import { api } from "../../libs/https";
+import {
+  createOverlayCanvas,
+  drawBoundingBoxes,
+  getPageViewport,
+  removeAllOverlayCanvases,
+} from "../../utils/bboxRenderer";
 import "./DocumentViewer.css";
 
 // PDF.js v4
@@ -35,6 +41,10 @@ export default function PdfViewerWithHighlights({
 
   const [loading, setLoading] = useState(true); // stays true until highlight centered OR error set
   const [err, setErr] = useState<string | null>(null);
+
+  // BBox support state
+  const [bboxData, setBboxData] = useState<DocumentBoundingBoxes | null>(null);
+  const [hasBboxSupport, setHasBboxSupport] = useState(false);
 
   // Per-run objects
   const runIdRef = useRef(0);
@@ -97,6 +107,47 @@ export default function PdfViewerWithHighlights({
 
   // ---------- Utilities ----------
   const removeSoftHyphens = (s: string) => s.replace(/\u00ad/g, "");
+
+  const scrollContainerToBBox = (
+    container: HTMLElement,
+    pageEl: HTMLElement,
+    canvas: HTMLCanvasElement,
+    bbox: number[] // [x0, y0, x1, y1] normalized
+  ) => {
+    if (!container || !pageEl || !canvas || !bbox || bbox.length !== 4) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const pageRect = pageEl.getBoundingClientRect();
+
+    // Bbox center in normalized coordinates [0, 1]
+    const bboxCenterXNorm = (bbox[0] + bbox[2]) / 2;
+    const bboxCenterYNorm = (bbox[1] + bbox[3]) / 2;
+
+    // Convert to pixels using CSS size (not internal canvas resolution)
+    const bboxCenterXInPage = bboxCenterXNorm * canvas.clientWidth;
+    const bboxCenterYInPage = bboxCenterYNorm * canvas.clientHeight;
+
+    // Compute bbox center in viewport coordinates
+    const bboxCenterXInViewport = pageRect.left + bboxCenterXInPage;
+    const bboxCenterYInViewport = pageRect.top + bboxCenterYInPage;
+
+    // We want the bbox center at the container's center
+    const targetCenterX = containerRect.left + container.clientWidth / 2;
+    const targetCenterY = containerRect.top + container.clientHeight / 2;
+
+    // Calculate scroll deltas
+    const deltaX = bboxCenterXInViewport - targetCenterX;
+    const deltaY = bboxCenterYInViewport - targetCenterY;
+
+    // Apply smooth scroll
+    container.scrollTo({
+      left: container.scrollLeft + deltaX,
+      top: container.scrollTop + deltaY,
+      behavior: 'smooth',
+    });
+  };
 
   function collapseWithMap(original: string) {
     let collapsed = "";
@@ -308,7 +359,84 @@ export default function PdfViewerWithHighlights({
     viewerRef.current?.cleanup?.();
     viewerRef.current = null;
     findControllerRef.current = null;
-    if (containerRef.current) containerRef.current.innerHTML = "";
+    if (containerRef.current) {
+      removeAllOverlayCanvases(containerRef.current);
+      containerRef.current.innerHTML = "";
+    }
+  };
+
+  // Fetch bbox data when component mounts
+  useEffect(() => {
+    const fetchBboxData = async () => {
+      try {
+        const bboxUrl =
+          reportType === "saved" && reportId
+            ? `/agents/reports/saved/${reportId}/documents/${quote.document_id}/bboxes`
+            : `/agents/documents/${quote.document_id}/bboxes`;
+
+        const response = await api(bboxUrl, {
+          method: "GET",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setBboxData(data as DocumentBoundingBoxes);
+          setHasBboxSupport(true);
+        }
+      } catch (error: unknown) {
+        // 404 means document doesn't have bboxes (native PDF), not an error
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (!errorMessage.includes("404")) {
+          console.warn("Failed to fetch bbox data:", error);
+        }
+        setBboxData(null);
+        setHasBboxSupport(false);
+      }
+    };
+
+    fetchBboxData();
+  }, [quote.document_id, reportType, reportId]);
+
+  // Helper to render bbox highlights on a page
+  const renderBboxHighlights = (pageNumber: number, wordSpans: WordSpan[]) => {
+    if (!containerRef.current) return;
+
+    // Find the page element
+    const pageElements = containerRef.current.querySelectorAll<HTMLElement>(".page");
+    let targetPage: HTMLElement | null = null;
+
+    for (const pageEl of pageElements) {
+      const pageNumAttr = pageEl.getAttribute("data-page-number");
+      if (pageNumAttr && parseInt(pageNumAttr) === pageNumber) {
+        targetPage = pageEl;
+        break;
+      }
+    }
+
+    if (!targetPage) {
+      console.warn(`Page ${pageNumber} not found for bbox rendering`);
+      return;
+    }
+
+    // Wait for page to be fully rendered
+    const checkRendered = () => {
+      const canvas = targetPage!.querySelector<HTMLCanvasElement>("canvas");
+      if (!canvas || canvas.width === 0) {
+        // Page not fully rendered yet, try again soon
+        setTimeout(checkRendered, 100);
+        return;
+      }
+
+      // Create overlay canvas and draw bboxes
+      const overlayCanvas = createOverlayCanvas(targetPage!, pageNumber);
+      const viewport = getPageViewport(targetPage!);
+
+      if (viewport) {
+        drawBoundingBoxes(overlayCanvas, wordSpans, viewport);
+      }
+    };
+
+    checkRendered();
   };
 
   useEffect(() => {
@@ -454,42 +582,60 @@ export default function PdfViewerWithHighlights({
           const qExact = quoteTextRaw;
           let centered = false;
 
-          // (1) exact find with RAW quote
-          if (qExact && qExact.length) {
-            eventBus.dispatch("find", {
-              type: "find",
-              query: qExact,
-              caseSensitive: false,
-              entireWord: false,
-              highlightAll: true,
-              phraseSearch: true,
-            } as any);
+          // Check if quote has bbox data (OCR documents)
+          const hasBboxes = quote.has_bounding_boxes && quote.word_spans && quote.word_spans.length > 0;
 
-            await waitForFindStateReady(eventBus);
+          if (hasBboxes && quote.word_spans) {
+            // Use bbox rendering for OCR documents
+            console.log("Using bbox highlighting for OCR document");
 
-            eventBus.dispatch("findagain", {
-              type: "findagain",
-              findPrevious: false,
-              highlightAll: true,
-              phraseSearch: true,
-            } as any);
+            // Group word spans by page
+            const spansByPage = new Map<number, WordSpan[]>();
+            for (const span of quote.word_spans) {
+              const spans = spansByPage.get(span.page) || [];
+              spans.push(span);
+              spansByPage.set(span.page, spans);
+            }
 
-            centered = await waitForFirstHighlightAndCenter(container, 2500);
-          }
+            // Navigate to first page with bboxes
+            const firstPage = Math.min(...Array.from(spansByPage.keys()));
+            if (firstPage >= 1 && firstPage <= pdfDoc.numPages) {
+              viewer.currentPageNumber = firstPage;
 
-          // (2) fuzzy fallback
-          if (!centered && qExact && qExact.length) {
-            const fuzzy = await fuzzySearchDocument(pdfDoc, qExact);
+              // Wait for page to render, then draw bboxes
+              await new Promise((r) => setTimeout(r, 500));
 
-            if (fuzzy) {
-              const { pageNum, snippet } = fuzzy;
-              viewer.currentPageNumber = pageNum;
+              // Render bboxes for each page
+              for (const [pageNum, spans] of spansByPage.entries()) {
+                renderBboxHighlights(pageNum, spans);
+              }
 
-              const normalizedSnippet = collapseWithMap(snippet).collapsed;
+              // Scroll to first bbox highlight (not just the page)
+              await new Promise((r) => setTimeout(r, 300));
+              const firstPageEl = container.querySelector<HTMLElement>(
+                `.page[data-page-number="${firstPage}"]`
+              );
+              const canvas = firstPageEl?.querySelector<HTMLCanvasElement>("canvas");
+              
+              if (firstPageEl && canvas && quote.word_spans && quote.word_spans.length > 0) {
+                const firstBbox = quote.word_spans[0].bbox;
+                scrollContainerToBBox(container, firstPageEl, canvas, firstBbox);
+                centered = true;
+              } else if (firstPageEl) {
+                // Fallback to page centering if something went wrong
+                firstPageEl.scrollIntoView({ block: "center", inline: "nearest" });
+                centered = true;
+              }
+            }
+          } else {
+            // Fall back to text-based highlighting for native PDFs
+            console.log("Using text-based highlighting for native PDF");
 
+            // (1) exact find with RAW quote
+            if (qExact && qExact.length) {
               eventBus.dispatch("find", {
                 type: "find",
-                query: normalizedSnippet,
+                query: qExact,
                 caseSensitive: false,
                 entireWord: false,
                 highlightAll: true,
@@ -506,6 +652,38 @@ export default function PdfViewerWithHighlights({
               } as any);
 
               centered = await waitForFirstHighlightAndCenter(container, 2500);
+            }
+
+            // (2) fuzzy fallback
+            if (!centered && qExact && qExact.length) {
+              const fuzzy = await fuzzySearchDocument(pdfDoc, qExact);
+
+              if (fuzzy) {
+                const { pageNum, snippet } = fuzzy;
+                viewer.currentPageNumber = pageNum;
+
+                const normalizedSnippet = collapseWithMap(snippet).collapsed;
+
+                eventBus.dispatch("find", {
+                  type: "find",
+                  query: normalizedSnippet,
+                  caseSensitive: false,
+                  entireWord: false,
+                  highlightAll: true,
+                  phraseSearch: true,
+                } as any);
+
+                await waitForFindStateReady(eventBus);
+
+                eventBus.dispatch("findagain", {
+                  type: "findagain",
+                  findPrevious: false,
+                  highlightAll: true,
+                  phraseSearch: true,
+                } as any);
+
+                centered = await waitForFirstHighlightAndCenter(container, 2500);
+              }
             }
           }
 
@@ -547,24 +725,41 @@ export default function PdfViewerWithHighlights({
   }, [quote.document_id, reportId, reportType]);
 
   const jumpToQuote = () => {
-    const bus = eventBusRef.current;
-    const container = containerRef.current!;
-    if (bus && quoteTextRaw) {
-      bus.dispatch("findagain", {
-        type: "findagain",
-        findPrevious: false,
-        highlightAll: true,
-        phraseSearch: true,
-      } as any);
-      setTimeout(() => {
-        const sel =
-          container.querySelector<HTMLElement>(".highlight.selected") ||
-          container.querySelector<HTMLElement>(".highlight");
-        if (!sel) {
-          console.warn("[PDF] Jump requested but no highlight present.");
-        }
-        sel?.scrollIntoView({ block: "center", inline: "nearest" });
-      }, 120);
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Check if this is an OCR document with bboxes
+    if (quote.has_bounding_boxes && quote.word_spans && quote.word_spans.length > 0) {
+      // OCR document: scroll to first bbox
+      const firstSpan = quote.word_spans[0];
+      const pageEl = container.querySelector<HTMLElement>(
+        `.page[data-page-number="${firstSpan.page}"]`
+      );
+      const canvas = pageEl?.querySelector<HTMLCanvasElement>("canvas");
+      
+      if (pageEl && canvas) {
+        scrollContainerToBBox(container, pageEl, canvas, firstSpan.bbox);
+      }
+    } else {
+      // Text-based PDF: use existing highlight element scrolling
+      const bus = eventBusRef.current;
+      if (bus && quoteTextRaw) {
+        bus.dispatch("findagain", {
+          type: "findagain",
+          findPrevious: false,
+          highlightAll: true,
+          phraseSearch: true,
+        } as any);
+        setTimeout(() => {
+          const sel =
+            container.querySelector<HTMLElement>(".highlight.selected") ||
+            container.querySelector<HTMLElement>(".highlight");
+          if (!sel) {
+            console.warn("[PDF] Jump requested but no highlight present.");
+          }
+          sel?.scrollIntoView({ block: "center", inline: "nearest" });
+        }, 120);
+      }
     }
   };
 

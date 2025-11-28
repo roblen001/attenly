@@ -45,6 +45,9 @@ from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
 import psutil
 
+# Import bounding box service
+from app.services.ocr_bbox_service import OCRBBoxService
+
 logger = logging.getLogger(__name__)
 
 
@@ -551,9 +554,9 @@ class OCRService:
         # Fallback heuristic
         return max(1, len(text) // 4)
 
-    def convert_to_attenly_schema(self, doctr_export: Dict[str, Any], filename: str = "") -> Dict[str, Any]:
+    def convert_to_attenly_schema(self, doctr_export: Dict[str, Any], filename: str = "", document_id: str = "") -> Dict[str, Any]:
         """
-        Convert DocTR export to Attenly-compatible schema
+        Convert DocTR export to Attenly-compatible schema with bounding box data
         """
         try:
             pages_data = []
@@ -598,7 +601,20 @@ class OCRService:
 
             full_markdown = "\n".join(all_lines)
 
-            return {
+            # Extract bounding box data from DocTR export
+            bounding_boxes = None
+            try:
+                if document_id:
+                    bbox_data = OCRBBoxService.extract_bounding_boxes_from_doctr(
+                        doctr_export, document_id, filename
+                    )
+                    bounding_boxes = OCRBBoxService.to_dict(bbox_data)
+                    logger.info(f"Extracted bounding boxes: {bbox_data.metadata.get('total_words', 0)} words")
+            except Exception as bbox_error:
+                logger.warning(f"Failed to extract bounding boxes: {bbox_error}")
+                # Continue without bounding boxes - not critical for basic functionality
+
+            result = {
                 "pages": pages_data,
                 "full_markdown": full_markdown,
                 "metadata": {
@@ -615,6 +631,12 @@ class OCRService:
                     "total_paragraphs": sum(len(p["paragraphs"]) for p in pages_data)
                 }
             }
+
+            # Add bounding boxes if extracted successfully
+            if bounding_boxes:
+                result["bounding_boxes"] = bounding_boxes
+
+            return result
 
         except Exception as e:
             logger.error(f"Failed to convert doctr export: {e}")

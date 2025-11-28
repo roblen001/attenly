@@ -31,6 +31,15 @@ export interface Template {
   name: string;
 }
 
+export interface WordSpan {
+  text: string;
+  bbox: [number, number, number, number]; // [x0, y0, x1, y1] normalized [0,1]
+  page: number;
+  confidence: number;
+  line_index?: number;
+  word_index?: number;
+}
+
 export interface Quote {
   id: string;
   index: number;
@@ -39,6 +48,8 @@ export interface Quote {
   text: string;
   page_range: string;
   relevance_score: number;
+  has_bounding_boxes?: boolean;
+  word_spans?: WordSpan[];
 }
 
 export interface ReportAnswer {
@@ -119,3 +130,24 @@ export interface ReportWithAudit {
 }
 
 export type ReportViewMode = 'normal' | 'audit';
+
+export interface DocumentBoundingBoxes {
+  document_id: string;
+  filename: string;
+  bounding_boxes: {
+    pages: {
+      [pageNumber: string]: {
+        page_number: number;
+        width: number;
+        height: number;
+        words: Array<{
+          text: string;
+          bbox: [number, number, number, number];
+          confidence: number;
+          line_index: number;
+          word_index: number;
+        }>;
+      };
+    };
+  };
+}

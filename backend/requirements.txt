@@ -51,6 +51,7 @@ psutil==6.0.0
 # Document processing
 PyMuPDF==1.26.4
 weasyprint==62.3
+diff-match-patch==20200713
 
 # AI and ML
 chromadb==0.5.15

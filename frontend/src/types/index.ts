@@ -108,6 +108,29 @@ export interface DocumentContent {
   };
 }
 
+// Audit Trail Types
+export interface AuditChange {
+  id: string;
+  change_type: 'insert' | 'delete';
+  text_content: string;
+  start_offset: number;
+  end_offset: number;
+  user_name: string;
+  created_at: string;
+  answer_placeholder: string;
+}
+
+export interface ReportWithAudit {
+  report_id: string;
+  report_name: string;
+  agent_name: string;
+  report_data: ReportData;
+  changes: Record<string, AuditChange[]>;  // keyed by answer placeholder
+  has_changes: boolean;
+}
+
+export type ReportViewMode = 'normal' | 'audit';
+
 export interface DocumentBoundingBoxes {
   document_id: string;
   filename: string;

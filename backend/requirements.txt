@@ -69,3 +69,4 @@ torchvision==0.15.2+cpu
 requests==2.32.3
 
 python-multipart
+beautifulsoup4==4.12.3

@@ -338,8 +338,15 @@ class EmailIngestService:
         try:
             # Count jobs created in last 24 hours (exclude discarded)
             cutoff_time = datetime.utcnow() - timedelta(hours=24)
-            
-            result = supabase_service.supabase.table("email_jobs")\
+
+            # Create service role client for system-level rate limit check
+            from supabase import create_client
+            client = create_client(
+                supabase_service.supabase_url,
+                supabase_service.supabase_service_key
+            )
+
+            result = client.table("email_jobs")\
                 .select("id", count="exact")\
                 .eq("user_id", user_id)\
                 .gte("created_at", cutoff_time.isoformat())\

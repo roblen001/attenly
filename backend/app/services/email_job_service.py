@@ -317,7 +317,7 @@ class EmailJobService:
     ):
         """Send email notification about job processing result."""
         try:
-            sender_email = job_data["sender_email"]
+            sender_email = job_data["from_email"]
             subject = job_data.get("subject", "Your email")
             
             if success:

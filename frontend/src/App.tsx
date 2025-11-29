@@ -14,6 +14,7 @@ import { useAuth } from "./feature/auth/useAuth";
 import AgentExecutionPage from "./pages/AgentExecution";
 import ReportView from "./pages/ReportView";
 import CreateAgent from "./pages/CreateAgent";
+import EmailIngestSettings from "./pages/EmailIngestSettings";
 
 export default function App() {
   const { isAuthenticated, loading, isPasswordRecovery } = useAuth(); 
@@ -128,6 +129,15 @@ export default function App() {
           element={
             <AuthGate>
               <CreateAgent />
+            </AuthGate>
+          }
+        />
+
+        <Route 
+          path="/settings/email-ingest" 
+          element={
+            <AuthGate>
+              <EmailIngestSettings />
             </AuthGate>
           }
         />

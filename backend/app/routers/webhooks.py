@@ -20,7 +20,8 @@ from app.config import (
     EMAIL_MAX_ATTACHMENTS,
     EMAIL_MAX_ATTACHMENT_SIZE_MB,
     EMAIL_MAX_TOTAL_SIZE_MB,
-    RESEND_WEBHOOK_SECRET
+    RESEND_WEBHOOK_SECRET,
+    RESEND_API_KEY
 )
 from app.services.email_ingest_service import EmailIngestService
 from app.services.supabase_storage_service import SupabaseStorageService
@@ -146,8 +147,11 @@ async def handle_inbound_email(request: Request):
             return JSONResponse(content={"status": "ignored", "reason": "event_type"})
         
         provider_message_id = email_data.get("message_id")
-        to_address = email_data.get("to", [{}])[0].get("email", "") if email_data.get("to") else ""
-        from_address = email_data.get("from", {}).get("email", "")
+        
+        to_list = email_data.get("to", [])
+        to_address = to_list[0] if to_list else ""
+        from_address = email_data.get("from", "")
+        
         subject = email_data.get("subject", "")
         email_body = email_data.get("text", "") or email_data.get("html", "")
         attachments = email_data.get("attachments", [])
@@ -226,7 +230,16 @@ async def handle_inbound_email(request: Request):
             filename = attachment.get("filename", "unnamed")
             size_bytes = attachment.get("size", 0)
             content_type = attachment.get("content_type", "")
-            download_url = attachment.get("url", "")
+            
+            # Resend provides attachment ID - construct download URL
+            attachment_id = attachment.get("id", "")
+            if not attachment_id:
+                logger.warning(f"Attachment {filename} has no ID, skipping")
+                skipped_attachments.append({"filename": filename, "reason": "No attachment ID"})
+                continue
+            
+            # Resend attachment download URL format
+            download_url = f"https://api.resend.com/attachments/{attachment_id}"
             
             is_valid, error_msg = validate_attachment(filename, size_bytes)
             
@@ -275,7 +288,9 @@ async def handle_inbound_email(request: Request):
         async with httpx.AsyncClient(timeout=30.0) as client:
             for attachment in valid_attachments:
                 try:
-                    response = await client.get(attachment["download_url"])
+                    # Download attachment from Resend API with authorization
+                    headers = {"Authorization": f"Bearer {RESEND_API_KEY}"}
+                    response = await client.get(attachment["download_url"], headers=headers)
                     response.raise_for_status()
                     file_content = response.content
                     

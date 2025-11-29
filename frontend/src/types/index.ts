@@ -151,3 +151,27 @@ export interface DocumentBoundingBoxes {
     };
   };
 }
+
+// Email Ingest Types
+export interface EmailIngestEndpoint {
+  id: string;
+  full_address: string;  // e.g., "u_abc123@in.attenly.ca"
+  is_active: boolean;
+  default_agent_id?: string;
+}
+
+export interface VerifiedSender {
+  id: string;
+  email: string;
+  is_verified: boolean;
+  created_at: string;
+}
+
+export interface EmailIngestSettings {
+  endpoint: EmailIngestEndpoint | null;
+  verified_senders: VerifiedSender[];
+  usage_summary: {
+    jobs_last_24h: number;
+    rate_limit: number;
+  };
+}

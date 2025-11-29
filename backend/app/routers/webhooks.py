@@ -216,8 +216,8 @@ async def handle_inbound_email(request: Request):
             
             job_data = {
                 "user_id": user_id,
-                "endpoint_id": endpoint_data["id"],
-                "sender_email": from_address,
+                "ingest_endpoint_id": endpoint_data["id"],
+                "from_email": from_address,
                 "subject": subject[:255],
                 "provider_message_id": provider_message_id,
                 "status": "discarded",
@@ -275,8 +275,8 @@ async def handle_inbound_email(request: Request):
             
             job_data = {
                 "user_id": user_id,
-                "endpoint_id": endpoint_data["id"],
-                "sender_email": from_address,
+                "ingest_endpoint_id": endpoint_data["id"],
+                "from_email": from_address,
                 "subject": subject[:255],
                 "provider_message_id": provider_message_id,
                 "status": "discarded",
@@ -340,8 +340,8 @@ async def handle_inbound_email(request: Request):
             
             job_data = {
                 "user_id": user_id,
-                "endpoint_id": endpoint_data["id"],
-                "sender_email": from_address,
+                "ingest_endpoint_id": endpoint_data["id"],
+                "from_email": from_address,
                 "subject": subject[:255],
                 "provider_message_id": provider_message_id,
                 "status": "discarded",
@@ -359,8 +359,8 @@ async def handle_inbound_email(request: Request):
         job_data = {
             "id": job_id,
             "user_id": user_id,
-            "endpoint_id": endpoint_data["id"],
-            "sender_email": from_address,
+            "ingest_endpoint_id": endpoint_data["id"],
+            "from_email": from_address,
             "subject": subject[:255],
             "provider_message_id": provider_message_id,
             "status": "pending",

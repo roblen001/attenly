@@ -339,17 +339,17 @@ class EmailJobService:
             
             if success:
                 self.email_service.send_report_ready_email(
-                    to_address=sender_email,
-                    subject=subject,
-                    report_link=None,  # TODO: Add report link when report generation is implemented
-                    message=message
+                    to=sender_email,
+                    report_url="",  # TODO: Add actual URL when report generation is implemented
+                    report_name=message,
+                    subject_text=subject
                 )
                 logger.info(f"Sent success notification to {sender_email}")
             else:
                 self.email_service.send_job_failed_email(
-                    to_address=sender_email,
-                    subject=subject,
-                    error_details=error_message or "Unknown error occurred"
+                    to=sender_email,
+                    job_id=job_data["id"],
+                    error=error_message or "Unknown error occurred"
                 )
                 logger.info(f"Sent failure notification to {sender_email}")
         

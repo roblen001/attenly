@@ -1,8 +1,8 @@
 """
 Email Service - Resend SDK Adapter for Attenly
 
-Provides email sending capabilities and webhook verification for the
-Email to Attenly feature. Uses Resend as the email service provider.
+Provides email sending capabilities for the Email to Attenly feature.
+Uses Resend as the email service provider.
 """
 
 import resend
@@ -15,10 +15,13 @@ logger = logging.getLogger(__name__)
 
 class EmailService:
     """
-    Service for sending emails and verifying webhooks via Resend.
+    Service for sending emails via Resend.
     
     This service acts as an adapter around the Resend SDK, making it easy
     to swap email providers in the future if needed.
+    
+    Note: Webhook signature verification is handled directly in the webhook
+    router using the Svix library, not in this service.
     """
     
     def __init__(self):
@@ -219,58 +222,6 @@ Attenly - AI-Powered Document Processing
             
         except Exception as e:
             logger.error(f"Failed to send job failed email to {to}: {str(e)}")
-            return False
-    
-    def verify_webhook_signature(
-        self,
-        payload: bytes,
-        svix_id: str,
-        svix_timestamp: str,
-        svix_signature: str
-    ) -> bool:
-        """
-        Verify Resend webhook signature using Svix headers.
-        
-        Resend webhooks use Svix for signature verification with three headers:
-        - svix-id: Unique message identifier
-        - svix-timestamp: Timestamp of the message
-        - svix-signature: The signature to verify
-        
-        This ensures the webhook request actually came from Resend and hasn't
-        been tampered with.
-        
-        Args:
-            payload: Raw request body as bytes
-            svix_id: Value from svix-id header
-            svix_timestamp: Value from svix-timestamp header
-            svix_signature: Value from svix-signature header
-            
-        Returns:
-            True if signature is valid, False otherwise
-        """
-        if not config.RESEND_WEBHOOK_SECRET:
-            logger.error("Cannot verify webhook: RESEND_WEBHOOK_SECRET not configured")
-            return False
-        
-        try:
-            # Use Resend SDK's webhook verification which handles Svix internally
-            webhook = resend.Webhooks(config.RESEND_WEBHOOK_SECRET)
-            
-            # The verify method expects headers as a dict
-            headers = {
-                "svix-id": svix_id,
-                "svix-timestamp": svix_timestamp,
-                "svix-signature": svix_signature
-            }
-            
-            # Verify returns the parsed webhook data if valid, raises exception if invalid
-            webhook.verify(payload, headers)
-            
-            logger.info("Webhook signature verified successfully")
-            return True
-            
-        except Exception as e:
-            logger.warning(f"Invalid webhook signature: {str(e)}")
             return False
     
     def is_configured(self) -> bool:

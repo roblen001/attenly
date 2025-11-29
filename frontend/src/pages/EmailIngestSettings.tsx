@@ -21,6 +21,20 @@ export default function EmailIngestSettings() {
   useEffect(() => {
     fetchSettings();
     fetchAgents();
+
+    // Auto-refresh settings when user returns to the tab
+    // This is useful after they verify their email in another tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchSettings();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const fetchSettings = async () => {

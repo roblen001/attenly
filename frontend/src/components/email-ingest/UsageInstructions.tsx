@@ -97,7 +97,7 @@ export default function UsageInstructions() {
                 </div>
                 <div className="example-row">
                   <span className="example-label">To:</span>
-                  <span>u_abc123@in.attenly.ca (your alias)</span>
+                  <span>u_abc123@mail.attenly.ca (your alias)</span>
                 </div>
                 <div className="example-row">
                   <span className="example-label">Subject:</span>

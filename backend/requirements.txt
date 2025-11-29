@@ -70,3 +70,6 @@ requests==2.32.3
 
 python-multipart
 beautifulsoup4==4.12.3
+
+# Email service
+resend>=0.7.0

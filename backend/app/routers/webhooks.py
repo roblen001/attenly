@@ -14,6 +14,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 from svix.webhooks import Webhook, WebhookVerificationError
+from supabase import create_client
 
 from app.config import (
     EMAIL_ALLOWED_EXTENSIONS,
@@ -158,8 +159,15 @@ async def handle_inbound_email(request: Request):
         
         logger.info(f"Processing inbound email: {provider_message_id} from {from_address} to {to_address}")
         
+        # Create service role client for system-level database operations
+        # Webhooks are system operations without user JWT authentication
+        db_client = create_client(
+            supabase_service.supabase_url,
+            supabase_service.supabase_service_key
+        )
+        
         # Step 3: Idempotency check
-        existing_job = supabase_service.supabase.table("email_jobs")\
+        existing_job = db_client.table("email_jobs")\
             .select("id, status")\
             .eq("provider_message_id", provider_message_id)\
             .limit(1)\
@@ -170,7 +178,7 @@ async def handle_inbound_email(request: Request):
             return JSONResponse(content={"status": "duplicate", "job_id": existing_job.data[0]['id']})
         
         # Step 4: Validate email alias
-        endpoint = supabase_service.supabase.table("email_ingest_endpoints")\
+        endpoint = db_client.table("email_ingest_endpoints")\
             .select("*")\
             .eq("full_address", to_address)\
             .limit(1)\
@@ -188,7 +196,7 @@ async def handle_inbound_email(request: Request):
             return JSONResponse(content={"status": "ignored", "reason": "inactive_alias"})
         
         # Step 5: Verify sender
-        sender_check = supabase_service.supabase.table("verified_senders")\
+        sender_check = db_client.table("verified_senders")\
             .select("*")\
             .eq("user_id", user_id)\
             .eq("email", from_address)\
@@ -218,7 +226,7 @@ async def handle_inbound_email(request: Request):
                 "raw_metadata": {"rate_limited": True}
             }
             
-            supabase_service.supabase.table("email_jobs").insert(job_data).execute()
+            db_client.table("email_jobs").insert(job_data).execute()
             return JSONResponse(content={"status": "rate_limited"})
         
         # Step 7: Validate attachments
@@ -277,11 +285,12 @@ async def handle_inbound_email(request: Request):
                 "raw_metadata": {"skipped_attachments": skipped_attachments}
             }
             
-            supabase_service.supabase.table("email_jobs").insert(job_data).execute()
+            db_client.table("email_jobs").insert(job_data).execute()
             return JSONResponse(content={"status": "discarded", "reason": "no_valid_attachments"})
         
         # Step 9: Download and store attachments (raw bytes only, no processing)
-        job_id = supabase_service.generate_id()
+        import uuid
+        job_id = str(uuid.uuid4())
         stored_attachments = []
         
         import httpx
@@ -341,7 +350,7 @@ async def handle_inbound_email(request: Request):
                 "raw_metadata": {"skipped_attachments": skipped_attachments}
             }
             
-            supabase_service.supabase.table("email_jobs").insert(job_data).execute()
+            db_client.table("email_jobs").insert(job_data).execute()
             return JSONResponse(content={"status": "discarded", "reason": "storage_failed"})
         
         # Step 10: Extract instructions and create pending job
@@ -363,7 +372,7 @@ async def handle_inbound_email(request: Request):
             }
         }
         
-        supabase_service.supabase.table("email_jobs").insert(job_data).execute()
+        db_client.table("email_jobs").insert(job_data).execute()
         
         logger.info(f"✅ Created job {job_id} for user {user_id} with {len(stored_attachments)} attachments")
         

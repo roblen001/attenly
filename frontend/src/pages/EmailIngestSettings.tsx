@@ -21,20 +21,6 @@ export default function EmailIngestSettings() {
   useEffect(() => {
     fetchSettings();
     fetchAgents();
-
-    // Auto-refresh settings when user returns to the tab
-    // This is useful after they verify their email in another tab
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchSettings();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
   }, []);
 
   const fetchSettings = async () => {
@@ -139,11 +125,19 @@ export default function EmailIngestSettings() {
   if (loading) {
     return (
       <div className="email-ingest-settings">
-        <div className="settings-header">
-          <button onClick={() => navigate('/dashboard')} className="back-button">
-            ← Back to Dashboard
-          </button>
-          <h1>Email to Attenly</h1>
+        <div className="execution-header">
+          <div className="header-content">
+            <div className="header-left">
+              <button onClick={() => navigate('/dashboard')} className="back-btn">
+                <span className="back-icon">←</span>
+                Back to Dashboard
+              </button>
+              <div className="agent-info">
+                <div><h1 className="agent-title">Email to Attenly</h1></div>
+                <div><p className="agent-description">Forward emails with attachments to automatically generate reports</p></div>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="loading-state">
           <div className="spinner"></div>
@@ -156,11 +150,19 @@ export default function EmailIngestSettings() {
   if (error && !settings) {
     return (
       <div className="email-ingest-settings">
-        <div className="settings-header">
-          <button onClick={() => navigate('/dashboard')} className="back-button">
-            ← Back to Dashboard
-          </button>
-          <h1>Email to Attenly</h1>
+        <div className="execution-header">
+          <div className="header-content">
+            <div className="header-left">
+              <button onClick={() => navigate('/dashboard')} className="back-btn">
+                <span className="back-icon">←</span>
+                Back to Dashboard
+              </button>
+              <div className="agent-info">
+                <div><h1 className="agent-title">Email to Attenly</h1></div>
+                <div><p className="agent-description">Forward emails with attachments to automatically generate reports</p></div>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="error-state">
           <div className="error-icon">⚠️</div>
@@ -180,14 +182,19 @@ export default function EmailIngestSettings() {
 
   return (
     <div className="email-ingest-settings">
-      <div className="settings-header">
-        <button onClick={() => navigate('/dashboard')} className="back-button">
-          ← Back to Dashboard
-        </button>
-        <h1>Email to Attenly</h1>
-        <p className="header-description">
-          Forward emails with attachments to automatically generate reports
-        </p>
+      <div className="execution-header">
+        <div className="header-content">
+          <div className="header-left">
+            <button onClick={() => navigate('/dashboard')} className="back-btn">
+              <span className="back-icon">←</span>
+              Back to Dashboard
+            </button>
+            <div className="agent-info">
+              <div><h1 className="agent-title">Email to Attenly</h1></div>
+              <div><p className="agent-description">Forward emails with attachments to automatically generate reports</p></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {error && (

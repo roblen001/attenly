@@ -24,15 +24,19 @@ class SupabaseStorageService:
     
     def __init__(self):
         """Initialize Storage service with Supabase credentials"""
-        from app.config import SUPABASE_URL, SUPABASE_ANON_KEY
-        
+        from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY are required for Storage service")
-        
+
+        if not SUPABASE_SERVICE_ROLE_KEY:
+            raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required for service operations")
+
         self.supabase_url = SUPABASE_URL
         self.supabase_anon_key = SUPABASE_ANON_KEY
+        self.supabase_service_role_key = SUPABASE_SERVICE_ROLE_KEY
         self.bucket_name = "report-documents"
-        
+
         logging.info("Supabase Storage service initialized with RLS enforcement")
     
     
@@ -363,6 +367,51 @@ class SupabaseStorageService:
             
             return response
             
+        except Exception as e:
+            logging.error(f"Failed to download document from {storage_path}: {e}")
+            raise
+
+    def download_document_for_system(self, user_id: str, storage_path: str) -> bytes:
+        """
+        Download document using service role key (for system operations like cron jobs).
+
+        Args:
+            user_id: User ID for path verification
+            storage_path: Storage path from database
+
+        Returns:
+            PDF binary data as bytes
+        """
+        try:
+            # Verify path belongs to user (basic path-based security)
+            if not storage_path.startswith(f"{user_id}/"):
+                raise ValueError(
+                    f"Access denied: Path {storage_path} does not belong to user {user_id}"
+                )
+
+            # Create Storage client with service role key for system operations
+            storage = StorageClient(
+                f"{self.supabase_url}/storage/v1",
+                headers={
+                    "Authorization": f"Bearer {self.supabase_service_role_key}",
+                    "apikey": self.supabase_anon_key,
+                    "X-Client-Info": "storage3/py-service-role",
+                },
+            )
+
+            # Download from Storage with service role key (bypasses RLS)
+            response = storage.from_(self.bucket_name).download(
+                path=storage_path
+            )
+
+            # Check for errors
+            if hasattr(response, 'error') and response.error:
+                raise ValueError(f"Storage download failed: {response.error}")
+
+            logging.info(f"Downloaded document from Storage (system): {storage_path} ({len(response)} bytes)")
+
+            return response
+
         except Exception as e:
             logging.error(f"Failed to download document from {storage_path}: {e}")
             raise

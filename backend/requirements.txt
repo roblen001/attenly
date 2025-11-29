@@ -73,3 +73,4 @@ beautifulsoup4==4.12.3
 
 # Email service
 resend>=0.7.0
+svix>=1.17.0

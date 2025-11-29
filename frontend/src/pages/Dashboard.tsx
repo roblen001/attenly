@@ -338,6 +338,14 @@ export default function Dashboard() {
               <span className="user-email">{session?.user?.email}</span>
             </div>
             <button 
+              className="email-settings-button"
+              onClick={() => navigate('/settings/email-ingest')}
+              title="Email to Attenly Settings"
+            >
+              <span className="email-icon">📧</span>
+              Email to Attenly
+            </button>
+            <button 
               className="logout-button"
               onClick={async () => {
                 try {

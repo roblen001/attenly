@@ -1,0 +1,229 @@
+/* Usage Instructions Card */
+.usage-instructions {
+  margin-top: 1rem;
+}
+
+/* Instructions Content */
+.instructions-content {
+  padding-top: 1rem;
+}
+
+/* Instruction Steps */
+.instruction-step {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.step-number {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.step-content {
+  flex: 1;
+}
+
+.step-content h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 0.5rem 0;
+}
+
+.step-content p {
+  color: var(--text-secondary, #64748b);
+  line-height: 1.6;
+  margin: 0.5rem 0;
+}
+
+.note {
+  font-size: 0.875rem;
+  color: var(--text-muted, #94a3b8);
+  font-style: italic;
+}
+
+.note strong {
+  color: var(--text-secondary, #64748b);
+  font-style: normal;
+}
+
+/* Requirements Boxes */
+.requirements-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.requirements-box.warning {
+  background: #fef3c7;
+  border-color: #fde047;
+}
+
+.requirements-box h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 0.75rem 0;
+}
+
+.requirements-box ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.requirements-box li {
+  padding: 0.375rem 0;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.requirements-box li::before {
+  content: '• ';
+  color: #8b5cf6;
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
+
+.requirements-box.warning li::before {
+  color: #f59e0b;
+}
+
+/* Example Section */
+.example-section {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.example-section h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 1rem 0;
+}
+
+.example-email {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.example-header {
+  background: #f8fafc;
+  padding: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.example-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.example-row:last-child {
+  margin-bottom: 0;
+}
+
+.example-label {
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+  min-width: 100px;
+}
+
+.example-row span:last-child {
+  color: var(--text-primary, #0f172a);
+}
+
+.example-body {
+  padding: 1rem;
+}
+
+.example-body p {
+  margin: 0;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.example-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  color: #166534;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.result-icon {
+  font-size: 1.25rem;
+}
+
+/* Help Footer */
+.help-footer {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  text-align: center;
+}
+
+.help-footer p {
+  color: var(--text-secondary, #64748b);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.help-footer strong {
+  color: var(--text-primary, #0f172a);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .instruction-step {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .step-number {
+    width: 28px;
+    height: 28px;
+    font-size: 0.875rem;
+  }
+
+  .step-content h3 {
+    font-size: 1rem;
+  }
+
+  .example-row {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .example-label {
+    min-width: auto;
+  }
+
+  .requirements-box {
+    padding: 0.75rem;
+  }
+}

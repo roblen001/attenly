@@ -19,6 +19,44 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # =============================================================================
+# EMAIL SERVICE CONFIGURATION
+# =============================================================================
+
+# Email provider (Resend)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+RESEND_WEBHOOK_SECRET = os.getenv("RESEND_WEBHOOK_SECRET")
+
+# Internal authentication (for cron endpoints)
+INTERNAL_CRON_SECRET = os.getenv("INTERNAL_CRON_SECRET")
+
+# Email domains
+EMAIL_INGEST_DOMAIN = os.getenv("EMAIL_INGEST_DOMAIN", "in.attenly.ca")
+EMAIL_FROM_DOMAIN = os.getenv("EMAIL_FROM_DOMAIN", "mail.attenly.ca")
+EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", f"noreply@{EMAIL_FROM_DOMAIN}")
+
+# Application URL (for links in emails)
+APP_URL = os.getenv("APP_URL", "https://app.attenly.ca")
+API_URL = os.getenv("API_URL", "https://api.attenly.ca")
+
+# Email feature limits (optional - have sensible defaults)
+EMAIL_RATE_LIMIT_JOBS_PER_DAY = int(os.getenv("EMAIL_RATE_LIMIT_JOBS_PER_DAY", "20"))
+EMAIL_MAX_ATTACHMENT_SIZE_MB = int(os.getenv("EMAIL_MAX_ATTACHMENT_SIZE_MB", "25"))
+EMAIL_MAX_TOTAL_SIZE_MB = int(os.getenv("EMAIL_MAX_TOTAL_SIZE_MB", "50"))
+EMAIL_ALLOWED_TYPES = os.getenv(
+    "EMAIL_ALLOWED_TYPES", 
+    "pdf,docx,txt,png,jpg,jpeg,gif,webp"
+).split(",")
+
+# Email attachment allowed extensions (centralized configuration)
+# These should match the file uploader's allowed types
+EMAIL_ALLOWED_EXTENSIONS = [f".{ext.strip()}" for ext in EMAIL_ALLOWED_TYPES]
+
+# Maximum number of attachments per email
+EMAIL_MAX_ATTACHMENTS = int(os.getenv("EMAIL_MAX_ATTACHMENTS", "10"))
+
+EMAIL_VERIFICATION_EXPIRY_HOURS = int(os.getenv("EMAIL_VERIFICATION_EXPIRY_HOURS", "24"))
+
+# =============================================================================
 # SUPABASE STORAGE CONFIGURATION
 # =============================================================================
 
@@ -277,6 +315,26 @@ def validate_config():
         errors.append("MAX_QUOTE_LENGTH should not exceed 1000")
     if not 0.0 <= MIN_ANSWER_CONFIDENCE <= 1.0:
         errors.append("MIN_ANSWER_CONFIDENCE must be between 0.0 and 1.0")
+
+    # Email configuration (only validate if email feature is being used)
+    # Note: These are only required if users enable email ingest feature
+    # Application can run without these if email feature is not used
+    if EMAIL_RATE_LIMIT_JOBS_PER_DAY < 1:
+        errors.append("EMAIL_RATE_LIMIT_JOBS_PER_DAY must be at least 1")
+    if EMAIL_RATE_LIMIT_JOBS_PER_DAY > 1000:
+        errors.append("EMAIL_RATE_LIMIT_JOBS_PER_DAY should not exceed 1000")
+    if EMAIL_MAX_ATTACHMENT_SIZE_MB < 1:
+        errors.append("EMAIL_MAX_ATTACHMENT_SIZE_MB must be at least 1")
+    if EMAIL_MAX_ATTACHMENT_SIZE_MB > 100:
+        errors.append("EMAIL_MAX_ATTACHMENT_SIZE_MB should not exceed 100")
+    if EMAIL_MAX_TOTAL_SIZE_MB < EMAIL_MAX_ATTACHMENT_SIZE_MB:
+        errors.append("EMAIL_MAX_TOTAL_SIZE_MB must be at least EMAIL_MAX_ATTACHMENT_SIZE_MB")
+    if EMAIL_MAX_TOTAL_SIZE_MB > 200:
+        errors.append("EMAIL_MAX_TOTAL_SIZE_MB should not exceed 200")
+    if EMAIL_VERIFICATION_EXPIRY_HOURS < 1:
+        errors.append("EMAIL_VERIFICATION_EXPIRY_HOURS must be at least 1")
+    if EMAIL_VERIFICATION_EXPIRY_HOURS > 168:  # 7 days
+        errors.append("EMAIL_VERIFICATION_EXPIRY_HOURS should not exceed 168 (7 days)")
 
     if errors:
         raise ValueError("Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors))

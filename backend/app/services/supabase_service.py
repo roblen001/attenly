@@ -11,13 +11,14 @@ from app.services.diff_service import DiffService
 class SupabaseService:
     def __init__(self):
         # Use the same environment variable names as the existing app config
-        from app.config import SUPABASE_URL, SUPABASE_ANON_KEY
+        from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
         
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required")
         
         self.supabase_url = SUPABASE_URL
         self.supabase_anon_key = SUPABASE_ANON_KEY
+        self.supabase_service_key = SUPABASE_SERVICE_ROLE_KEY
         self.diff_service = DiffService()
         logging.info("Supabase service initialized with user JWT support and audit trail")
 

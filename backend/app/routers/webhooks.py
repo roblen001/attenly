@@ -325,30 +325,25 @@ async def handle_inbound_email(request: Request):
                     response.raise_for_status()
                     file_content = response.content
                     
-                    # Store in Supabase Storage: email-attachments/{user_id}/{job_id}/{filename}
-                    storage_path = f"{user_id}/{job_id}/{attachment['filename']}"
-                    
-                    upload_result = storage_service.upload_file(
-                        bucket_name="email-attachments",
-                        file_path=storage_path,
-                        file_content=file_content,
+                    # Upload to same Storage bucket as UI uploads (report-documents)
+                    # Use job_id as document_id and report_id for consistent path structure
+                    upload_result = storage_service.upload_document_for_user(
+                        user_id=user_id,
+                        document_id=str(job_id),
+                        pdf_bytes=file_content,
+                        report_id=str(job_id),
                         content_type=attachment["content_type"]
                     )
-                    
-                    if upload_result["success"]:
-                        stored_attachments.append({
-                            "filename": attachment["filename"],
-                            "storage_path": storage_path,
-                            "size_bytes": attachment["size_bytes"],
-                            "content_type": attachment["content_type"]
-                        })
-                        logger.info(f"Stored attachment: {storage_path} ({attachment['size_bytes']} bytes)")
-                    else:
-                        logger.error(f"Failed to store {attachment['filename']}: {upload_result.get('error')}")
-                        skipped_attachments.append({
-                            "filename": attachment["filename"],
-                            "reason": f"Storage failed: {upload_result.get('error')}"
-                        })
+
+                    # Use the actual returned storage path and metadata
+                    stored_attachments.append({
+                        "filename": attachment["filename"],
+                        "storage_path": upload_result["storage_path"],
+                        "content_hash": upload_result["content_hash"],
+                        "size_bytes": attachment["size_bytes"],
+                        "content_type": attachment["content_type"]
+                    })
+                    logger.info(f"Stored attachment: {upload_result['storage_path']} ({attachment['size_bytes']} bytes, duplicate: {upload_result.get('duplicate', False)})")
                 
                 except Exception as e:
                     logger.error(f"Error processing attachment {attachment['filename']}: {e}")

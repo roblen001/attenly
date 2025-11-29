@@ -236,16 +236,28 @@ class EmailIngestService:
         """
         Verify sender using token from email link.
         
+        This is a system-level operation that uses the service role key to bypass RLS,
+        since users click verification links before they're logged in.
+        
         Args:
-            token: Verification token from email
+            token: Verification token from email (UUID format)
             
         Returns:
             Tuple of (success: bool, message: str)
+            
+        Security:
+            - Uses service role key to bypass RLS (appropriate for system operation)
+            - Tokens are random UUIDs (unguessable)
+            - Tokens expire after 24 hours
+            - Tokens are single-use (cleared after verification)
         """
         try:
-            # Create a direct Supabase client for service-level operation (no user JWT)
+            # Use SERVICE ROLE key to bypass RLS (this is a system-level operation)
             from supabase import create_client
-            client = create_client(supabase_service.supabase_url, supabase_service.supabase_anon_key)
+            client = create_client(
+                supabase_service.supabase_url,
+                supabase_service.supabase_service_key  # Service role key, not anon key
+            )
             
             # Look up token
             result = client.table("verified_senders")\
@@ -254,37 +266,63 @@ class EmailIngestService:
                 .execute()
             
             if not result.data:
+                logger.warning(f"Verification failed: token not found - {token[:8]}...")
                 return (False, "Invalid or expired verification link")
             
             sender = result.data[0]
+            sender_email = sender['email']
+            user_id = sender['user_id']
             
             # Check if already verified
             if sender['status'] == 'verified':
+                logger.info(f"Token already used for sender {sender_email} (user: {user_id})")
                 return (True, "Email address already verified")
             
-            # Check expiry
-            expires_at = datetime.fromisoformat(sender['token_expires_at'].replace('Z', '+00:00'))
-            if datetime.utcnow() > expires_at.replace(tzinfo=None):
+            # Check expiry with timezone-aware comparison
+            token_expires_at = sender.get('token_expires_at')
+            if not token_expires_at:
+                logger.error(f"Token missing expiry for sender {sender_email}")
+                return (False, "Invalid verification link")
+            
+            # Parse expiry time (handle both Z and +00:00 formats)
+            expires_at = datetime.fromisoformat(token_expires_at.replace('Z', '+00:00'))
+            
+            # Create timezone-aware UTC now for comparison
+            from datetime import timezone
+            now_utc = datetime.now(timezone.utc)
+            
+            if now_utc > expires_at:
+                logger.warning(
+                    f"Verification failed: token expired for {sender_email} "
+                    f"(expired: {expires_at.isoformat()}, now: {now_utc.isoformat()})"
+                )
                 return (False, "Verification link has expired. Please request a new one.")
             
-            # Update status to verified
-            client.table("verified_senders")\
+            # Mark as verified and clear token (single-use)
+            update_result = client.table("verified_senders")\
                 .update({
                     "status": "verified",
-                    "verification_token": None,  # Clear token (single use)
-                    "token_expires_at": None,
-                    "verified_at": datetime.utcnow().isoformat(),
-                    "updated_at": datetime.utcnow().isoformat()
+                    "verification_token": None,  # Clear token for single-use
+                    "token_expires_at": None,    # Clear expiry
+                    "verified_at": now_utc.isoformat(),
+                    "updated_at": now_utc.isoformat()
                 })\
                 .eq("id", sender['id'])\
                 .execute()
             
-            logger.info(f"Verified sender {sender['email']} for user {sender['user_id']}")
+            if not update_result.data:
+                logger.error(f"Failed to update verification status for sender {sender_email}")
+                return (False, "Verification failed. Please try again.")
+            
+            logger.info(
+                f"Successfully verified sender {sender_email} for user {user_id} "
+                f"(token: {token[:8]}...)"
+            )
             
             return (True, "Email address verified successfully!")
             
         except Exception as e:
-            logger.error(f"Failed to verify sender: {str(e)}")
+            logger.error(f"Verification failed with exception: {str(e)}", exc_info=True)
             return (False, "Verification failed. Please try again.")
     
     def check_rate_limit(self, user_id: str) -> Tuple[bool, Optional[str]]:

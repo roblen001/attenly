@@ -200,7 +200,7 @@ async def handle_inbound_email(request: Request):
             .select("*")\
             .eq("user_id", user_id)\
             .eq("email", from_address)\
-            .eq("is_verified", True)\
+            .eq("status", "verified")\
             .limit(1)\
             .execute()
         

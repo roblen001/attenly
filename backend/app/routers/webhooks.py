@@ -382,7 +382,6 @@ async def handle_inbound_email(request: Request):
             "provider_message_id": provider_message_id,
             "status": "pending",
             "instruction_text": instruction_text[:2000] if instruction_text else None,
-            "default_agent_id": endpoint_data.get("default_agent_id"),
             "raw_metadata": {
                 "attachments": stored_attachments,
                 "skipped_attachments": skipped_attachments if skipped_attachments else None

@@ -109,7 +109,7 @@ class EmailJobService:
                 claim_result = db_client.table("email_jobs")\
                     .update({
                         "status": "processing",
-                        "processing_started_at": datetime.utcnow().isoformat()
+                        "updated_at": datetime.utcnow().isoformat()
                     })\
                     .eq("id", job["id"])\
                     .eq("status", "pending")\
@@ -138,7 +138,7 @@ class EmailJobService:
                         .update({
                             "status": "failed",
                             "error_message": f"Processing error: {str(e)}",
-                            "processing_completed_at": datetime.utcnow().isoformat()
+                            "completed_at": datetime.utcnow().isoformat()
                         })\
                         .eq("id", job["id"])\
                         .execute()
@@ -262,7 +262,7 @@ class EmailJobService:
                     .update({
                         "status": "completed",
                         "error_message": "Documents processed but report not generated (no agent configured)",
-                        "processing_completed_at": datetime.utcnow().isoformat()
+                        "completed_at": datetime.utcnow().isoformat()
                     })\
                     .eq("id", job_id)\
                     .execute()
@@ -284,7 +284,7 @@ class EmailJobService:
             db_client.table("email_jobs")\
                 .update({
                     "status": "completed",
-                    "processing_completed_at": datetime.utcnow().isoformat()
+                    "completed_at": datetime.utcnow().isoformat()
                 })\
                 .eq("id", job_id)\
                 .execute()
@@ -308,7 +308,7 @@ class EmailJobService:
                     .update({
                         "status": "failed",
                         "error_message": str(e),
-                        "processing_completed_at": datetime.utcnow().isoformat()
+                        "completed_at": datetime.utcnow().isoformat()
                     })\
                     .eq("id", job_id)\
                     .execute()

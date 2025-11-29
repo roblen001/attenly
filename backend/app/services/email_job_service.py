@@ -40,6 +40,14 @@ class EmailJobService:
         self.storage_service = storage_service
         self.document_processor = document_processor
         self.email_service = email_service
+
+    def _get_service_role_client(self):
+        """Get a Supabase client with service role key for system operations."""
+        from supabase import create_client
+        return create_client(
+            supabase_service.supabase_url,
+            supabase_service.supabase_service_key
+        )
     
     async def process_pending_jobs(self, max_jobs: int = 10) -> Dict[str, Any]:
         """
@@ -54,9 +62,17 @@ class EmailJobService:
         """
         logger.info(f"Starting batch processing of up to {max_jobs} pending email jobs")
         
+        # Create service role client for system-level database operations
+        # Background jobs are system operations without user JWT authentication
+        from supabase import create_client
+        db_client = create_client(
+            supabase_service.supabase_url,
+            supabase_service.supabase_service_key
+        )
+
         # Fetch pending jobs (oldest first)
         try:
-            pending_jobs = supabase_service.supabase.table("email_jobs")\
+            pending_jobs = db_client.table("email_jobs")\
                 .select("*")\
                 .eq("status", "pending")\
                 .order("created_at")\
@@ -90,7 +106,7 @@ class EmailJobService:
         for job in pending_jobs.data:
             try:
                 # Atomically claim the job by updating to 'processing'
-                claim_result = supabase_service.supabase.table("email_jobs")\
+                claim_result = db_client.table("email_jobs")\
                     .update({
                         "status": "processing",
                         "processing_started_at": datetime.utcnow().isoformat()
@@ -98,27 +114,27 @@ class EmailJobService:
                     .eq("id", job["id"])\
                     .eq("status", "pending")\
                     .execute()
-                
+
                 # If update succeeded, we claimed the job
                 if claim_result.data:
                     logger.info(f"Processing job {job['id']} for user {job['user_id']}")
-                    
+
                     success = await self.process_single_job(job["id"])
-                    
+
                     if success:
                         jobs_successful += 1
                     else:
                         jobs_failed += 1
                 else:
                     logger.info(f"Job {job['id']} already claimed by another process")
-            
+
             except Exception as e:
                 logger.error(f"Error processing job {job['id']}: {e}", exc_info=True)
                 jobs_failed += 1
-                
+
                 # Mark job as failed
                 try:
-                    supabase_service.supabase.table("email_jobs")\
+                    db_client.table("email_jobs")\
                         .update({
                             "status": "failed",
                             "error_message": f"Processing error: {str(e)}",
@@ -143,23 +159,26 @@ class EmailJobService:
     async def process_single_job(self, job_id: str) -> bool:
         """
         Process a single email job through the complete pipeline.
-        
+
         Pipeline matches file upload flow:
         1. Download attachments from Storage
         2. Pass through DocumentProcessor (same as file uploads)
         3. Generate report using report_service
         4. Save report to saved_reports table
         5. Send notification email
-        
+
         Args:
             job_id: Email job ID
-            
+
         Returns:
             True if successful, False otherwise
         """
+        # Get service role client for database operations
+        db_client = self._get_service_role_client()
+
         try:
             # Step 1: Fetch job details
-            job = supabase_service.supabase.table("email_jobs")\
+            job = db_client.table("email_jobs")\
                 .select("*")\
                 .eq("id", job_id)\
                 .single()\
@@ -187,10 +206,8 @@ class EmailJobService:
             
             for attachment in attachments:
                 try:
-                    # Download from Supabase Storage
-                    file_content = self.storage_service.download_file(
-                        access_token="",  # Using service role
-                        refresh_token="",
+                    # Download from Supabase Storage using service role
+                    file_content = self.storage_service.download_document_for_system(
                         user_id=user_id,
                         storage_path=attachment["storage_path"]
                     )
@@ -241,7 +258,7 @@ class EmailJobService:
                 logger.warning(f"No default_agent_id for job {job_id}, report generation skipped")
                 
                 # For Phase 7, we'll mark as completed but note that report generation needs agent config
-                supabase_service.supabase.table("email_jobs")\
+                db_client.table("email_jobs")\
                     .update({
                         "status": "completed",
                         "error_message": "Documents processed but report not generated (no agent configured)",
@@ -264,7 +281,7 @@ class EmailJobService:
             # This part will be implemented when we add agent support
             
             # For now, mark as completed
-            supabase_service.supabase.table("email_jobs")\
+            db_client.table("email_jobs")\
                 .update({
                     "status": "completed",
                     "processing_completed_at": datetime.utcnow().isoformat()
@@ -287,7 +304,7 @@ class EmailJobService:
             
             # Update job status to failed
             try:
-                supabase_service.supabase.table("email_jobs")\
+                db_client.table("email_jobs")\
                     .update({
                         "status": "failed",
                         "error_message": str(e),

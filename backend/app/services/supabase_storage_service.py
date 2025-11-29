@@ -85,19 +85,19 @@ class SupabaseStorageService:
         return f"{user_id}/{report_id}/{content_hash}.pdf"
     
     def upload_document(
-        self, 
+        self,
         access_token: str,
         refresh_token: str,
-        user_id: str, 
-        document_id: str, 
-        pdf_bytes: bytes, 
+        user_id: str,
+        document_id: str,
+        pdf_bytes: bytes,
         report_id: str
     ) -> Dict[str, str]:
         """
         Upload PDF to Supabase Storage with content-addressed naming.
-        
+
         Uses SHA-256 hash for deduplication and enforces RLS policies.
-        
+
         Args:
             access_token: User's JWT access token
             refresh_token: User's refresh token (unused, kept for API compatibility)
@@ -105,34 +105,34 @@ class SupabaseStorageService:
             document_id: Document identifier
             pdf_bytes: Raw PDF binary data
             report_id: Report ID for organization
-            
+
         Returns:
             Dictionary with storage metadata including storage_path and content_hash
-            
+
         Raises:
             ValueError: If upload fails or RLS rejects
         """
         try:
             # Calculate content hash
             content_hash = self._calculate_content_hash(pdf_bytes)
-            
+
             # Construct storage path
             storage_path = self._construct_storage_path(user_id, report_id, content_hash)
-            
+
             # Create Storage client with JWT authentication
             storage = self._create_storage_client(access_token)
-            
+
             # Check if file already exists (deduplication)
             try:
                 existing_file = storage.from_(self.bucket_name).list(
                     path=f"{user_id}/{report_id}"
                 )
-                
+
                 file_exists = any(
-                    file.get("name") == f"{content_hash}.pdf" 
+                    file.get("name") == f"{content_hash}.pdf"
                     for file in existing_file
                 )
-                
+
                 if file_exists:
                     logging.info(f"File already exists in Storage: {storage_path}")
                     return {
@@ -144,7 +144,7 @@ class SupabaseStorageService:
                     }
             except Exception as e:
                 logging.warning(f"Failed to check for existing file: {e}")
-            
+
             # Upload to Storage
             response = storage.from_(self.bucket_name).upload(
                 path=storage_path,
@@ -154,12 +154,12 @@ class SupabaseStorageService:
                     "upsert": "false"  # string expected by API
                 }
             )
-            
+
             if hasattr(response, 'error') and response.error:
                 raise ValueError(f"Storage upload failed: {response.error}")
-            
+
             logging.info(f"Uploaded PDF to Storage: {storage_path} ({len(pdf_bytes)} bytes)")
-            
+
             return {
                 "storage_path": storage_path,
                 "content_hash": content_hash,
@@ -167,9 +167,101 @@ class SupabaseStorageService:
                 "stored_at": datetime.now().isoformat(),
                 "duplicate": False
             }
-            
+
         except Exception as e:
             logging.error(f"Failed to upload document {document_id}: {e}")
+            raise
+
+    def upload_document_for_user(
+        self,
+        user_id: str,
+        document_id: str,
+        pdf_bytes: bytes,
+        report_id: str,
+        content_type: str = "application/pdf"
+    ) -> Dict[str, str]:
+        """
+        Upload document using service role key (for system operations like webhooks).
+
+        Reuses the same core logic as upload_document() but bypasses RLS for system operations.
+        Use same content-addressed naming, deduplication, and metadata structure.
+
+        Args:
+            user_id: User ID for path isolation
+            document_id: Document identifier
+            pdf_bytes: Raw file binary data
+            report_id: Report ID for organization
+            content_type: MIME type of the file
+
+        Returns:
+            Dictionary with storage metadata (same format as upload_document)
+        """
+        try:
+            # Calculate content hash
+            content_hash = self._calculate_content_hash(pdf_bytes)
+
+            # Construct storage path (same format as user-uploaded files)
+            storage_path = self._construct_storage_path(user_id, report_id, content_hash)
+
+            # Create Storage client with service role key (bypasses RLS for system operations)
+            from app.config import SUPABASE_SERVICE_ROLE_KEY
+            storage = StorageClient(
+                f"{self.supabase_url}/storage/v1",
+                headers={
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                    "apikey": self.supabase_anon_key,
+                    "X-Client-Info": "storage3/py-service-role",
+                },
+            )
+
+            # Check if file already exists (deduplication)
+            try:
+                existing_file = storage.from_(self.bucket_name).list(
+                    path=f"{user_id}/{report_id}"
+                )
+
+                file_exists = any(
+                    file.get("name") == f"{content_hash}.pdf"
+                    for file in existing_file
+                )
+
+                if file_exists:
+                    logging.info(f"File already exists in Storage: {storage_path} (email attachment)")
+                    return {
+                        "storage_path": storage_path,
+                        "content_hash": content_hash,
+                        "bucket": self.bucket_name,
+                        "stored_at": datetime.now().isoformat(),
+                        "duplicate": True
+                    }
+            except Exception as e:
+                logging.warning(f"Failed to check for existing email attachment file: {e}")
+
+            # Upload to Storage with service role key
+            response = storage.from_(self.bucket_name).upload(
+                path=storage_path,
+                file=pdf_bytes,
+                file_options={
+                    "contentType": content_type,  # Use provided content type
+                    "upsert": "false"
+                }
+            )
+
+            if hasattr(response, 'error') and response.error:
+                raise ValueError(f"Storage upload failed for email attachment: {response.error}")
+
+            logging.info(f"Uploaded email attachment to Storage: {storage_path} ({len(pdf_bytes)} bytes)")
+
+            return {
+                "storage_path": storage_path,
+                "content_hash": content_hash,
+                "bucket": self.bucket_name,
+                "stored_at": datetime.now().isoformat(),
+                "duplicate": False
+            }
+
+        except Exception as e:
+            logging.error(f"Failed to upload email attachment {document_id}: {e}")
             raise
     
     def get_signed_url(

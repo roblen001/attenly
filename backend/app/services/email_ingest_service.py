@@ -485,7 +485,7 @@ class EmailIngestService:
             sender_id: ID of sender to remove
             
         Returns:
-            True if successful
+            True if successful, False if sender not found or already removed
         """
         try:
             # Create user-scoped client
@@ -497,8 +497,13 @@ class EmailIngestService:
                 .eq("user_id", user_id)\
                 .execute()
             
-            logger.info(f"Removed sender {sender_id} for user {user_id}")
-            return True
+            # Check if deletion actually occurred
+            if result.data:
+                logger.info(f"Removed sender {sender_id} for user {user_id}")
+                return True
+            else:
+                logger.warning(f"No sender found to delete: {sender_id} for user {user_id}")
+                return False
             
         except Exception as e:
             logger.error(f"Failed to remove sender {sender_id} for user {user_id}: {str(e)}")

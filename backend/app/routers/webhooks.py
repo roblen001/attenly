@@ -13,14 +13,15 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
+from svix.webhooks import Webhook, WebhookVerificationError
 
 from app.config import (
     EMAIL_ALLOWED_EXTENSIONS,
     EMAIL_MAX_ATTACHMENTS,
     EMAIL_MAX_ATTACHMENT_SIZE_MB,
-    EMAIL_MAX_TOTAL_SIZE_MB
+    EMAIL_MAX_TOTAL_SIZE_MB,
+    RESEND_WEBHOOK_SECRET
 )
-from app.services.email_service import EmailService
 from app.services.email_ingest_service import EmailIngestService
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.services.supabase_service import supabase_service
@@ -29,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-email_service = EmailService()
 email_ingest_service = EmailIngestService()
 storage_service = SupabaseStorageService()
 
@@ -94,36 +94,49 @@ async def handle_inbound_email(request: Request):
         - 200: Valid request (may or may not create job)
     """
     try:
-        # Step 1: Read and verify signature using Svix headers
-        raw_body = await request.body()
-        svix_id = request.headers.get("svix-id", "")
-        svix_timestamp = request.headers.get("svix-timestamp", "")
-        svix_signature = request.headers.get("svix-signature", "")
+        # Step 1: Verify webhook signature using Svix
+        if not RESEND_WEBHOOK_SECRET:
+            logger.error("RESEND_WEBHOOK_SECRET not configured")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"error": "Webhook secret not configured"}
+            )
         
-        if not all([svix_id, svix_timestamp, svix_signature]):
+        # Read raw body and headers
+        raw_body = await request.body()
+        headers = {
+            "svix-id": request.headers.get("svix-id", ""),
+            "svix-timestamp": request.headers.get("svix-timestamp", ""),
+            "svix-signature": request.headers.get("svix-signature", "")
+        }
+        
+        # Verify that all required headers are present
+        if not all(headers.values()):
             logger.warning("Webhook received with missing Svix headers")
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={"error": "Missing Svix webhook headers"}
             )
         
-        if not email_service.verify_webhook_signature(raw_body, svix_id, svix_timestamp, svix_signature):
-            logger.warning("Invalid webhook signature")
+        # Verify signature using Svix
+        try:
+            wh = Webhook(RESEND_WEBHOOK_SECRET)
+            payload = wh.verify(raw_body, headers)
+            logger.info("Webhook signature verified successfully")
+        except WebhookVerificationError as e:
+            logger.warning(f"Invalid webhook signature: {e}")
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={"error": "Invalid webhook signature"}
             )
-        
-        # Step 2: Parse payload
-        import json
-        try:
-            payload = json.loads(raw_body.decode('utf-8'))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse webhook payload: {e}")
+        except Exception as e:
+            logger.error(f"Error verifying webhook signature: {e}")
             return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"error": "Invalid JSON payload"}
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": "Webhook verification failed"}
             )
+        
+        # Step 2: Parse and process payload (already verified and parsed by Svix)
         
         event_type = payload.get("type")
         email_data = payload.get("data", {})

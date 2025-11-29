@@ -152,7 +152,8 @@ async def handle_inbound_email(request: Request):
         to_list = email_data.get("to", [])
         to_address = to_list[0] if to_list else ""
         from_address = email_data.get("from", "")
-        
+        email_id = email_data.get("email_id", "")
+
         subject = email_data.get("subject", "")
         email_body = email_data.get("text", "") or email_data.get("html", "")
         attachments = email_data.get("attachments", [])
@@ -229,38 +230,60 @@ async def handle_inbound_email(request: Request):
             db_client.table("email_jobs").insert(job_data).execute()
             return JSONResponse(content={"status": "rate_limited"})
         
-        # Step 7: Validate attachments
+        # Step 7: Fetch detailed attachment list from Resend Receiving Attachments API
+        import httpx
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                list_url = f"https://api.resend.com/emails/receiving/{email_id}/attachments"
+                headers = {"Authorization": f"Bearer {RESEND_API_KEY}"}
+                list_resp = await client.get(list_url, headers=headers)
+                list_resp.raise_for_status()
+                attachment_list_data = list_resp.json()
+                detailed_attachments = attachment_list_data.get("data", [])
+                logger.info(f"Fetched {len(detailed_attachments)} detailed attachments from Resend API")
+            except Exception as e:
+                logger.error(f"Failed to fetch attachment list from Resend API: {e}")
+                # Fallback to webhook metadata if API call fails
+                detailed_attachments = []
+
+        # Step 8: Validate attachments (use detailed list if available, fallback to webhook metadata)
         valid_attachments = []
         skipped_attachments = []
         total_size_bytes = 0
-        
+
         for attachment in attachments[:EMAIL_MAX_ATTACHMENTS]:
             filename = attachment.get("filename", "unnamed")
             size_bytes = attachment.get("size", 0)
-            content_type = attachment.get("content_type", "")
-            
-            # Resend provides attachment ID - construct download URL
             attachment_id = attachment.get("id", "")
-            if not attachment_id:
-                logger.warning(f"Attachment {filename} has no ID, skipping")
-                skipped_attachments.append({"filename": filename, "reason": "No attachment ID"})
-                continue
-            
-            # Resend attachment download URL format
-            download_url = f"https://api.resend.com/attachments/{attachment_id}"
-            
+
             is_valid, error_msg = validate_attachment(filename, size_bytes)
-            
+
             if not is_valid:
                 logger.info(f"Skipping attachment: {filename} - {error_msg}")
                 skipped_attachments.append({"filename": filename, "reason": error_msg})
                 continue
-            
+
+            # Check if we have detailed attachment info from API
+            detailed_info = None
+            if detailed_attachments:
+                detailed_info = next((a for a in detailed_attachments if a.get("id") == attachment_id), None)
+
+            # Use API-provided download URL if available, otherwise construct basic URL
+            if detailed_info and "download_url" in detailed_info:
+                download_url = detailed_info["download_url"]
+                content_type = detailed_info.get("content_type", attachment.get("content_type", ""))
+                logger.info(f"Using detailed download URL for {filename}")
+            else:
+                # Fallback - this might still fail but we'll try
+                download_url = f"https://api.resend.com/attachments/{attachment_id}"
+                content_type = attachment.get("content_type", "")
+                logger.warning(f"Falling back to basic download URL for {filename} - may fail with 405")
+
             if total_size_bytes + size_bytes > EMAIL_MAX_TOTAL_SIZE_MB * 1024 * 1024:
                 logger.warning(f"Total size limit exceeded, skipping: {filename}")
                 skipped_attachments.append({"filename": filename, "reason": "Total size limit exceeded"})
                 continue
-            
+
             valid_attachments.append({
                 "filename": filename,
                 "size_bytes": size_bytes,
@@ -297,9 +320,8 @@ async def handle_inbound_email(request: Request):
         async with httpx.AsyncClient(timeout=30.0) as client:
             for attachment in valid_attachments:
                 try:
-                    # Download attachment from Resend API with authorization
-                    headers = {"Authorization": f"Bearer {RESEND_API_KEY}"}
-                    response = await client.get(attachment["download_url"], headers=headers)
+                    # Download attachment from Resend's pre-signed download URL (no auth needed)
+                    response = await client.get(attachment["download_url"])
                     response.raise_for_status()
                     file_content = response.content
                     

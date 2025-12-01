@@ -161,11 +161,14 @@ class EmailJobService:
         Process a single email job through the complete pipeline.
 
         Pipeline matches file upload flow:
-        1. Download attachments from Storage
-        2. Pass through DocumentProcessor (same as file uploads)
-        3. Generate report using report_service
-        4. Save report to saved_reports table
-        5. Send notification email
+        1. Check idempotency (skip if report already generated)
+        2. Download attachments from Storage
+        3. Pass through DocumentProcessor (same as file uploads)
+        4. Load agent configuration
+        5. Generate report using report_service
+        6. Save report to saved_reports table
+        7. Update email_jobs.report_id
+        8. Send notification email with report URL
 
         Args:
             job_id: Email job ID
@@ -190,6 +193,24 @@ class EmailJobService:
             
             job_data = job.data
             user_id = job_data["user_id"]
+            
+            # Step 2: IDEMPOTENCY CHECK - Skip if report already generated
+            if job_data.get("report_id"):
+                logger.info(f"Job {job_id} already has report_id {job_data['report_id']}, skipping processing")
+                
+                # Verify job is in terminal state
+                if job_data.get("status") == "processing":
+                    logger.warning(f"Job {job_id} has report_id but status is 'processing', fixing to 'completed'")
+                    db_client.table("email_jobs")\
+                        .update({
+                            "status": "completed",
+                            "updated_at": datetime.utcnow().isoformat()
+                        })\
+                        .eq("id", job_id)\
+                        .execute()
+                
+                return True
+            
             attachments = job_data["raw_metadata"].get("attachments", [])
             
             if not attachments:
@@ -247,56 +268,216 @@ class EmailJobService:
             if not processed_documents:
                 raise ValueError(f"No documents were successfully processed. Errors: {'; '.join(processing_errors)}")
             
-            # Step 5: Get agent configuration
-            # TODO: Support for instruction_text interpretation and custom agents
-            # For now, use default_agent_id if provided, otherwise use a default prebuilt agent
+            # Step 5: Load agent configuration
             agent_id = job_data.get("default_agent_id")
             
             if not agent_id:
-                # Use a default agent (e.g., first prebuilt agent)
-                # In production, you might want to interpret instruction_text to select agent
-                logger.warning(f"No default_agent_id for job {job_id}, report generation skipped")
+                error_msg = "No default agent configured. Please configure a default agent in Settings → Email Ingest."
+                logger.error(f"Job {job_id}: {error_msg}")
                 
-                # For Phase 7, we'll mark as completed but note that report generation needs agent config
                 db_client.table("email_jobs")\
                     .update({
-                        "status": "completed",
-                        "error_message": "Documents processed but report not generated (no agent configured)",
+                        "status": "failed",
+                        "error_message": error_msg,
                         "completed_at": datetime.utcnow().isoformat()
                     })\
                     .eq("id", job_id)\
                     .execute()
                 
-                # Send notification about successful processing
-                await self._send_processing_notification(
-                    job_data,
-                    success=True,
-                    message=f"Documents processed successfully but report generation requires agent configuration"
+                await self.email_service.send_job_failed_email(
+                    to=job_data["from_email"],
+                    job_id=job_id,
+                    error=error_msg
                 )
                 
-                return True
+                return False
             
-            # Step 6: Generate report (same as file uploader flow)
-            # Get agent configuration from database or prebuilt agents
-            # This part will be implemented when we add agent support
+            # Load agent using agent_loader (handles both prebuilt and custom agents)
+            from app.services.agent_loader import load_agent_by_id
             
-            # For now, mark as completed
+            try:
+                agent = load_agent_by_id(agent_id, user_id)
+                logger.info(f"Loaded agent '{agent.name}' ({agent_id}) for job {job_id}")
+            except ValueError as e:
+                error_msg = f"Configured agent '{agent_id}' not found or deleted. Please update your agent configuration."
+                logger.error(f"Job {job_id}: {error_msg} - {str(e)}")
+                
+                db_client.table("email_jobs")\
+                    .update({
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "completed_at": datetime.utcnow().isoformat()
+                    })\
+                    .eq("id", job_id)\
+                    .execute()
+                
+                await self.email_service.send_job_failed_email(
+                    to=job_data["from_email"],
+                    job_id=job_id,
+                    error=error_msg
+                )
+                
+                return False
+            
+            # Step 6: Generate report (same as file upload flow)
+            document_ids = [doc["file_id"] for doc in processed_documents]
+            
+            # Collect bounding box data if available (for OCR documents)
+            bbox_data = {}
+            for doc in processed_documents:
+                doc_id = doc["file_id"]
+                processing_result = doc["processing_result"]
+                
+                if "document_data" in processing_result:
+                    extracted_data = processing_result["document_data"]
+                    if "bounding_boxes" in extracted_data:
+                        bbox_data[doc_id] = extracted_data["bounding_boxes"]
+                        logger.info(f"Collected bbox data for document {doc_id}")
+            
+            if bbox_data:
+                logger.info(f"Collected bbox data for {len(bbox_data)} OCR documents")
+            
+            try:
+                report_result = await report_service.generate_report(
+                    agent=agent,
+                    vector_store=vector_store,
+                    document_ids=document_ids,
+                    bbox_data=bbox_data if bbox_data else None
+                )
+                
+                if not report_result["success"]:
+                    raise ValueError(f"Report generation failed: {report_result.get('error', 'Unknown error')}")
+                
+                logger.info(f"Successfully generated report for job {job_id}")
+                
+            except Exception as e:
+                error_msg = f"Report generation failed: {str(e)}"
+                logger.error(f"Job {job_id}: {error_msg}")
+                
+                db_client.table("email_jobs")\
+                    .update({
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "completed_at": datetime.utcnow().isoformat()
+                    })\
+                    .eq("id", job_id)\
+                    .execute()
+                
+                await self.email_service.send_job_failed_email(
+                    to=job_data["from_email"],
+                    job_id=job_id,
+                    error=error_msg
+                )
+                
+                return False
+            
+            # Step 7: Extract AI baseline for audit trail
+            ai_baseline_answers = supabase_service._extract_baseline_answers(report_result["report_data"])
+            logger.info(f"Extracted AI baseline with {len(ai_baseline_answers)} answers")
+            
+            # Step 8: Save report using service role (system-level save)
+            report_name = self._generate_report_name(job_data, agent)
+            
+            # Build document contents (minimal, no full_text extraction needed for saved reports)
+            document_contents = {}
+            pdf_binaries = {}
+            
+            for doc in processed_documents:
+                doc_id = doc["file_id"]
+                filename = doc["filename"]
+                processing_result = doc["processing_result"]
+                
+                document_contents[doc_id] = {
+                    "filename": filename,
+                    "metadata": processing_result.get("processing_stats", {})
+                }
+                
+                # Store original PDF content if available
+                # For email attachments, we need to re-download from Storage
+                try:
+                    # Find the attachment in job metadata
+                    matching_attachment = next(
+                        (att for att in attachments if att["filename"] == filename),
+                        None
+                    )
+                    
+                    if matching_attachment:
+                        pdf_content = self.storage_service.download_document_for_system(
+                            user_id=user_id,
+                            storage_path=matching_attachment["storage_path"]
+                        )
+                        
+                        if pdf_content:
+                            pdf_binaries[doc_id] = pdf_content
+                            logger.info(f"Collected PDF binary for {doc_id} ({len(pdf_content)} bytes)")
+                
+                except Exception as e:
+                    logger.warning(f"Failed to collect PDF binary for {doc_id}: {e}")
+            
+            try:
+                report_id = supabase_service.save_report_for_system(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    agent_name=agent.name,
+                    report_name=report_name,
+                    report_data=report_result["report_data"],
+                    document_contents=document_contents,
+                    pdf_binaries=pdf_binaries if pdf_binaries else None,
+                    cached_ai_baseline=ai_baseline_answers
+                )
+                
+                logger.info(f"Successfully saved report {report_id} for job {job_id}")
+                
+            except Exception as e:
+                error_msg = f"Failed to save report: {str(e)}"
+                logger.error(f"Job {job_id}: {error_msg}")
+                
+                db_client.table("email_jobs")\
+                    .update({
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "completed_at": datetime.utcnow().isoformat()
+                    })\
+                    .eq("id", job_id)\
+                    .execute()
+                
+                await self.email_service.send_job_failed_email(
+                    to=job_data["from_email"],
+                    job_id=job_id,
+                    error=error_msg
+                )
+                
+                return False
+            
+            # Step 9: Update email_jobs.report_id
             db_client.table("email_jobs")\
                 .update({
+                    "report_id": report_id,
                     "status": "completed",
                     "completed_at": datetime.utcnow().isoformat()
                 })\
                 .eq("id", job_id)\
                 .execute()
             
-            # Step 7: Send success notification
-            await self._send_processing_notification(
-                job_data,
-                success=True,
-                message=f"Successfully processed {len(processed_documents)} documents"
-            )
+            logger.info(f"Updated job {job_id} with report_id {report_id}")
             
-            logger.info(f"✅ Successfully completed job {job_id}")
+            # Step 10: Send notification with report URL
+            from app.utils.urls import build_report_url
+            report_url = build_report_url(report_id)
+            
+            try:
+                await self.email_service.send_report_ready_email(
+                    to=job_data["from_email"],
+                    report_url=report_url,
+                    report_name=report_name,
+                    subject_text=job_data.get("subject", "your email")
+                )
+                logger.info(f"Sent report ready notification to {job_data['from_email']}")
+            except Exception as email_error:
+                # Log but don't fail the job - report was saved successfully
+                logger.error(f"Failed to send notification email (report still saved): {email_error}")
+            
+            logger.info(f"✅ Successfully completed job {job_id} with report {report_id}")
             return True
         
         except Exception as e:
@@ -324,6 +505,41 @@ class EmailJobService:
                 logger.error(f"Failed to update job status: {update_error}")
             
             return False
+    
+    def _generate_report_name(self, job_data: Dict[str, Any], agent) -> str:
+        """
+        Generate a descriptive report name from email job data.
+        
+        Format: "{Agent Name} - {subject}" or "{Agent Name} - {date}" if no subject
+        
+        Args:
+            job_data: Email job metadata
+            agent: Agent object used for report generation
+            
+        Returns:
+            Generated report name
+        """
+        agent_name = agent.name
+        
+        # Try to use email subject as report name
+        subject = job_data.get("subject", "").strip()
+        
+        if subject:
+            # Truncate if too long
+            max_length = 100
+            if len(subject) > max_length:
+                subject = subject[:max_length] + "..."
+            return f"{agent_name} - {subject}"
+        
+        # Fallback: Use date
+        created_at = job_data.get("created_at", datetime.utcnow().isoformat())
+        try:
+            date_obj = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            date_str = date_obj.strftime("%Y-%m-%d %H:%M")
+        except:
+            date_str = "Unknown Date"
+        
+        return f"{agent_name} - {date_str}"
     
     async def _send_processing_notification(
         self, 

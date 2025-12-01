@@ -268,8 +268,36 @@ class EmailJobService:
             if not processed_documents:
                 raise ValueError(f"No documents were successfully processed. Errors: {'; '.join(processing_errors)}")
             
-            # Step 5: Load agent configuration
-            agent_id = job_data.get("default_agent_id")
+            # Step 5: Load agent configuration from email_ingest_endpoints (source of truth)
+            # Look up the endpoint to get the current default_agent_id
+            endpoint_result = db_client.table("email_ingest_endpoints")\
+                .select("default_agent_id")\
+                .eq("id", job_data["ingest_endpoint_id"])\
+                .single()\
+                .execute()
+            
+            if not endpoint_result.data:
+                error_msg = "Email endpoint not found. Please check your email ingest settings."
+                logger.error(f"Job {job_id}: {error_msg}")
+                
+                db_client.table("email_jobs")\
+                    .update({
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "completed_at": datetime.utcnow().isoformat()
+                    })\
+                    .eq("id", job_id)\
+                    .execute()
+                
+                await self.email_service.send_job_failed_email(
+                    to=job_data["from_email"],
+                    job_id=job_id,
+                    error=error_msg
+                )
+                
+                return False
+            
+            agent_id = endpoint_result.data.get("default_agent_id")
             
             if not agent_id:
                 error_msg = "No default agent configured. Please configure a default agent in Settings → Email Ingest."

@@ -377,7 +377,6 @@ async def handle_inbound_email(request: Request):
             "id": job_id,
             "user_id": user_id,
             "ingest_endpoint_id": endpoint_data["id"],
-            "default_agent_id": endpoint_data.get("default_agent_id"),
             "from_email": from_address,
             "subject": subject[:255],
             "provider_message_id": provider_message_id,

@@ -36,6 +36,7 @@ class SupabaseService:
                    cached_ai_baseline: Optional[Dict[str, str]] = None) -> str:
         """
         Save a complete report with document content, PDF binaries, and audit trail.
+        Uses user JWT for RLS-compliant access (web endpoints).
         
         This method now handles audit trail functionality:
         1. On first save: Uses cached AI baseline from report generation (or extracts from report_data as fallback)
@@ -50,13 +51,108 @@ class SupabaseService:
             # Create user-context client for RLS compliance
             user_client = self._create_user_client(user_jwt)
             
+            # Use shared internal helper
+            return self._save_report_internal(
+                client=user_client,
+                user_id=user_id,
+                agent_id=agent_id,
+                agent_name=agent_name,
+                report_name=report_name,
+                report_data=report_data,
+                document_contents=document_contents,
+                pdf_binaries=pdf_binaries,
+                access_token=user_jwt,
+                refresh_token=refresh_token,
+                existing_report_id=existing_report_id,
+                cached_ai_baseline=cached_ai_baseline
+            )
+        except Exception as e:
+            logging.error(f"Error saving report to Supabase: {e}")
+            raise
+
+    def save_report_for_system(self, user_id: str, agent_id: str, agent_name: str,
+                               report_name: str, report_data: dict, document_contents: dict,
+                               pdf_binaries: Optional[Dict[str, bytes]] = None,
+                               cached_ai_baseline: Optional[Dict[str, str]] = None) -> str:
+        """
+        Save a report using service role key (for background jobs like email processor).
+        Bypasses RLS but manually enforces user_id ownership.
+        
+        Args:
+            user_id: User ID for ownership
+            agent_id: Agent ID
+            agent_name: Agent display name
+            report_name: Report name
+            report_data: Report content
+            document_contents: Document metadata
+            pdf_binaries: PDF file bytes
+            cached_ai_baseline: AI baseline for audit trail
+            
+        Returns:
+            report_id: UUID of saved report
+        """
+        try:
+            if not self.supabase_service_key:
+                raise ValueError("Service role key not configured - cannot save reports from background jobs")
+            
+            # Create service role client (bypasses RLS)
+            service_client = create_client(self.supabase_url, self.supabase_service_key)
+            
+            logging.info(f"Saving report for user {user_id} via service role (background job)")
+            
+            # Use shared internal helper
+            return self._save_report_internal(
+                client=service_client,
+                user_id=user_id,
+                agent_id=agent_id,
+                agent_name=agent_name,
+                report_name=report_name,
+                report_data=report_data,
+                document_contents=document_contents,
+                pdf_binaries=pdf_binaries,
+                access_token=self.supabase_service_key,  # Use service key for Storage
+                refresh_token="",  # No refresh token in background jobs
+                existing_report_id=None,  # Always create new reports from background jobs
+                cached_ai_baseline=cached_ai_baseline
+            )
+        except Exception as e:
+            logging.error(f"Error saving report via service role: {e}")
+            raise
+
+    def _save_report_internal(self, client: Client, user_id: str, agent_id: str, agent_name: str,
+                              report_name: str, report_data: dict, document_contents: dict,
+                              pdf_binaries: Optional[Dict[str, bytes]] = None,
+                              access_token: str = "", refresh_token: str = "",
+                              existing_report_id: Optional[str] = None,
+                              cached_ai_baseline: Optional[Dict[str, str]] = None) -> str:
+        """
+        Internal helper for saving reports. Used by both user-context and system-context saves.
+        
+        Args:
+            client: Supabase client (user-context or service role)
+            user_id: User ID for ownership
+            agent_id: Agent ID
+            agent_name: Agent display name
+            report_name: Report name
+            report_data: Report content
+            document_contents: Document metadata
+            pdf_binaries: PDF file bytes
+            access_token: JWT token or service key for Storage operations
+            refresh_token: Refresh token for Storage (user-context only)
+            existing_report_id: If provided, updates existing report
+            cached_ai_baseline: AI baseline for audit trail
+            
+        Returns:
+            report_id: UUID of saved report
+        """
+        try:
             is_update = existing_report_id is not None
             
             # For updates, fetch existing baseline
             existing_baseline = None
             if is_update:
                 try:
-                    existing_report = user_client.table("saved_reports")\
+                    existing_report = client.table("saved_reports")\
                         .select("ai_baseline_answers")\
                         .eq("id", existing_report_id)\
                         .eq("user_id", user_id)\
@@ -102,7 +198,7 @@ class SupabaseService:
             
             # Insert or update report record
             if is_update:
-                result = user_client.table("saved_reports")\
+                result = client.table("saved_reports")\
                     .update(report_data_dict)\
                     .eq("id", existing_report_id)\
                     .eq("user_id", user_id)\
@@ -110,7 +206,7 @@ class SupabaseService:
                 report_id = existing_report_id
                 logging.info(f"Updated report with ID: {report_id} for user: {user_id}")
             else:
-                result = user_client.table("saved_reports").insert(report_data_dict).execute()
+                result = client.table("saved_reports").insert(report_data_dict).execute()
                 if not result.data:
                     raise Exception("Failed to insert report record")
                 report_id = result.data[0]["id"]
@@ -120,7 +216,7 @@ class SupabaseService:
             if ai_baseline_answers:
                 try:
                     self._compute_and_store_changes(
-                        user_client,
+                        client,
                         user_id, 
                         report_id,
                         ai_baseline_answers,
@@ -148,9 +244,9 @@ class SupabaseService:
                     pdf_bytes = pdf_binaries[doc_id]
                     
                     try:
-                        # Upload to Supabase Storage with authenticated session (RLS enforced)
+                        # Upload to Supabase Storage with authenticated session
                         storage_metadata = storage_service.upload_document(
-                            access_token=user_jwt,
+                            access_token=access_token,
                             refresh_token=refresh_token,
                             user_id=user_id,
                             document_id=doc_id,
@@ -175,7 +271,7 @@ class SupabaseService:
                 else:
                     logging.info(f"No PDF binary for {doc_id} (likely OCR document)")
                 
-                doc_result = user_client.table("saved_report_documents").insert(doc_insert).execute()
+                doc_result = client.table("saved_report_documents").insert(doc_insert).execute()
                 
                 if not doc_result.data:
                     logging.warning(f"Failed to insert document content for {doc_id}")
@@ -757,6 +853,47 @@ class SupabaseService:
             
         except Exception as e:
             logging.error(f"Error fetching agent {agent_id}: {e}")
+            return None
+
+    def get_agent_by_id_system(self, agent_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific custom agent by ID using service role key (bypasses RLS).
+        
+        This method is used by background jobs (email processor) that don't have
+        user JWT context. It uses the service role key to access custom agents
+        while still verifying user ownership.
+        
+        Args:
+            agent_id: Agent UUID
+            user_id: User ID for ownership verification
+            
+        Returns:
+            Agent data dictionary with questions, or None if not found
+        """
+        try:
+            if not self.supabase_service_key:
+                logging.error("Service role key not configured - cannot access custom agents in background jobs")
+                return None
+            
+            # Create service role client (bypasses RLS)
+            service_client = create_client(self.supabase_url, self.supabase_service_key)
+            
+            # Query agent with user_id filter (ensures user owns the agent)
+            result = service_client.table("agents")\
+                .select("*, agent_questions(*)")\
+                .eq("id", agent_id)\
+                .eq("user_id", user_id)\
+                .eq("is_custom", True)\
+                .single()\
+                .execute()
+            
+            if result.data:
+                logging.info(f"Loaded custom agent {agent_id} for user {user_id} via service role")
+            
+            return result.data
+            
+        except Exception as e:
+            logging.warning(f"Error fetching agent {agent_id} via service role: {e}")
             return None
 
     def update_custom_agent(self, user_jwt: str, user_id: str, agent_id: str,

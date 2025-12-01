@@ -10,6 +10,7 @@ import hashlib
 from app.schemas import Agent, SaveReportRequest, SavedReportOut, SavedReportDetailOut, UpdateSavedReportRequest, UpdateCachedReportRequest, CustomAgentOut, CreateCustomAgentRequest, UpdateCustomAgentRequest
 from app.core.deps import get_current_user
 from app.services.supabase_service import supabase_service
+from app.services.agent_loader import load_agent_by_id
 import uuid
 
 # Import document processing services
@@ -67,6 +68,83 @@ def extract_auth_tokens(
 def calculate_content_hash(content: bytes) -> str:
     """Calculate SHA-256 hash of file content for duplicate detection"""
     return hashlib.sha256(content).hexdigest()
+
+def _get_agent_by_id_internal(agent_id: str, user_id: str, jwt_token: Optional[str] = None) -> dict:
+    """
+    Internal helper to get agent configuration by ID.
+    Handles both prebuilt agents (from JSON) and custom agents (from database with JWT).
+    
+    Args:
+        agent_id: Agent identifier (slug for prebuilt, UUID for custom)
+        user_id: User ID for ownership verification
+        jwt_token: Optional JWT token for custom agent database access
+        
+    Returns:
+        Agent dictionary matching Agent schema
+        
+    Raises:
+        HTTPException: If agent not found or access denied
+    """
+    # Step 1: Try prebuilt agents from JSON
+    prebuilt_path = Path(__file__).parent.parent / "seeds" / "prebuilt_agents.json"
+    
+    if prebuilt_path.exists():
+        try:
+            items = json.loads(prebuilt_path.read_text(encoding="utf-8"))
+            
+            # Find the specific agent in prebuilt
+            for item in items:
+                if item["slug"] == agent_id:
+                    # Found prebuilt agent - convert to Agent schema format
+                    agent_dict = {
+                        "id": item["slug"],
+                        "name": item["name"],
+                        "description": item.get("description"),
+                        "reportTemplate": item.get("reportTemplate"),
+                        "questions": item.get("questions", [])
+                    }
+                    return agent_dict
+                    
+        except json.JSONDecodeError as e:
+            logging.error(f"Failed to parse prebuilt agents JSON: {e}")
+            raise HTTPException(status_code=500, detail="Invalid prebuilt agents configuration")
+        except Exception as e:
+            logging.error(f"Error reading prebuilt agents: {e}")
+            # Continue to custom agent lookup
+    
+    # Step 2: Try custom agents from database (requires JWT for RLS)
+    if jwt_token:
+        try:
+            agent_data = supabase_service.get_agent_by_id(jwt_token, user_id, agent_id)
+            
+            if agent_data:
+                # Transform custom agent data to match Agent schema
+                questions_out = []
+                for q in agent_data.get("agent_questions", []):
+                    questions_out.append({
+                        "id": str(q["id"]),
+                        "placeholder": q["placeholder"],
+                        "prompt": q["prompt"]
+                    })
+                
+                agent_dict = {
+                    "id": str(agent_data["id"]),
+                    "name": agent_data["name"],
+                    "description": agent_data.get("description", ""),
+                    "reportTemplate": agent_data["report_template"],
+                    "questions": questions_out
+                }
+                return agent_dict
+                
+        except Exception as e:
+            logging.warning(f"Failed to lookup custom agent {agent_id}: {e}")
+            # Continue to not found error below
+    
+    # Step 3: Agent not found in either prebuilt or database
+    raise HTTPException(
+        status_code=404,
+        detail=f"Agent '{agent_id}' not found or you don't have access to it"
+    )
 
 def find_duplicate_file(user_id: str, content_hash: str) -> dict:
     """Find existing file with same content hash in user's session (excluding failed files)"""
@@ -766,16 +844,11 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
     """Process uploaded documents with specific agent for data extraction and cache results"""
     user_id = current_user.id
     
-    # Get agent configuration using internal helper (no dependency injection)
+    # Get agent configuration
     try:
-        # Extract JWT token from request headers
-        auth_header = request.headers.get("Authorization")
-        jwt_token = extract_jwt_token(auth_header)
-        agent_dict = _get_agent_by_id_internal(agent_id, user_id, jwt_token)
-        # Convert dictionary to Agent object for type safety
-        agent = Agent(**agent_dict)
-    except HTTPException as e:
-        raise e
+        agent = load_agent_by_id(agent_id, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     
     # Check if there are uploaded files for this user
     if user_id not in uploaded_files_storage or not uploaded_files_storage[user_id]:
@@ -2124,65 +2197,6 @@ async def delete_custom_agent(
     except Exception as e:
         logging.error(f"Failed to delete custom agent {agent_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete custom agent: {str(e)}")
-
-def _get_agent_by_id_internal(agent_id: str, user_id: str = None, jwt_token: str = None):
-    """Internal helper function to get agent by ID without dependency injection"""
-    try:
-        # Try prebuilt agents first
-        data_path = Path(__file__).parent.parent / "seeds" / "prebuilt_agents.json"
-        
-        if data_path.exists():
-            items = json.loads(data_path.read_text(encoding="utf-8"))
-            
-            # Find the specific agent in prebuilt
-            for item in items:
-                if item["slug"] == agent_id:
-                    agent_dict = {
-                        "id": item["slug"],
-                        "name": item["name"],
-                        "description": item.get("description"),
-                        "reportTemplate": item.get("reportTemplate"),
-                        "questions": item.get("questions", [])
-                    }
-                    return agent_dict
-        
-        # Try custom agents from database (only if user context provided)
-        if user_id and jwt_token:
-            try:
-                agent_data = supabase_service.get_agent_by_id(jwt_token, user_id, agent_id)
-                if agent_data:
-                    # Transform custom agent data to match Agent schema
-                    questions_out = []
-                    for q in agent_data.get("agent_questions", []):
-                        questions_out.append({
-                            "id": str(q["id"]),
-                            "placeholder": q["placeholder"],
-                            "prompt": q["prompt"]
-                        })
-                    
-                    agent_dict = {
-                        "id": str(agent_data["id"]),
-                        "name": agent_data["name"],
-                        "description": agent_data["description"],
-                        "reportTemplate": agent_data["report_template"],
-                        "questions": questions_out
-                    }
-                    return agent_dict
-            except Exception as e:
-                logging.warning(f"Failed to lookup custom agent {agent_id}: {e}")
-                # Continue to not found error below
-        
-        # Agent not found in either prebuilt or database
-        raise HTTPException(status_code=404, detail=f"Agent with ID '{agent_id}' not found")
-        
-    except json.JSONDecodeError as e:
-        logging.error(f"Failed to parse prebuilt agents JSON: {e}")
-        raise HTTPException(status_code=500, detail="Invalid JSON format in prebuilt agents file")
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions
-    except Exception as e:
-        logging.error(f"Error loading agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load agent")
 
 @router.get("/{agent_id}", response_model=Agent)
 def get_agent_by_id(agent_id: str, current_user = Depends(get_current_user), jwt_token: str = Depends(extract_jwt_token)):

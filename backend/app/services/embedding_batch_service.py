@@ -293,7 +293,7 @@ class EmbeddingBatchService:
             else:
                 # For failed batches, add zero vectors to maintain index alignment
                 batch_size = len(batches[batch_result.batch_index])
-                zero_embeddings = [[0.0] * 768 for _ in range(batch_size)]  # text-embedding-004 has 768 dimensions
+                zero_embeddings = [[0.0] * 768 for _ in range(batch_size)]  # gemini-embedding-001 has 768 dimensions
                 all_embeddings.extend(zero_embeddings)
                 logger.error(f"Using zero vectors for failed batch {batch_result.batch_index}")
         

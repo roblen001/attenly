@@ -3,177 +3,272 @@
     "slug": "corporate-health-check-template",
     "name": "Corporate Health Check Report",
     "description": "Structured corporate records and minute book review report for law firm corporate services / Corporate Health style engagements.",
-    "reportTemplate": "<!DOCTYPE html>\n<html lang='en'>\n<head>\n  <meta charset='UTF-8'>\n  <title>{{report_title}}</title>\n  <style>\n    body {\n      font-family: 'Times New Roman', Georgia, serif;\n      font-size: 11pt;\n      line-height: 1.4;\n      color: #222;\n      margin: 40px 60px;\n    }\n    h1, h2, h3, h4 {\n      font-family: 'Times New Roman', Georgia, serif;\n      margin-top: 18px;\n      margin-bottom: 6px;\n    }\n    h1 {\n      font-size: 20pt;\n      text-transform: uppercase;\n      letter-spacing: 1px;\n      border-bottom: 2px solid #000;\n      padding-bottom: 4px;\n    }\n    h2 {\n      font-size: 14pt;\n      border-bottom: 1px solid #444;\n      padding-bottom: 2px;\n    }\n    h3 {\n      font-size: 12pt;\n      text-decoration: underline;\n    }\n    .smallcaps {\n      font-variant: small-caps;\n    }\n    .section-number {\n      font-weight: bold;\n      margin-right: 4px;\n    }\n    .meta-table, .content-table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-top: 6px;\n      margin-bottom: 12px;\n      font-size: 10.5pt;\n    }\n    .meta-table td {\n      padding: 2px 4px;\n      vertical-align: top;\n    }\n    .content-table th, .content-table td {\n      border: 1px solid #888;\n      padding: 4px 6px;\n      vertical-align: top;\n    }\n    .content-table th {\n      background-color: #f2f2f2;\n      font-weight: bold;\n      text-align: left;\n    }\n    .muted {\n      color: #555;\n      font-size: 10pt;\n    }\n    .page-break {\n      page-break-before: always;\n    }\n    ul {\n      margin-top: 4px;\n      margin-bottom: 8px;\n    }\n    li {\n      margin-bottom: 2px;\n    }\n  </style>\n</head>\n<body>\n\n  <!-- COVER PAGE -->\n  <h1>{{report_title}}</h1>\n\n  <table class='meta-table'>\n    <tr>\n      <td class='smallcaps'>Client</td>\n      <td>{{client_name}}</td>\n    </tr>\n    <tr>\n      <td class='smallcaps'>Corporation</td>\n      <td>{{company_name}}</td>\n    </tr>\n    <tr>\n      <td class='smallcaps'>Jurisdiction of Incorporation</td>\n      <td>{{jurisdiction}}</td>\n    </tr>\n    <tr>\n      <td class='smallcaps'>Prepared For</td>\n      <td>{{prepared_for}}</td>\n    </tr>\n    <tr>\n      <td class='smallcaps'>Prepared By</td>\n      <td>{{prepared_by}}</td>\n    </tr>\n    <tr>\n      <td class='smallcaps'>Report Date</td>\n      <td>{{report_date}}</td>\n    </tr>\n    <tr>\n      <td class='smallcaps'>File / Matter No.</td>\n      <td>{{file_matter_reference}}</td>\n    </tr>\n  </table>\n\n  <p class='muted'>\n    <u>Confidential</u> \u2013 This Corporate Health Check is based solely on the documents and information\n    provided for review as of the Report Date. It is not a substitute for a full legal opinion.\n  </p>\n\n  <div class='page-break'></div>\n\n  <!-- 2. EXECUTIVE SUMMARY -->\n  <h2><span class='section-number'>2.</span> Executive Summary</h2>\n\n  <h3><span class='section-number'>2.1</span> Overall Status</h3>\n  <p>{{overall_status_summary}}</p>\n\n  <h3><span class='section-number'>2.2</span> Key Strengths</h3>\n  <ul>\n    {{key_strengths_items}}\n  </ul>\n\n  <h3><span class='section-number'>2.3</span> Key Deficiencies (High-Level)</h3>\n  <p>{{key_deficiencies_intro}}</p>\n  <ul>\n    {{key_deficiencies_items}}\n  </ul>\n\n  <div class='page-break'></div>\n\n  <!-- 3. BASIC CORPORATE INFORMATION -->\n  <h2><span class='section-number'>3.</span> Basic Corporate Information</h2>\n\n  <table class='content-table'>\n    <tr>\n      <th style='width: 30%;'>Field</th>\n      <th>Information</th>\n    </tr>\n    <tr>\n      <td>Legal Name</td>\n      <td>{{basic_info_legal_name}}</td>\n    </tr>\n    <tr>\n      <td>Jurisdiction of Incorporation</td>\n      <td>{{basic_info_jurisdiction}}</td>\n    </tr>\n    <tr>\n      <td>Incorporation / Corporate Access Number</td>\n      <td>{{basic_info_corp_number}}</td>\n    </tr>\n    <tr>\n      <td>Date of Incorporation</td>\n      <td>{{basic_info_incorp_date}}</td>\n    </tr>\n    <tr>\n      <td>Registered Office Address</td>\n      <td>{{basic_info_registered_office}}</td>\n    </tr>\n    <tr>\n      <td>Fiscal Year-End</td>\n      <td>{{basic_info_fiscal_year_end}}</td>\n    </tr>\n    <tr>\n      <td>Other Names / Historical Names</td>\n      <td>{{basic_info_other_names}}</td>\n    </tr>\n  </table>\n\n  <div class='page-break'></div>\n\n  <!-- 4. DIRECTORS AND OFFICERS -->\n  <h2><span class='section-number'>4.</span> Directors and Officers</h2>\n\n  <h3><span class='section-number'>4.1</span> Directors</h3>\n  <table class='content-table'>\n    <thead>\n      <tr>\n        <th>Name</th>\n        <th>Address (City / Province)</th>\n        <th>Position</th>\n        <th>Appointment Date</th>\n        <th>Cessation Date (if any)</th>\n        <th>Key Source(s)</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{directors_table_rows}}\n    </tbody>\n  </table>\n  <p><strong>Observations:</strong> {{directors_observations}}</p>\n\n  <h3><span class='section-number'>4.2</span> Officers</h3>\n  <table class='content-table'>\n    <thead>\n      <tr>\n        <th>Name</th>\n        <th>Office Held</th>\n        <th>Appointment Date</th>\n        <th>Cessation Date (if any)</th>\n        <th>Key Source(s)</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{officers_table_rows}}\n    </tbody>\n  </table>\n  <p><strong>Observations:</strong> {{officers_observations}}</p>\n\n  <div class='page-break'></div>\n\n  <!-- 5. SHARE CAPITAL AND OWNERSHIP -->\n  <h2><span class='section-number'>5.</span> Share Capital and Ownership</h2>\n\n  <h3><span class='section-number'>5.1</span> Authorized Share Capital (from Articles)</h3>\n  <p>{{share_capital_authorized}}</p>\n\n  <h3><span class='section-number'>5.2</span> Issued and Outstanding Shares (Based on Records Reviewed)</h3>\n  <p>{{share_capital_issued}}</p>\n\n  <h3><span class='section-number'>5.3</span> Shareholders (Summary)</h3>\n  <p>{{share_capital_shareholders_summary}}</p>\n\n  <h3><span class='section-number'>5.4</span> Observations and Gaps</h3>\n  <p>{{share_capital_observations}}</p>\n\n  <div class='page-break'></div>\n\n  <!-- 6. MINUTE BOOK CONTENTS -->\n  <h2><span class='section-number'>6.</span> Minute Book Contents</h2>\n\n  <h3><span class='section-number'>6.1</span> Summary of Contents</h3>\n  <ul>\n    {{minute_book_contents_items}}\n  </ul>\n\n  <h3><span class='section-number'>6.2</span> Registers and Ledgers</h3>\n  <p>{{registers_observations}}</p>\n\n  <h3><span class='section-number'>6.3</span> Other Corporate Records / Agreements</h3>\n  <p>{{other_corporate_records_notes}}</p>\n\n  <div class='page-break'></div>\n\n  <!-- 7. FILINGS AND GOOD STANDING -->\n  <h2><span class='section-number'>7.</span> Filings and Good Standing</h2>\n\n  <h3><span class='section-number'>7.1</span> Annual Returns and Key Filings (Based on Documents Reviewed)</h3>\n  <p>{{filings_summary}}</p>\n\n  <h3><span class='section-number'>7.2</span> Observations</h3>\n  <p>{{filings_observations}}</p>\n\n  <div class='page-break'></div>\n\n  <!-- 8. DEFICIENCIES AND RECOMMENDED ACTIONS -->\n  <h2><span class='section-number'>8.</span> Deficiencies and Recommended Actions</h2>\n\n  <table class='content-table'>\n    <thead>\n      <tr>\n        <th style='width: 8%;'>Ref.</th>\n        <th style='width: 18%;'>Area</th>\n        <th style='width: 42%;'>Deficiency / Risk</th>\n        <th style='width: 22%;'>Recommended Action</th>\n        <th style='width: 10%;'>Priority</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{deficiencies_table_rows}}\n    </tbody>\n  </table>\n\n  <p class='muted'>\n    Note: Priorities are indicative only and do not replace legal advice tailored to the client\u2019s risk tolerance and transaction context.\n  </p>\n\n  <div class='page-break'></div>\n\n  <!-- 9. APPENDIX A \u2013 DOCUMENTS REVIEWED -->\n  <h2><span class='section-number'>9.</span> Appendix A \u2013 Documents Reviewed</h2>\n\n  <table class='content-table'>\n    <thead>\n      <tr>\n        <th style='width: 10%;'>Ref.</th>\n        <th style='width: 55%;'>Document</th>\n        <th style='width: 20%;'>Date (if known)</th>\n        <th style='width: 15%;'>Notes</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{documents_reviewed_table_rows}}\n    </tbody>\n  </table>\n\n</body>\n</html>",
+    "reportTemplate": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>{{report_title}}</title>\n  <style>\n    .report-html {\n      font-family: \"Times New Roman\", Georgia, serif;\n      font-size: 11pt;\n      line-height: 1.4;\n      color: #222;\n    }\n    .report-html h1, .report-html h2, .report-html h3, .report-html h4 {\n      font-family: \"Times New Roman\", Georgia, serif;\n      margin-top: 18px;\n      margin-bottom: 6px;\n    }\n    .report-html h1 {\n      font-size: 20pt;\n      text-transform: uppercase;\n      letter-spacing: 1px;\n      border-bottom: 2px solid #000;\n      padding-bottom: 4px;\n    }\n    .report-html h2 {\n      font-size: 14pt;\n      border-bottom: 1px solid #444;\n      padding-bottom: 2px;\n    }\n    .report-html h3 {\n      font-size: 12pt;\n      text-decoration: underline;\n    }\n    .report-html .smallcaps {\n      font-variant: small-caps;\n    }\n    .report-html .section-number {\n      font-weight: bold;\n      margin-right: 4px;\n    }\n    .report-html .meta-table, .report-html .content-table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-top: 6px;\n      margin-bottom: 12px;\n      font-size: 10.5pt;\n    }\n    .report-html .meta-table td {\n      padding: 2px 4px;\n      vertical-align: top;\n    }\n    .report-html .content-table th, .report-html .content-table td {\n      border: 1px solid #888;\n      padding: 4px 6px;\n      vertical-align: top;\n    }\n    .report-html .content-table th {\n      background-color: #f2f2f2;\n      font-weight: bold;\n      text-align: left;\n    }\n    .report-html .muted {\n      color: #555;\n      font-size: 10pt;\n    }\n    .report-html .page-break {\n      page-break-before: always;\n    }\n    .report-html ul {\n      margin-top: 4px;\n      margin-bottom: 8px;\n    }\n    .report-html li {\n      margin-bottom: 2px;\n    }\n  </style>\n</head>\n<body>\n\n  <!-- COVER PAGE -->\n  <h1>{{report_title}}</h1>\n\n  <table class=\"meta-table\">\n    <tr>\n      <td class=\"smallcaps\">Client</td>\n      <td>{{client_name}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Corporation</td>\n      <td>{{company_name}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Jurisdiction of Incorporation</td>\n      <td>{{jurisdiction}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Prepared For</td>\n      <td>{{prepared_for}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Prepared By</td>\n      <td>{{prepared_by}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Report Date</td>\n      <td>{{report_date}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">File / Matter No.</td>\n      <td>{{file_matter_reference}}</td>\n    </tr>\n  </table>\n\n  <p class=\"muted\">\n    <u>Confidential</u> – This Corporate Health Check is based solely on the documents and information\n    provided for review as of the Report Date. It is not a substitute for a full legal opinion.\n  </p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 2. EXECUTIVE SUMMARY -->\n  <h2><span class=\"section-number\">2.</span> Executive Summary</h2>\n\n  <h3><span class=\"section-number\">2.1</span> Overall Status</h3>\n  <p>{{overall_status_summary}}</p>\n\n  <h3><span class=\"section-number\">2.2</span> Key Strengths</h3>\n  <ul>\n    {{key_strengths_items}}\n  </ul>\n\n  <h3><span class=\"section-number\">2.3</span> Key Deficiencies (High-Level)</h3>\n  <p>{{key_deficiencies_intro}}</p>\n  <ul>\n    {{key_deficiencies_items}}\n  </ul>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 3. BASIC CORPORATE INFORMATION -->\n  <h2><span class=\"section-number\">3.</span> Basic Corporate Information</h2>\n\n  <table class=\"content-table\">\n    <tr>\n      <th style=\"width: 30%;\">Field</th>\n      <th>Information</th>\n    </tr>\n    <tr>\n      <td>Legal Name</td>\n      <td>{{basic_info_legal_name}}</td>\n    </tr>\n    <tr>\n      <td>Jurisdiction of Incorporation</td>\n      <td>{{basic_info_jurisdiction}}</td>\n    </tr>\n    <tr>\n      <td>Incorporation / Corporate Access Number</td>\n      <td>{{basic_info_corp_number}}</td>\n    </tr>\n    <tr>\n      <td>Date of Incorporation</td>\n      <td>{{basic_info_incorp_date}}</td>\n    </tr>\n    <tr>\n      <td>Registered Office Address</td>\n      <td>{{basic_info_registered_office}}</td>\n    </tr>\n    <tr>\n      <td>Fiscal Year-End</td>\n      <td>{{basic_info_fiscal_year_end}}</td>\n    </tr>\n    <tr>\n      <td>Other Names / Historical Names</td>\n      <td>{{basic_info_other_names}}</td>\n    </tr>\n  </table>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 4. DIRECTORS AND OFFICERS -->\n  <h2><span class=\"section-number\">4.</span> Directors and Officers</h2>\n\n  <h3><span class=\"section-number\">4.1</span> Directors</h3>\n  <table class=\"content-table\">\n    {{directors_table_rows}}\n  </table>\n  <p><strong>Observations:</strong> {{directors_observations}}</p>\n\n  <h3><span class=\"section-number\">4.2</span> Officers</h3>\n  <table class=\"content-table\">\n    {{officers_table_rows}}\n  </table>\n  <p><strong>Observations:</strong> {{officers_observations}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 5. SHARE CAPITAL AND OWNERSHIP -->\n  <h2><span class=\"section-number\">5.</span> Share Capital and Ownership</h2>\n\n  <h3><span class=\"section-number\">5.1</span> Authorized Share Capital (from Articles)</h3>\n  <p>{{share_capital_authorized}}</p>\n\n  <h3><span class=\"section-number\">5.2</span> Issued and Outstanding Shares (Based on Records Reviewed)</h3>\n  <p>{{share_capital_issued}}</p>\n\n  <h3><span class=\"section-number\">5.3</span> Shareholders (Summary)</h3>\n  <p>{{share_capital_shareholders_summary}}</p>\n\n  <h3><span class=\"section-number\">5.4</span> Observations and Gaps</h3>\n  <p>{{share_capital_observations}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 6. MINUTE BOOK CONTENTS -->\n  <h2><span class=\"section-number\">6.</span> Minute Book Contents</h2>\n\n  <h3><span class=\"section-number\">6.1</span> Summary of Contents</h3>\n  <ul>\n    {{minute_book_contents_items}}\n  </ul>\n\n  <h3><span class=\"section-number\">6.2</span> Registers and Ledgers</h3>\n  <p>{{registers_observations}}</p>\n\n  <h3><span class=\"section-number\">6.3</span> Other Corporate Records / Agreements</h3>\n  <p>{{other_corporate_records_notes}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 7. FILINGS AND GOOD STANDING -->\n  <h2><span class=\"section-number\">7.</span> Filings and Good Standing</h2>\n\n  <h3><span class=\"section-number\">7.1</span> Annual Returns and Key Filings (Based on Documents Reviewed)</h3>\n  <p>{{filings_summary}}</p>\n\n  <h3><span class=\"section-number\">7.2</span> Observations</h3>\n  <p>{{filings_observations}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 8. DEFICIENCIES AND RECOMMENDED ACTIONS -->\n  <h2><span class=\"section-number\">8.</span> Deficiencies and Recommended Actions</h2>\n\n  <table class=\"content-table\">\n    {{deficiencies_table_rows}}\n  </table>\n\n  <p class=\"muted\">\n    Note: Priorities are indicative only and do not replace legal advice tailored to the client's risk tolerance and transaction context.\n  </p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 9. APPENDIX A – DOCUMENTS REVIEWED -->\n  <h2><span class=\"section-number\">9.</span> Appendix A – Documents Reviewed</h2>\n\n  <table class=\"content-table\">\n    {{documents_reviewed_table_rows}}\n  </table>\n\n</body>\n</html>",
     "questions": [
       {
         "id": "report-title",
         "placeholder": "report_title",
-        "prompt": "You are preparing the title for a law-firm style corporate health check. Return a concise title in the form: 'Corporate Health Check \u2013 [Corporation Name]'. Use the corporation\u2019s legal name from the documents; if uncertain, use the most recent article or annual return."
+        "prompt": "You are assisting a law firm with a corporate health check report. Question: Based on the documents provided, what should the report title be in the form Corporate Health Check – [Corporation Name], using the corporation's legal name from the documents (prefer the Articles or most recent annual return)? If the name is unclear, use the best-supported name."
       },
       {
         "id": "client-name",
         "placeholder": "client_name",
-        "prompt": "Return the name of the client if it appears in the engagement or cover materials. If no separate client name is evident, repeat the corporation\u2019s legal name. Text only."
+        "prompt": "Question: Based on the engagement, cover materials, or other documents, what is the client's name? If no separate client name is evident, use the corporation's legal name. If the client name cannot be determined, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
         "id": "company-name",
         "placeholder": "company_name",
-        "prompt": "From all documents, identify the corporation\u2019s legal name. Prefer the name stated in the Articles of Incorporation or most recent Annual Return. If multiple versions exist, choose the most recent and briefly note any prior names in parentheses."
+        "prompt": "Question: What is the corporation's legal name based on the Articles of Incorporation or most recent Annual Return? If there are historical names, provide the most recent legal name followed by earlier names in parentheses, for example: ABC Holdings Inc. (formerly ABC Inc.)."
       },
       {
         "id": "jurisdiction",
         "placeholder": "jurisdiction",
-        "prompt": "Identify the jurisdiction and governing statute under which the corporation is incorporated (e.g., 'Province of Nova Scotia \u2013 Companies Act' or 'Canada \u2013 Canada Business Corporations Act'). Base your answer on the Articles of Incorporation or equivalent formation document."
+        "prompt": "Question: In which jurisdiction and under which governing statute is the corporation incorporated? Answer in the form [Jurisdiction] – [Statute], for example, Province of Nova Scotia – Companies Act, or Canada – Canada Business Corporations Act. If the statute is unclear, provide the jurisdiction and note that the statute is unclear from the documents reviewed."
       },
       {
         "id": "prepared-for",
         "placeholder": "prepared_for",
-        "prompt": "Generate a short phrase describing for whom this report is prepared, in the form 'Board of Directors of [Corporation Name]' or 'Shareholders of [Corporation Name]'. If the audience is unclear, use 'Management and owners of [Corporation Name]'."
+        "prompt": "Question: For whom is this report prepared? Typically this will be the Board of Directors of the corporation, the shareholders of the corporation, or management and owners of the corporation. Use the best-supported wording based on the documents."
       },
       {
         "id": "prepared-by",
         "placeholder": "prepared_by",
-        "prompt": "Return the law firm name and practice group in the form 'McInnes Cooper \u2013 MC Corporate Health / Corporate Services Team'."
+        "prompt": "Question: Who is preparing this report? Use the law firm name and practice group if clearly specified in the documents, for example, McInnes Cooper – MC Corporate Health / Corporate Services Team. If no firm is identified, answer using the exact phrase: To be completed by firm."
       },
       {
         "id": "report-date",
         "placeholder": "report_date",
-        "prompt": "Return today\u2019s date in long form, e.g., 'December 2, 2025', based on the system date. Text only."
+        "prompt": "Question: What is today's date? Use the current system date in long form, for example, December 3, 2025."
       },
       {
         "id": "file-matter-reference",
         "placeholder": "file_matter_reference",
-        "prompt": "If a file or matter number appears explicitly in the documents, return it as printed. Otherwise, return 'To be completed by firm' and do not fabricate a number."
+        "prompt": "Question: What file or matter number is shown in the documents? If a file or matter number appears explicitly, return it exactly as printed. If none appears, answer using the exact phrase: To be completed by firm."
       },
       {
         "id": "overall-status-summary",
         "placeholder": "overall_status_summary",
-        "prompt": "In 3\u20135 sentences, provide an overall assessment of the corporation\u2019s corporate health based solely on the records reviewed. Mention whether core constitutional documents are present, whether records appear generally up to date, and whether there are material gaps or risks. Use neutral, professional legal tone."
+        "prompt": "Question: Based solely on the documents reviewed, what is the overall assessment of the corporation's corporate health? Answer in 3–5 full sentences in a neutral, professional legal tone, mentioning whether core constitutional documents are present, whether records appear generally up to date, and whether there are material gaps or risks."
       },
       {
         "id": "key-strengths-items",
         "placeholder": "key_strengths_items",
-        "prompt": "Produce 3\u20136 <li> items identifying the main strengths or positive aspects of the corporation\u2019s records (e.g., 'Articles and general by-law located and internally consistent', 'Recent annual returns on file'). Each item must be one sentence, concise, and specific."
+        "prompt": "Question: What are the main strengths or positive aspects of the corporation's records? Provide 3–6 concrete strengths, such as that articles and by-laws are located and consistent, or that recent annual returns are on file.",
+        "answer_type": "list"
       },
       {
         "id": "key-deficiencies-intro",
         "placeholder": "key_deficiencies_intro",
-        "prompt": "In 1\u20132 sentences, introduce the key deficiencies section, for example: 'Based on the documents reviewed, the following deficiencies and risk areas were identified in the corporation\u2019s records.'"
+        "prompt": "Question: How should you introduce the key deficiencies section of this report? Provide 1–2 sentences that briefly state that the following items summarise deficiencies and risk areas identified in the corporation's records."
       },
       {
         "id": "key-deficiencies-items",
         "placeholder": "key_deficiencies_items",
-        "prompt": "Produce 3\u20138 <li> items summarizing the most significant deficiencies or risks at a high level (e.g., missing annual returns, incomplete registers, unclear share issuances). Each item should be one sentence and should not rely on cross-references to numbered sections."
+        "prompt": "Question: What are the most significant deficiencies or risks identified at a high level? Provide 3–8 items, each describing a distinct issue such as missing annual returns, incomplete registers, or unclear share issuances.",
+        "answer_type": "list"
       },
       {
         "id": "basic-info-legal-name",
         "placeholder": "basic_info_legal_name",
-        "prompt": "State the corporation\u2019s legal name exactly as shown in the Articles of Incorporation or most recent Annual Return. If there is a discrepancy between documents, give the most recent name and note earlier names in parentheses."
+        "prompt": "Question: What is the corporation's legal name based on the core formation and registry documents? Use the name from the Articles of Incorporation or most recent Annual Return, and if there is a discrepancy, give the most recent name and, if useful, note earlier names in parentheses."
       },
       {
         "id": "basic-info-jurisdiction",
         "placeholder": "basic_info_jurisdiction",
-        "prompt": "State the jurisdiction and statute of incorporation (e.g., 'Nova Scotia \u2013 Companies Act (NSCA)' or 'Canada \u2013 Canada Business Corporations Act (CBCA)'). Base your answer on the formation document. If unclear, state the jurisdiction only."
+        "prompt": "Question: What is the corporation's jurisdiction and statute of incorporation? Answer in the form [Jurisdiction] – [Statute abbreviation if applicable], for example, Nova Scotia – Companies Act (NSCA) or Canada – Canada Business Corporations Act (CBCA). If the statute is unclear, provide the jurisdiction only."
       },
       {
         "id": "basic-info-corp-number",
         "placeholder": "basic_info_corp_number",
-        "prompt": "Extract the incorporation or corporate access number, or similar registry number, if present. If none is found, return 'Not clearly stated in documents reviewed.'"
+        "prompt": "Question: What is the incorporation, corporate access, or similar registry number for the corporation? If no such number is clearly found, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
         "id": "basic-info-incorp-date",
         "placeholder": "basic_info_incorp_date",
-        "prompt": "Extract the date of incorporation or formation. Use the date format 'YYYY-MM-DD'. If several dates appear, choose the incorporation date from the Articles or certificate."
+        "prompt": "Question: What is the corporation's date of incorporation or formation? Use a single date in the format YYYY-MM-DD based on the Articles, certificate of incorporation, or equivalent. If the date cannot be determined, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
         "id": "basic-info-registered-office",
         "placeholder": "basic_info_registered_office",
-        "prompt": "Extract the registered office address from the most recent filing or document that specifies it. Provide the address on a single line."
+        "prompt": "Question: What is the corporation's registered office address according to the most recent document that specifies it? If no registered office address can be identified, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
         "id": "basic-info-fiscal-year-end",
         "placeholder": "basic_info_fiscal_year_end",
-        "prompt": "If a fiscal year-end is explicitly stated, return it in the form 'December 31'. If it is not stated, return 'Not specified in documents reviewed.'"
+        "prompt": "Question: What is the corporation's fiscal year-end, if stated in the documents? If it is not stated or cannot be confirmed, answer using the exact phrase: Not specified in documents reviewed."
       },
       {
         "id": "basic-info-other-names",
         "placeholder": "basic_info_other_names",
-        "prompt": "Identify any historical names, trade names, or name changes referenced in the documents. If none are mentioned, return 'None noted.'"
+        "prompt": "Question: Are any historical names, trade names, or name changes for the corporation referenced in the documents? If there are such names, list them and clearly indicate whether they are former names or trade names. If none are mentioned, answer using the exact phrase: None noted."
       },
       {
         "id": "directors-table-rows",
         "placeholder": "directors_table_rows",
-        "prompt": "Create one <tr>...</tr> row per person who appears to be or to have been a director. For each director, populate the columns in order: (1) Name, (2) Address (city/province only, if available), (3) Position (e.g., 'Director', 'Chair of the Board'), (4) Appointment date (approximate if necessary), (5) Cessation date (if applicable; otherwise '\u2014'), (6) Key source(s) (e.g., '2019 Annual Return'; 'Board minutes 2020-09-10'). Use concise text and do not exceed one line per cell."
+        "prompt": "Question: Based on the documents reviewed, who appears to be or to have been a director of the corporation? For each director provide: their name, city or province if available, position (e.g., Director or Chair of the Board), appointment date (approximate if necessary), cessation date (or indicate if none is recorded), and key sources relied on (e.g., specific annual returns or minutes).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "name",
+            "header": "Name"
+          },
+          {
+            "key": "city_province",
+            "header": "Address (City / Province)"
+          },
+          {
+            "key": "position",
+            "header": "Position"
+          },
+          {
+            "key": "appointment_date",
+            "header": "Appointment Date"
+          },
+          {
+            "key": "cessation_date",
+            "header": "Cessation Date (if any)"
+          },
+          {
+            "key": "key_sources",
+            "header": "Key Source(s)"
+          }
+        ]
       },
       {
         "id": "directors-observations",
         "placeholder": "directors_observations",
-        "prompt": "In 2\u20134 sentences, summarize any notable observations or inconsistencies relating to directors, such as differences between Annual Returns and minutes, missing resignation dates, or apparent gaps in board composition. If everything appears consistent, say so explicitly."
+        "prompt": "Question: What notable observations or inconsistencies arise from the directors' information? Answer in 2–4 sentences in a neutral, professional legal tone, commenting on issues such as differences between annual returns and minutes, missing resignation dates, gaps in board composition, or confirming that records appear consistent."
       },
       {
         "id": "officers-table-rows",
         "placeholder": "officers_table_rows",
-        "prompt": "Create one <tr>...</tr> row per person who appears to be or to have been an officer. For each officer, populate: (1) Name, (2) Office held (e.g., 'President', 'Secretary', 'CFO'), (3) Appointment date, (4) Cessation date (if applicable; otherwise '\u2014'), (5) Key source(s) (e.g., 'By-Law No. 1'; 'Board minutes 2019-01-15'). Use concise text and one line per cell."
+        "prompt": "Question: Based on the documents reviewed, who appears to be or to have been an officer of the corporation? For each officer provide: their name, office held (e.g., President, Secretary, or CFO), appointment date, cessation date (or indicate if none is recorded), and key sources relied on (e.g., by-laws or board minutes).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "name",
+            "header": "Name"
+          },
+          {
+            "key": "office_held",
+            "header": "Office Held"
+          },
+          {
+            "key": "appointment_date",
+            "header": "Appointment Date"
+          },
+          {
+            "key": "cessation_date",
+            "header": "Cessation Date (if any)"
+          },
+          {
+            "key": "key_sources",
+            "header": "Key Source(s)"
+          }
+        ]
       },
       {
         "id": "officers-observations",
         "placeholder": "officers_observations",
-        "prompt": "In 2\u20134 sentences, summarize issues relating to officer appointments and records, such as whether officer positions listed in the by-laws are actually filled, whether there are minutes documenting appointments, and any discrepancies between minutes and registers. If records seem complete and consistent, say so."
+        "prompt": "Question: What issues or observations arise from the officer appointments and related records? Answer in 2–4 sentences in a neutral legal tone, noting points such as whether officer positions listed in the by-laws are filled, whether there are minutes documenting appointments, and any discrepancies between minutes and registers, or confirming that records seem complete and consistent."
       },
       {
         "id": "share-capital-authorized",
         "placeholder": "share_capital_authorized",
-        "prompt": "Summarize the authorized share capital as set out in the Articles or equivalent document. Describe each class (e.g., voting/non-voting, common/preferred) and any key rights or restrictions in 2\u20136 sentences."
+        "prompt": "Question: What does the corporation's authorized share capital look like as set out in the Articles or equivalent document? Answer in 2–6 sentences describing each share class, key rights or restrictions such as voting or non-voting and common or preferred, and any notable features."
       },
       {
         "id": "share-capital-issued",
         "placeholder": "share_capital_issued",
-        "prompt": "Based on all documents reviewed (resolutions, registers, annual returns), summarise the issued and outstanding shares for each class, including quantities. If the information is incomplete or inferred, state the assumptions and note that the figures are based on partial records."
+        "prompt": "Question: Based on all resolutions, registers, and annual returns reviewed, what are the issued and outstanding shares of the corporation? Answer in 1–2 short paragraphs summarizing the number of issued and outstanding shares for each class and any material qualifiers, clearly stating any assumptions where the information is incomplete or inferred."
       },
       {
         "id": "share-capital-shareholders-summary",
         "placeholder": "share_capital_shareholders_summary",
-        "prompt": "Provide a short narrative summary (1\u20132 paragraphs) of the apparent shareholder structure: identify any controlling or majority shareholders, mention whether shares appear concentrated or widely held, and note where information is inferred or incomplete."
+        "prompt": "Question: What is the apparent shareholder structure of the corporation? Answer in 1–2 short paragraphs identifying any controlling or majority shareholders, indicating whether shareholdings appear concentrated or widely held, and noting where information is inferred or incomplete."
       },
       {
         "id": "share-capital-observations",
         "placeholder": "share_capital_observations",
-        "prompt": "In 3\u20136 sentences, identify issues or risks in the share capital and ownership records, such as absence of a formal share register, missing share certificates or resolutions, or inconsistencies between resolutions, registers, and returns. Make clear, neutral recommendations (e.g., 'A formal share register should be prepared or updated to reflect the current shareholdings.'). "
+        "prompt": "Question: What issues, risks, or gaps are apparent in the share capital and ownership records? Answer in 3–6 sentences highlighting points such as absence of a formal share register, missing share certificates or resolutions, inconsistencies between resolutions, registers, and returns, and any other material concerns, together with clear, neutral recommendations."
       },
       {
         "id": "minute-book-contents-items",
         "placeholder": "minute_book_contents_items",
-        "prompt": "Produce a set of <li> items listing the main categories of documents present in the minute book, for example: 'Articles of Incorporation dated [date]', 'General By-Law No. 1', 'Board minutes 2019\u20132022 (selected meetings)', 'Annual Returns for 2019\u20132020'. Keep each item to one line."
+        "prompt": "Question: What are the main categories of documents present in the minute book? Provide a list briefly describing each category, for example articles of incorporation with their date, general by-laws, board minutes for particular periods, and annual returns for particular years.",
+        "answer_type": "list"
       },
       {
         "id": "registers-observations",
         "placeholder": "registers_observations",
-        "prompt": "In 2\u20134 sentences, describe the state of the registers and ledgers (share register, director register, officer register, securities register, etc.). Indicate which are present, which appear incomplete, and which are missing, and suggest appropriate remedial steps."
+        "prompt": "Question: What is the state of the corporation's registers and ledgers, including the share register, director register, officer register, and any securities register? Answer in 2–4 sentences indicating which registers are present, which appear incomplete, which are missing, and suggesting appropriate remedial steps where necessary."
       },
       {
         "id": "other-corporate-records-notes",
         "placeholder": "other_corporate_records_notes",
-        "prompt": "Summarise any other significant corporate records or agreements located (e.g., shareholders\u2019 agreement, banking resolutions, option plans). Note their existence and general subject matter but do not provide detailed legal analysis."
+        "prompt": "Question: What other significant corporate records or agreements were located, for example shareholders' agreements, banking resolutions, or option plans, and what is their general subject matter? Answer in a short paragraph summarizing the existence and general nature of these documents without providing detailed legal analysis."
       },
       {
         "id": "filings-summary",
         "placeholder": "filings_summary",
-        "prompt": "Provide a concise prose summary (1\u20132 paragraphs) of the annual returns and other key corporate filings visible in the minute book, including the years for which returns are present and any notable gaps. If no returns are found, say so clearly."
+        "prompt": "Question: What annual returns and other key corporate filings are visible in the minute book, and for which years? Answer in 1–2 concise paragraphs indicating the years for which returns are present, any notable gaps or irregularities, and explicitly noting if no returns are found."
       },
       {
         "id": "filings-observations",
         "placeholder": "filings_observations",
-        "prompt": "In 3\u20135 sentences, assess the corporation\u2019s apparent good standing based solely on the documents reviewed. Highlight any missing or late returns, any discrepancies between internal records and what would be expected by statute, and recommend confirming status directly with the corporate registry where appropriate."
+        "prompt": "Question: Based solely on the documents reviewed, what can be inferred about the corporation's apparent good standing with respect to filings? Answer in 3–5 sentences highlighting missing or late returns, discrepancies between internal records and what would be expected by statute, and any recommendation to confirm status directly with the corporate registry."
       },
       {
         "id": "deficiencies-table-rows",
         "placeholder": "deficiencies_table_rows",
-        "prompt": "Populate the deficiencies table with one <tr>...</tr> per identified deficiency. Each row must include: (1) Ref. \u2013 a short reference like 'D-1', 'D-2', etc.; (2) Area \u2013 a concise area label (e.g., 'Filings', 'Registers', 'Share Capital', 'Minutes'); (3) Deficiency / Risk \u2013 1\u20133 sentences describing the issue; (4) Recommended Action \u2013 1\u20132 sentences describing the specific remedial step (e.g., 'prepare and file outstanding annual returns for 2021\u20132023'); (5) Priority \u2013 'High', 'Medium', or 'Low'. Focus on concrete, actionable items."
+        "prompt": "Question: What deficiencies and recommended actions have been identified for this corporation? For each deficiency provide: a short reference (e.g., D-1), the area (e.g., Filings, Registers, Share Capital, or Minutes), a concise description of the deficiency or risk, the recommended action, and the priority (High, Medium, or Low).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "reference",
+            "header": "Ref."
+          },
+          {
+            "key": "area",
+            "header": "Area"
+          },
+          {
+            "key": "deficiency_risk",
+            "header": "Deficiency / Risk"
+          },
+          {
+            "key": "recommended_action",
+            "header": "Recommended Action"
+          },
+          {
+            "key": "priority",
+            "header": "Priority"
+          }
+        ]
       },
       {
         "id": "documents-reviewed-table-rows",
         "placeholder": "documents_reviewed_table_rows",
-        "prompt": "Create one <tr>...</tr> row per document reviewed. Each row should include: (1) Ref. \u2013 a short reference like 'A-1', 'A-2', etc.; (2) Document \u2013 a concise description (e.g., 'Articles of Incorporation', 'General By-Law No. 1', 'Board minutes \u2013 2019-01-15'); (3) Date \u2013 the document date if known; otherwise 'n/a'; (4) Notes \u2013 any brief clarifying information (e.g., 'scanned copy', 'undated draft'). Keep descriptions short and professional."
+        "prompt": "Question: Which documents were reviewed for this corporate health check? For each document provide: a short reference (e.g., A-1), a concise description (e.g., articles of incorporation or board minutes), the document date if known (or indicate if not available), and any brief notes (e.g., scanned copy or undated draft).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "reference",
+            "header": "Ref."
+          },
+          {
+            "key": "description",
+            "header": "Document"
+          },
+          {
+            "key": "date",
+            "header": "Date (if known)"
+          },
+          {
+            "key": "notes",
+            "header": "Notes"
+          }
+        ]
       }
     ]
   }

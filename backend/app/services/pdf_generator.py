@@ -8,10 +8,12 @@ layouts, and visual elements exactly as they appear in the browser.
 
 import logging
 import re
+import html
+import json
 from io import BytesIO
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional, Union
 from weasyprint import HTML, CSS
-from app.schemas import Agent
+from app.schemas import Agent, QuestionOut, AnswerType, ColumnDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,128 @@ class WeasyPrintPDFGenerator:
 
     def __init__(self):
         self.quote_counter = 1
+
+    def _escape_html(self, text: str) -> str:
+        """Escape HTML special characters"""
+        return html.escape(str(text)) if text else ""
+
+    def _render_string_answer(self, answer: str) -> str:
+        """Render a string answer (default behavior)"""
+        return self._escape_html(answer) if answer else ""
+
+    def _render_list_answer(self, answer: Union[List[str], str]) -> str:
+        """
+        Render a list answer as HTML <li> elements.
+
+        Returns <li>item1</li><li>item2</li>... (template provides <ul> wrapper)
+        """
+        # Handle case where LLM returned a string instead of array
+        if isinstance(answer, str):
+            try:
+                parsed = json.loads(answer)
+                if isinstance(parsed, list):
+                    answer = parsed
+                else:
+                    # Not a list, wrap as single item
+                    return f"<li>{self._escape_html(answer)}</li>"
+            except json.JSONDecodeError:
+                # Fallback: treat as single item
+                return f"<li>{self._escape_html(answer)}</li>"
+
+        if not answer or not isinstance(answer, list):
+            return "<li>No items found</li>"
+
+        # Render each item as <li>
+        html_items = []
+        for item in answer:
+            safe_item = self._escape_html(str(item))
+            html_items.append(f"<li>{safe_item}</li>")
+
+        return "\n    ".join(html_items)
+
+    def _render_table_answer(self, answer: Union[List[Dict], str],
+                              columns: List[ColumnDefinition]) -> str:
+        """
+        Render a table answer as HTML <thead> and <tbody>.
+
+        Returns complete table inner content:
+        <thead><tr><th>Header1</th>...</tr></thead>
+        <tbody><tr><td>value1</td>...</tr>...</tbody>
+        """
+        # Handle case where LLM returned a string instead of array
+        if isinstance(answer, str):
+            try:
+                parsed = json.loads(answer)
+                if isinstance(parsed, list):
+                    answer = parsed
+                else:
+                    return self._render_table_error("Invalid table data format")
+            except json.JSONDecodeError:
+                return self._render_table_error("Failed to parse table data")
+
+        if not answer or not isinstance(answer, list):
+            return self._render_table_error("No table data found")
+
+        if not columns:
+            return self._render_table_error("Table columns not defined")
+
+        # Build thead
+        header_cells = "".join([
+            f"<th>{self._escape_html(col.header)}</th>"
+            for col in columns
+        ])
+        thead = f"<thead>\n      <tr>\n        {header_cells}\n      </tr>\n    </thead>"
+
+        # Build tbody
+        rows = []
+        for row_data in answer:
+            if not isinstance(row_data, dict):
+                continue
+
+            cells = []
+            for col in columns:
+                value = row_data.get(col.key, "")
+                safe_value = self._escape_html(str(value)) if value else ""
+                cells.append(f"<td>{safe_value}</td>")
+
+            rows.append(f"<tr>\n        {''.join(cells)}\n      </tr>")
+
+        tbody_content = "\n      ".join(rows) if rows else "<tr><td colspan=\"{}\">No data</td></tr>".format(len(columns))
+        tbody = f"<tbody>\n      {tbody_content}\n    </tbody>"
+
+        return f"{thead}\n    {tbody}"
+
+    def _render_table_error(self, message: str) -> str:
+        """Render error message for failed table parsing"""
+        safe_message = self._escape_html(message)
+        return f"<thead><tr><th>Error</th></tr></thead><tbody><tr><td>{safe_message}</td></tr></tbody>"
+
+    def _render_answer(self, answer_data: Dict[str, Any],
+                       question: Optional[QuestionOut]) -> str:
+        """
+        Route to appropriate renderer based on answer_type.
+
+        Args:
+            answer_data: The answer data from report_data['answers'][placeholder]
+            question: The question definition with answer_type (None for backwards compat)
+
+        Returns:
+            HTML string for the answer
+        """
+        answer = answer_data.get("answer", "")
+
+        # Default to string rendering if no question provided (backwards compatibility)
+        if question is None:
+            return self._render_string_answer(str(answer) if answer else "")
+
+        if question.answer_type == AnswerType.LIST:
+            return self._render_list_answer(answer)
+
+        elif question.answer_type == AnswerType.TABLE:
+            return self._render_table_answer(answer, question.columns or [])
+
+        else:  # STRING (default)
+            return self._render_string_answer(str(answer) if answer else "")
 
     def generate_pdf_report(self, agent: Agent, report_data: Dict[str, Any],
                           with_references: bool = False) -> bytes:
@@ -38,12 +162,14 @@ class WeasyPrintPDFGenerator:
         try:
             # Reset quote counter for this document
             self.quote_counter = 1
-            
+
             # Populate HTML template with answers and references
+            # Pass questions for answer_type-aware rendering
             populated_html = self._populate_html_template(
-                agent.reportTemplate, 
-                report_data, 
-                with_references
+                agent.reportTemplate,
+                report_data,
+                with_references,
+                questions=agent.questions
             )
             
             # Add reference section if requested
@@ -63,44 +189,62 @@ class WeasyPrintPDFGenerator:
             raise ValueError(f"PDF generation failed: {str(e)}")
 
     def _populate_html_template(self, template_html: str, report_data: Dict[str, Any],
-                              with_references: bool) -> str:
+                              with_references: bool,
+                              questions: Optional[List[QuestionOut]] = None) -> str:
         """Populate HTML template with answers and proper reference formatting"""
         populated_html = template_html
         answers = report_data.get('answers', {})
-        
+
+        # Build question lookup by placeholder for answer_type info
+        question_lookup: Dict[str, QuestionOut] = {}
+        if questions:
+            for q in questions:
+                question_lookup[q.placeholder] = q
+
         # Reset quote counter
         self.quote_counter = 1
-        
+
         # Replace placeholders with answers and references
         for placeholder, answer_data in answers.items():
             placeholder_pattern = f"{{{{{placeholder}}}}}"
-            
+
             if placeholder_pattern in populated_html:
-                answer_text = answer_data.get("answer", "")
+                # Get question definition for answer_type
+                question = question_lookup.get(placeholder)
+
+                # Render answer based on type
+                answer_html = self._render_answer(answer_data, question)
+
                 quotes = answer_data.get("quotes", [])
-                
-                # Add reference formatting
-                if quotes and answer_text:
+
+                # Only add reference superscripts for STRING answers
+                # Tables and lists have their own quote handling via 'target' field
+                should_add_refs = (
+                    question is None or
+                    question.answer_type == AnswerType.STRING
+                )
+
+                if quotes and answer_html and should_add_refs:
                     if with_references:
                         # Use square brackets for references [1] [2] [3]
                         references = []
                         for i in range(len(quotes)):
                             references.append(f'[{self.quote_counter + i}]')
                         reference_text = ''.join(references)
-                        answer_with_refs = f"{answer_text}{reference_text}"
+                        answer_with_refs = f"{answer_html}{reference_text}"
                     else:
-                        # Use superscript numbers ¹ ² ³
+                        # Use superscript numbers
                         superscripts = []
                         for i in range(len(quotes)):
                             superscripts.append(f'<sup>{self.quote_counter + i}</sup>')
                         reference_text = ''.join(superscripts)
-                        answer_with_refs = f"{answer_text}{reference_text}"
+                        answer_with_refs = f"{answer_html}{reference_text}"
                 else:
-                    answer_with_refs = answer_text
-                
+                    answer_with_refs = answer_html
+
                 populated_html = populated_html.replace(placeholder_pattern, answer_with_refs)
                 self.quote_counter += len(quotes)
-        
+
         return populated_html
 
     def _add_reference_section(self, html_content: str, report_data: Dict[str, Any]) -> str:

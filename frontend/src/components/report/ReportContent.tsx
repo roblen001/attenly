@@ -68,7 +68,65 @@ const ReportContent: React.FC<ReportContentProps> = ({
               // Find the answer by ID
               const answer = Object.values(reportData.answers).find(a => a.id === answerId);
               if (answer) {
-                onAnswerEdit(answer);
+                // Check if this is a granular edit (list item or table cell)
+                const listIndex = answerElement.getAttribute('data-list-index');
+                const tableRow = answerElement.getAttribute('data-table-row');
+                const tableCol = answerElement.getAttribute('data-table-col');
+                
+                if (listIndex !== null) {
+                  // Editing a specific list item
+                  const index = parseInt(listIndex, 10);
+                  const listAnswer = Array.isArray(answer.answer) ? answer.answer : [];
+                  if (listAnswer[index] !== undefined) {
+                    // Filter quotes to only those targeting this specific list item
+                    // If quotes don't have target metadata yet, show all quotes as fallback
+                    const filteredQuotes = answer.quotes.filter(q => {
+                      const target = (q as any).target;
+                      return target?.type === 'list' && target?.index === index;
+                    });
+                    
+                    const modifiedAnswer: ReportAnswer & { _editMetadata?: any } = {
+                      ...answer,
+                      answer: String(listAnswer[index]), // Extract the specific item
+                      quotes: filteredQuotes,  // Only show quotes for this item
+                      _editMetadata: {
+                        type: 'list',
+                        listIndex: index,
+                        originalAnswer: listAnswer
+                      }
+                    };
+                    onAnswerEdit(modifiedAnswer);
+                  }
+                } else if (tableRow !== null && tableCol !== null) {
+                  // Editing a specific table cell
+                  const row = parseInt(tableRow, 10);
+                  const col = tableCol;
+                  const tableAnswer = Array.isArray(answer.answer) ? answer.answer : [];
+                  if (tableAnswer[row] && tableAnswer[row][col] !== undefined) {
+                    // Filter quotes to only those targeting this specific table cell
+                    // If quotes don't have target metadata yet, show all quotes as fallback
+                    const filteredQuotes = answer.quotes.filter(q => {
+                      const target = (q as any).target;
+                      return target?.type === 'table' && target?.row === row && target?.key === col;
+                    });
+                    
+                    const modifiedAnswer: ReportAnswer & { _editMetadata?: any } = {
+                      ...answer,
+                      answer: String(tableAnswer[row][col]), // Extract the specific cell value
+                      quotes: filteredQuotes,  // Only show quotes for this cell
+                      _editMetadata: {
+                        type: 'table',
+                        tableRow: row,
+                        tableCol: col,
+                        originalAnswer: tableAnswer
+                      }
+                    };
+                    onAnswerEdit(modifiedAnswer);
+                  }
+                } else {
+                  // Regular string answer editing
+                  onAnswerEdit(answer);
+                }
               }
             }
           }
@@ -83,8 +141,11 @@ const ReportContent: React.FC<ReportContentProps> = ({
 
   // Generate populated HTML with appropriate styling based on view mode
   const content = useMemo(() => {
-    // First, generate the base populated HTML
-    const baseHTML = generatePopulatedHTML(reportData.template.html, reportData.answers);
+    // Get questions from template for answer_type metadata
+    const questions = reportData.template.questions || [];
+    
+    // First, generate the base populated HTML with questions metadata
+    const baseHTML = generatePopulatedHTML(reportData.template.html, reportData.answers, questions);
     
     // Determine CSS class based on view mode
     let answerClass = 'answer-content';

@@ -28,13 +28,65 @@ export const useAnswerEditing = (
   const handleSaveAnswer = () => {
     if (!editingAnswer || !reportData) return;
 
+    // Check if this is a granular edit (list item or table cell)
+    const metadata = (editingAnswer as any)._editMetadata;
+    
+    let updatedAnswer: any;
+    
+    if (metadata) {
+      if (metadata.type === 'list') {
+        // Update specific list item
+        const newArray = [...metadata.originalAnswer];
+        newArray[metadata.listIndex] = editedAnswerText;
+        updatedAnswer = newArray;
+      } else if (metadata.type === 'table') {
+        // Update specific table cell
+        const newArray = metadata.originalAnswer.map((row: any, idx: number) => {
+          if (idx === metadata.tableRow) {
+            return {
+              ...row,
+              [metadata.tableCol]: editedAnswerText
+            };
+          }
+          return row;
+        });
+        updatedAnswer = newArray;
+      } else {
+        // String type (shouldn't have metadata, but handle it)
+        updatedAnswer = editedAnswerText;
+      }
+    } else {
+      // Regular string answer editing
+      updatedAnswer = editedAnswerText;
+    }
+
+    // Calculate word count based on answer type
+    let wordCount = 0;
+    if (typeof updatedAnswer === 'string') {
+      wordCount = updatedAnswer.split(' ').length;
+    } else if (Array.isArray(updatedAnswer)) {
+      // For arrays, count words across all items
+      wordCount = updatedAnswer.reduce((count, item) => {
+        if (typeof item === 'string') {
+          return count + item.split(' ').length;
+        } else if (typeof item === 'object') {
+          // For table rows, count words in all cell values
+          return count + Object.values(item).reduce((sum: number, val) => {
+            return sum + String(val).split(' ').length;
+          }, 0);
+        }
+        return count;
+      }, 0);
+    }
+
     // Update the answer in report data
     const updatedAnswers = {
       ...reportData.answers,
       [editingAnswer.placeholder]: {
         ...editingAnswer,
-        answer: editedAnswerText,
-        word_count: editedAnswerText.split(' ').length
+        answer: updatedAnswer,
+        word_count: wordCount,
+        _editMetadata: undefined  // Remove metadata
       }
     };
 

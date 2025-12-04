@@ -16,7 +16,7 @@ import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
-from app.schemas import QuestionOut
+from app.schemas import QuestionOut, AnswerType
 from app.services.performance_monitor import time_operation, get_performance_monitor
 from app.services.bbox_matcher import BBoxMatcher
 from app.config import (
@@ -197,7 +197,6 @@ class LLMService:
                     generation_config=generation_config
                 )
                 api_call_time = timer.stop().duration
-            
             if not response or not response.text:
                 raise ValueError("Empty response from Gemini model")
             
@@ -223,30 +222,36 @@ class LLMService:
             logger.error(f"Batch processing with individual contexts failed: {e}")
             raise ValueError(f"Failed to process questions in batch: {str(e)}")
 
-    def _create_batch_prompt_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]], 
+    def _create_batch_prompt_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]],
                                                     document_context: Dict) -> str:
         """Create a single batch prompt where each question has its own relevant context"""
-        
+
         questions_section = ""
-        
+
         for i, item in enumerate(questions_with_chunks, 1):
             question = item['question']
             relevant_chunks = item['relevant_chunks']
-            
+
             # Prepare individual context for this question
             context_text = self._prepare_context_from_chunks(relevant_chunks) if relevant_chunks else "No relevant context found"
 
-            
-            
+            # Get format instruction for this question's answer type
+            format_instruction = self._get_answer_format_instruction(question)
+
             questions_section += f"""
 === QUESTION {i} (ID: {question.placeholder}) ===
 QUESTION: {question.prompt}
+
+EXPECTED FORMAT: {format_instruction}
 
 RELEVANT CONTEXT FOR THIS QUESTION:
 {context_text}
 
 """
-        
+
+        # Build dynamic response format section based on question types
+        response_format_section = self._build_response_format_section(questions_with_chunks)
+
         return f"""You are an expert data extraction AI. Extract specific information for ALL questions provided below. Each question has its own relevant context section.
 
 {questions_section}
@@ -255,14 +260,13 @@ INSTRUCTIONS:
 1. For each question, analyze ONLY its specific relevant context section
 2. Extract the specific information requested for each question
 3. If information is not found in a question's context, respond with "Not specified" or "Not found"
-4. Be precise and factual - only extract information that is explicitly has support in the context
+4. Be precise and factual - only extract information that is explicitly supported in the context
 5. For numerical values, include units when specified
-6. For dates, use a consistent format (MM/DD/YYYY or as stated in document)
+6. For dates, use a consistent format (YYYY-MM-DD or as stated in document)
 7. Directly answer each question
-8. Respond in the exact JSON format specified
+8. CRITICAL: Follow the EXPECTED FORMAT instruction for each question exactly
 
-RESPONSE FORMAT:
-You must respond with a valid JSON object containing answers for all questions using their IDs as keys. VALUES MUST BE PLAIN STRINGS. Do not return arrays or objects as values.
+{response_format_section}
 """
 
     def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -272,30 +276,53 @@ You must respond with a valid JSON object containing answers for all questions u
         # This ensures compatibility with google-generativeai 0.8.2
         return {}
 
-    def _parse_batch_response_with_individual_contexts(self, response_text: str, 
+    def _parse_batch_response_with_individual_contexts(self, response_text: str,
                                                      questions_with_chunks: List[Dict[str, Any]],
                                                      bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
         """Parse batch JSON response for questions with individual contexts"""
-        
+
+        # Write response to debug file
+        with open("response_debug.txt", "w", encoding="utf-8") as f:
+            f.write(response_text)
+
         try:
             # Parse JSON response
             batch_data = json.loads(response_text)
-            
+
             results = {}
-            
+
             for item in questions_with_chunks:
                 question = item['question']
                 relevant_chunks = item['relevant_chunks']
                 placeholder = question.placeholder
-                
+
                 if placeholder in batch_data:
                     answer = batch_data[placeholder]
-                    
-                    # Create structured result with intelligent source chunks using answer quality analysis
+
+                    # Get source chunks based on answer type
+                    if question.answer_type == AnswerType.STRING:
+                        # String answers: use existing quote extraction
+                        answer_str = str(answer) if answer else ""
+                        source_chunks = self._get_source_chunks_for_question(
+                            relevant_chunks,
+                            answer_str,
+                            question.prompt,
+                            bbox_data
+                        )
+                    else:
+                        # List/Table answers: get quotes for individual items/cells
+                        source_chunks = self._get_source_chunks_for_structured_answer(
+                            relevant_chunks,
+                            answer,
+                            question,
+                            bbox_data
+                        )
+
+                    # Create structured result - preserve original answer type for rendering
                     results[placeholder] = {
-                        "answer": answer,
-                        "source_chunks": self._get_source_chunks_for_question(relevant_chunks, answer, question.prompt, bbox_data),
-                        "word_count": len(answer.split()) if answer else 0
+                        "answer": answer,  # Keep original type (string, list, or dict list)
+                        "source_chunks": source_chunks,
+                        "word_count": self._calculate_word_count(answer)
                     }
                 else:
                     # Question missing from response - create empty result
@@ -305,13 +332,13 @@ You must respond with a valid JSON object containing answers for all questions u
                         "source_chunks": [],
                         "word_count": 0
                     }
-            
+
             return results
-            
+
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse batch JSON response: {e}")
             logger.error(f"Raw response: {response_text}")
-            
+
             # Create error results for all questions
             results = {}
             for item in questions_with_chunks:
@@ -322,7 +349,7 @@ You must respond with a valid JSON object containing answers for all questions u
                     "word_count": 0,
                     "error": "Failed to parse batch response"
                 }
-            
+
             return results
 
     def _get_source_chunks_for_question(self, relevant_chunks: List[Dict], answer: str, question_prompt: str,
@@ -461,9 +488,183 @@ ANSWER:"""
         
         if not context_parts:
             raise ValueError("No chunks could fit within token limits")
-        
+
         return "".join(context_parts)
-    
+
+    def _get_answer_format_instruction(self, question: QuestionOut) -> str:
+        """
+        Generate answer format instruction based on answer_type.
+
+        This creates clear, explicit formatting instructions for the LLM
+        to ensure consistent structured output.
+        """
+        if question.answer_type == AnswerType.STRING:
+            return "Respond with a plain text string."
+
+        elif question.answer_type == AnswerType.LIST:
+            return (
+                'Respond with a JSON array of strings. '
+                'Example: ["First item", "Second item", "Third item"]'
+            )
+
+        elif question.answer_type == AnswerType.TABLE:
+            if not question.columns:
+                return "Respond with a plain text string."
+
+            # Build example from column definitions
+            column_keys = [col.key for col in question.columns]
+            example_row = {key: f"<{key}>" for key in column_keys}
+            example_json = json.dumps([example_row], indent=None)
+
+            return (
+                f'Respond with a JSON array of objects. '
+                f'Each object must have exactly these keys: {column_keys}. '
+                f'Example format: {example_json}'
+            )
+
+        return "Respond with a plain text string."
+
+    def _get_response_schema_hint(self, question: QuestionOut) -> str:
+        """Generate schema hint for JSON response section"""
+        if question.answer_type == AnswerType.STRING:
+            return f'"{question.placeholder}": "string value"'
+
+        elif question.answer_type == AnswerType.LIST:
+            return f'"{question.placeholder}": ["item1", "item2", ...]'
+
+        elif question.answer_type == AnswerType.TABLE:
+            if question.columns:
+                keys = [col.key for col in question.columns]
+                obj_example = ", ".join([f'"{k}": "..."' for k in keys])
+                return f'"{question.placeholder}": [{{{obj_example}}}]'
+            return f'"{question.placeholder}": "string value"'
+
+        return f'"{question.placeholder}": "string value"'
+
+    def _build_response_format_section(self, questions_with_chunks: List[Dict[str, Any]]) -> str:
+        """Build the response format section with schema examples for all answer types"""
+
+        schema_lines = []
+        has_string = False
+        has_list = False
+        has_table = False
+
+        for item in questions_with_chunks:
+            q = item['question']
+            schema_lines.append("  " + self._get_response_schema_hint(q))
+
+            if q.answer_type == AnswerType.STRING:
+                has_string = True
+            elif q.answer_type == AnswerType.LIST:
+                has_list = True
+            elif q.answer_type == AnswerType.TABLE:
+                has_table = True
+
+        # Build type-specific instructions
+        type_instructions = []
+        if has_string:
+            type_instructions.append("- STRING questions: Return a plain text string value")
+        if has_list:
+            type_instructions.append("- LIST questions: Return a JSON array of strings")
+        if has_table:
+            type_instructions.append("- TABLE questions: Return a JSON array of objects with the exact keys specified")
+
+        type_instructions_str = "\n".join(type_instructions) if type_instructions else ""
+
+        return f"""RESPONSE FORMAT:
+You must respond with a valid JSON object. Use the following structure:
+{{
+{chr(10).join(schema_lines)}
+}}
+
+FORMAT REQUIREMENTS:
+{type_instructions_str}
+- Follow the EXPECTED FORMAT instruction for each question exactly
+- Ensure all JSON is properly formatted and valid"""
+
+    def _calculate_word_count(self, answer: Any) -> int:
+        """Calculate word count for various answer types"""
+        if isinstance(answer, str):
+            return len(answer.split()) if answer else 0
+        elif isinstance(answer, list):
+            total = 0
+            for item in answer:
+                if isinstance(item, str):
+                    total += len(item.split())
+                elif isinstance(item, dict):
+                    for v in item.values():
+                        if isinstance(v, str):
+                            total += len(v.split())
+            return total
+        return 0
+
+    def _get_quotable_values_from_answer(self, answer: Any, question: QuestionOut) -> List[Dict[str, Any]]:
+        """
+        Extract individual quotable values from structured answers (list/table).
+
+        Returns a list of dicts with:
+        - 'value': The text value to find quotes for
+        - 'target': Dict describing where this value belongs (for associating quotes later)
+        """
+        quotable_values = []
+
+        if question.answer_type == AnswerType.LIST:
+            if isinstance(answer, list):
+                for idx, item in enumerate(answer):
+                    if isinstance(item, str) and item.strip():
+                        quotable_values.append({
+                            "value": item,
+                            "target": {"type": "list", "index": idx}
+                        })
+
+        elif question.answer_type == AnswerType.TABLE:
+            if isinstance(answer, list):
+                for row_idx, row in enumerate(answer):
+                    if isinstance(row, dict):
+                        for key, value in row.items():
+                            if isinstance(value, str) and value.strip():
+                                quotable_values.append({
+                                    "value": value,
+                                    "target": {"type": "table", "row": row_idx, "key": key}
+                                })
+
+        return quotable_values
+
+    def _get_source_chunks_for_structured_answer(self, relevant_chunks: List[Dict],
+                                                  answer: Any, question: QuestionOut,
+                                                  bbox_data: Optional[Dict] = None) -> List[Dict]:
+        """
+        Get source chunks for structured answers (list/table) with quotes
+        targeted to individual items/cells.
+        """
+        all_quotes = []
+
+        # Get individual values to quote
+        quotable_values = self._get_quotable_values_from_answer(answer, question)
+
+        for qv in quotable_values:
+            value = qv["value"]
+            target = qv["target"]
+
+            # Analyze if this value was actually found (not "Not specified", etc.)
+            answer_quality = self._analyze_answer_quality(value)
+
+            if answer_quality == AnswerQuality.FOUND:
+                # Get quotes for this specific value
+                quotes = self._extract_precise_quotes(
+                    value,
+                    relevant_chunks,
+                    f"Find evidence for: {value}",
+                    bbox_data
+                )
+
+                # Add target info to each quote
+                for quote in quotes:
+                    quote["target"] = target
+                    all_quotes.append(quote)
+
+        return all_quotes
+
     def _analyze_answer_quality(self, answer: str) -> AnswerQuality:
         """
         Analyze answer text to determine if information was actually found

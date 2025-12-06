@@ -60,49 +60,17 @@ class DiffService:
             baseline_plain = self.html_to_plain_text(baseline_text)
             current_plain = self.html_to_plain_text(current_text)
 
-            print(
-                "=== DIFF DEBUG START for placeholder=%r ===\n"
-                "baseline_raw=%r\n"
-                "current_raw=%r\n"
-                "baseline_plain=%r (len=%d)\n"
-                "current_plain=%r (len=%d)",
-                placeholder,
-                baseline_text,
-                current_text,
-                baseline_plain,
-                len(baseline_plain),
-                current_plain,
-                len(current_plain),
-            )
-
             # Compute semantic diff
             diffs = self.dmp.diff_main(baseline_plain, current_plain)
             # Apply semantic cleanup for better readability
             self.dmp.diff_cleanupSemantic(diffs)
 
-            print(
-                "Raw diffs after diff_cleanupSemantic for %r: %r",
-                placeholder,
-                diffs,
-            )
-
             # Merge adjacent changes for cleaner, more semantic spans
             merged_diffs = self._merge_semantic_diffs(diffs)
-
-            print(
-                "Merged diffs for %r: %r",
-                placeholder,
-                merged_diffs,
-            )
 
             # Check if any actual changes exist (revert-to-baseline detection)
             has_changes = any(op != 0 for op, _ in merged_diffs)
             if not has_changes:
-                print(
-                    "No net changes for %s (reverted to baseline)",
-                    placeholder,
-                )
-                print("=== DIFF DEBUG END (no changes) for %r ===", placeholder)
                 return []
 
             # Convert merged diff output to storage format
@@ -112,26 +80,9 @@ class DiffService:
                 placeholder
             )
 
-            print(
-                "Final changes for %r: %r",
-                placeholder,
-                changes,
-            )
-            print(
-                "Computed diff for %s: %d changes found (after semantic merging)",
-                placeholder,
-                len(changes),
-            )
-
-            print("=== DIFF DEBUG END for %r ===", placeholder)
             return changes
 
         except Exception as e:
-            print(
-                "Error computing diff for %s: %s",
-                placeholder,
-                str(e),
-            )
             # Return empty list on error - don't break the save flow
             return []
 
@@ -156,10 +107,6 @@ class DiffService:
             return text.strip()
 
         except Exception as e:
-            print(
-                "Error stripping HTML, returning original: %s",
-                str(e),
-            )
             # Fallback: return original text if parsing fails
             return html
 
@@ -175,14 +122,6 @@ class DiffService:
         changes: List[Dict[str, Any]] = []
         current_position = 0  # Track position in final (current) text
 
-        print(
-            "Extracting changes for %r from diffs=%r, final_text(len=%d)=%r",
-            placeholder,
-            diffs,
-            len(final_text),
-            final_text,
-        )
-
         for idx, (operation, text) in enumerate(diffs):
             text_length = len(text)
 
@@ -196,12 +135,6 @@ class DiffService:
                     "answer_placeholder": placeholder
                 }
                 changes.append(change)
-                print(
-                    "[%s] INSERT change for %r: %r",
-                    placeholder,
-                    idx,
-                    change,
-                )
                 current_position += text_length
 
             elif operation == -1:  # DELETE
@@ -216,35 +149,11 @@ class DiffService:
                     "answer_placeholder": placeholder
                 }
                 changes.append(change)
-                print(
-                    "[%s] DELETE change for %r: %r",
-                    placeholder,
-                    idx,
-                    change,
-                )
                 # Don't advance position - deleted text not in final
 
             else:  # operation == 0 (EQUAL)
                 # Text unchanged, just advance position
                 current_position += text_length
-                print(
-                    "[%s] EQUAL segment idx=%d text=%r (advance position to %d)",
-                    placeholder,
-                    idx,
-                    text,
-                    current_position,
-                )
-
-        # Sanity check: how much of final_text we've "walked"
-        if current_position != len(final_text):
-            print(
-                "extract_changes_for_storage: final position (%d) != len(final_text) (%d) "
-                "for placeholder=%r. This may indicate a mismatch between "
-                "diff text and rendered text.",
-                current_position,
-                len(final_text),
-                placeholder,
-            )
 
         return changes
 
@@ -258,8 +167,6 @@ class DiffService:
         """
         if not diffs:
             return diffs
-
-        print("Starting _merge_semantic_diffs with diffs=%r", diffs)
 
         merged: List[tuple] = []
         i = 0
@@ -293,12 +200,6 @@ class DiffService:
             merged.append((current_op, merged_text))
             i = j
 
-        print(
-            "Merged %d diff operations into %d semantic spans: %r",
-            len(diffs),
-            len(merged),
-            merged,
-        )
         return merged
 
     def _is_whitespace_or_punctuation(self, text: str) -> bool:

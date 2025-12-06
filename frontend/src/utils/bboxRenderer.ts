@@ -165,11 +165,6 @@ export function drawBoundingBoxes(
     // Draw semi-transparent yellow highlight
     ctx.fillStyle = "rgba(255, 235, 59, 0.3)"; // Yellow with 30% opacity
     ctx.fillRect(x0, y0, width, height);
-
-    // Draw border for better visibility
-    ctx.strokeStyle = "rgba(255, 193, 7, 0.8)"; // Darker yellow border
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x0, y0, width, height);
   }
 }
 

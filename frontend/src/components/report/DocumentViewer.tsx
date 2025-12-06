@@ -380,14 +380,21 @@ export default function PdfViewerWithHighlights({
     const np = pdfDoc.numPages;
     const order: number[] = [];
 
+    // 🎯 CONSTRAIN SEARCH TO PRECISE PAGE ± 1 PAGES ONLY
     if (precisePage && precisePage >= 1 && precisePage <= np) {
+      // Limit search to just the precise page ± 1 pages instead of entire document
+      if (precisePage - 1 >= 1) order.push(precisePage - 1);
       order.push(precisePage);
-      for (let d = 1; d < np; d++) {
-        if (precisePage - d >= 1) order.push(precisePage - d);
-        if (precisePage + d <= np) order.push(precisePage + d);
-      }
+      if (precisePage + 1 <= np) order.push(precisePage + 1);
+
+      console.log(`🎯 Fuzzy search constrained to pages: ${order.join(', ')} (from precise_page hint: ${precisePage})`);
     } else {
-      for (let p = 1; p <= np; p++) order.push(p);
+      // Fallback: no precise page available, search main pages with reduced priority
+      // Still limited compared to full document search
+      for (let d = 0; d <= Math.min(2, np - 1); d++) {
+        if (1 + d <= np) order.push(1 + d);
+      }
+      console.log(`📄 Fuzzy search fallback - no precise page hint, limited to pages: ${order.join(', ')}`);
     }
 
     let best: { pageNum: number; score: number; snippet: string } | null = null;
@@ -397,7 +404,7 @@ export default function PdfViewerWithHighlights({
       if (!res) continue;
       if (!best || res.score > best.score) {
         best = res;
-        if (best.score >= 0.92) break;
+        if (best.score >= 0.92) break;  // Still allow early exit for very good matches
       }
     }
     return best;

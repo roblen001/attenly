@@ -30,7 +30,8 @@ from app.config import (
     QUOTE_CONTEXT_CHARS,
     MAX_QUOTE_LENGTH,
     MIN_ANSWER_CONFIDENCE,
-    ANSWER_NOT_FOUND_PHRASES
+    ANSWER_NOT_FOUND_PHRASES,
+    MAX_CONCURRENT_QUOTE_EXTRACTIONS
 )
 
 logger = logging.getLogger(__name__)
@@ -1068,9 +1069,11 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
     def _extract_precise_quotes_batch(self, questions_needing_quotes: List[Dict[str, Any]],
                                       bbox_data: Optional[Dict] = None) -> Dict[str, List[Dict]]:
         """
-        Batch extract quotes for multiple questions in a SINGLE LLM call.
+        Extract quotes for multiple questions using PARALLEL individual LLM calls.
 
-        This dramatically reduces latency by making 1 API call instead of N calls.
+        This approach sends all requests simultaneously but as separate API calls,
+        giving each extraction focused context (better quality) while maintaining
+        low latency through parallelism (total time ≈ slowest single call).
 
         Args:
             questions_needing_quotes: List of dicts with:
@@ -1089,43 +1092,281 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
         if not questions_needing_quotes:
             return {}
 
+        # Run parallel extraction using ThreadPoolExecutor
+        # This works reliably whether called from sync or async context
         try:
-            # Build the batch quote extraction prompt
-            batch_prompt = self._create_batch_quote_extraction_prompt(questions_needing_quotes)
-
-            # Configure for quote extraction (use JSON output)
-            generation_config = self.genai.types.GenerationConfig(
-                temperature=0.0,  # Low temperature for consistent extraction
-                response_mime_type="application/json",
-                max_output_tokens=8192  # Prevent truncation for large batch responses
-            )
-
-            # Single LLM call for ALL quote extractions
-            with time_operation("llm_batch_quote_extraction",
+            with time_operation("llm_parallel_quote_extraction",
                               {"question_count": len(questions_needing_quotes)}) as timer:
-                response = self.model.generate_content(
-                    batch_prompt,
-                    generation_config=generation_config
-                )
-                api_time = timer.stop().duration
+                results = self._extract_quotes_parallel_threaded(questions_needing_quotes, bbox_data)
+                total_time = timer.stop().duration
 
-            logger.info(f"⏱️ Batch quote extraction API call: {api_time*1000:.0f}ms for {len(questions_needing_quotes)} items")
+            total_quotes = sum(len(quotes) for quotes in results.values())
+            logger.info(f"⏱️ Parallel quote extraction: {total_time*1000:.0f}ms for {len(questions_needing_quotes)} items, {total_quotes} quotes extracted")
 
-            if not response or not response.text:
-                logger.warning("Empty response from batch quote extraction LLM call")
-                return {q["placeholder"]: [] for q in questions_needing_quotes}
-
-            # Parse the batch response
-            batch_quotes = self._parse_batch_quote_extraction_response(
-                response.text, questions_needing_quotes, bbox_data
-            )
-
-            return batch_quotes
+            return results
 
         except Exception as e:
-            logger.error(f"Failed to batch extract quotes: {e}")
-            # Return empty quotes for all questions on failure
+            logger.error(f"Failed to extract quotes in parallel: {e}")
             return {q["placeholder"]: [] for q in questions_needing_quotes}
+
+    def _extract_quotes_parallel_threaded(self, questions_needing_quotes: List[Dict[str, Any]],
+                                          bbox_data: Optional[Dict] = None) -> Dict[str, List[Dict]]:
+        """
+        Execute quote extractions in parallel using ThreadPoolExecutor.
+
+        This approach uses threads instead of asyncio to avoid event loop conflicts
+        when called from within FastAPI's async context.
+
+        Args:
+            questions_needing_quotes: List of question dicts needing quote extraction
+            bbox_data: Optional bbox data for enhancement
+
+        Returns:
+            Dictionary mapping placeholder -> list of quote dictionaries
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        results: Dict[str, List[Dict]] = {}
+
+        def extract_single(q_item: Dict[str, Any]) -> tuple:
+            """Extract quotes for a single question in a thread."""
+            placeholder = q_item["placeholder"]
+            target = q_item.get("target")
+
+            # Build unique ID for logging
+            question_id = placeholder
+            if target:
+                if target.get("type") == "list":
+                    question_id = f"{placeholder}__list_{target['index']}"
+                elif target.get("type") == "table":
+                    question_id = f"{placeholder}__table_{target['row']}_{target['key']}"
+
+            try:
+                quotes = self._extract_single_quote_sync(q_item, bbox_data)
+                return (placeholder, question_id, quotes, target)
+            except Exception as e:
+                logger.warning(f"Quote extraction failed for {question_id}: {e}")
+                return (placeholder, question_id, [], target)
+
+        # Use ThreadPoolExecutor for true parallel execution
+        with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_QUOTE_EXTRACTIONS) as executor:
+            # Submit all tasks
+            futures = [executor.submit(extract_single, q_item) for q_item in questions_needing_quotes]
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                try:
+                    placeholder, question_id, quotes, target = future.result()
+
+                    if placeholder not in results:
+                        results[placeholder] = []
+
+                    # Add target info to quotes if present
+                    for quote in quotes:
+                        if target:
+                            quote["target"] = target
+                        results[placeholder].append(quote)
+
+                except Exception as e:
+                    logger.warning(f"Failed to get result from quote extraction thread: {e}")
+
+        return results
+
+    def _extract_single_quote_sync(self, q_item: Dict[str, Any],
+                                   bbox_data: Optional[Dict] = None) -> List[Dict]:
+        """
+        Extract quotes for a single question/answer pair synchronously.
+
+        Args:
+            q_item: Dict with placeholder, answer, question_prompt, relevant_chunks
+            bbox_data: Optional bbox data for enhancement
+
+        Returns:
+            List of quote dictionaries for this item
+        """
+        answer = q_item["answer"]
+        question_prompt = q_item["question_prompt"]
+        relevant_chunks = q_item["relevant_chunks"]
+
+        if not relevant_chunks:
+            return []
+
+        # Create focused prompt for this single extraction
+        prompt = self._create_single_quote_extraction_prompt(answer, relevant_chunks, question_prompt)
+
+        # Configure for quote extraction
+        generation_config = self.genai.types.GenerationConfig(
+            temperature=0.0,
+            response_mime_type="application/json"
+        )
+
+        # Make synchronous API call
+        response = self.model.generate_content(prompt, generation_config=generation_config)
+
+        if not response or not response.text:
+            return []
+
+        # Parse response and enhance with bbox data
+        quotes = self._parse_single_quote_response(response.text, relevant_chunks, bbox_data)
+        return quotes
+
+    def _create_single_quote_extraction_prompt(self, answer: str, chunks: List[Dict], question: str) -> str:
+        """
+        Create a focused prompt for extracting quotes for a SINGLE answer.
+
+        This is simpler than the batch prompt, allowing the LLM to focus entirely
+        on finding the best quotes for one specific answer.
+        """
+        # Prepare chunks with clear numbering
+        chunks_section = ""
+        for i, chunk in enumerate(chunks, 1):
+            metadata = chunk.get("metadata", {})
+            page_info = f"Pages {metadata.get('start_page', 'N/A')}-{metadata.get('end_page', 'N/A')}"
+            filename = metadata.get('filename', 'Document')
+
+            # Extract page markers
+            page_markers = []
+            lines = chunk['text'].split('\n')
+            for line in lines:
+                if '--- PAGE' in line and '---' in line:
+                    page_markers.append(line.strip())
+
+            page_info_detailed = page_info
+            if page_markers:
+                page_info_detailed += f" (Contains: {', '.join(page_markers[:3])})"
+
+            chunks_section += f"""
+=== CHUNK {i} ===
+Source: {filename} ({page_info_detailed})
+Text: {chunk['text']}
+
+"""
+
+        return f"""You are a document quote extraction system. Find EXACT text from the source that supports the given answer.
+
+QUESTION: {question}
+
+ANSWER TO SUPPORT: {answer}
+
+DOCUMENT CHUNKS:
+{chunks_section}
+
+EXTRACTION RULES:
+1. VERBATIM ONLY - Copy text exactly as it appears, character-for-character
+2. COMPLETE QUOTES - Extract enough text to provide meaningful evidence (typically a full sentence)
+3. SELF-CONTAINED - The quote should make sense on its own
+4. DIRECTLY RELEVANT - Only extract text that directly supports the answer
+5. NO FABRICATION - Never invent or paraphrase
+
+GUIDELINES:
+- Prefer complete sentences over fragments
+- If the answer is a name/number/date, include surrounding context
+- Maximum {MAX_QUOTE_LENGTH} characters per quote
+- Return up to {VECTOR_SEARCH_MAX_SOURCE_QUOTES} quotes maximum
+- Prioritize relevance and quality of quotes over quantity
+- For simple one-word answers, a single quote is often best
+
+RESPONSE FORMAT (JSON array):
+[
+  {{
+    "chunk_number": 1,
+    "exact_text": "The complete verbatim quote from the document",
+    "page_context": "PAGE X"
+  }}
+]
+
+Return EMPTY ARRAY [] if no exact supporting text exists."""
+
+    def _parse_single_quote_response(self, response_text: str, chunks: List[Dict],
+                                     bbox_data: Optional[Dict] = None) -> List[Dict]:
+        """
+        Parse the response from a single quote extraction call.
+
+        Args:
+            response_text: JSON response from LLM
+            chunks: The relevant chunks for this extraction
+            bbox_data: Optional bbox data for enhancement
+
+        Returns:
+            List of processed quote dictionaries
+        """
+        try:
+            quote_data = json.loads(response_text)
+
+            if not isinstance(quote_data, list):
+                return []
+
+            quotes = []
+            for quote_item in quote_data:
+                if not isinstance(quote_item, dict):
+                    continue
+
+                chunk_number = quote_item.get("chunk_number", 0)
+                exact_text = quote_item.get("exact_text", "")
+                page_context = quote_item.get("page_context", "")
+
+                # Validate chunk number
+                if chunk_number < 1 or chunk_number > len(chunks):
+                    continue
+
+                chunk = chunks[chunk_number - 1]
+                metadata = chunk.get("metadata", {})
+
+                document_id = metadata.get("document_id", "")
+                if not document_id:
+                    continue
+
+                # Extract precise page number
+                precise_page = self._extract_precise_page_number(
+                    exact_text, chunk['text'], page_context, metadata
+                )
+
+                # Trim to max length
+                full_quote_text = exact_text
+                if len(full_quote_text) > MAX_QUOTE_LENGTH:
+                    full_quote_text = full_quote_text[:MAX_QUOTE_LENGTH] + "..."
+
+                quote_dict = {
+                    "chunk_id": chunk["chunk_id"],
+                    "document_id": document_id,
+                    "text": full_quote_text.strip(),
+                    "exact_text": exact_text,
+                    "page_range": str(precise_page) if precise_page else f"{metadata.get('start_page', 'N/A')}-{metadata.get('end_page', 'N/A')}",
+                    "precise_page": precise_page,
+                    "page_context": page_context,
+                    "relevance_score": chunk.get("distance", 0.0),
+                }
+
+                # Enhance with bbox data if available
+                if bbox_data and document_id in bbox_data:
+                    try:
+                        bbox_matcher = BBoxMatcher()
+                        word_spans = bbox_matcher.match_quote_to_words(
+                            quote_text=exact_text,
+                            document_bboxes=bbox_data[document_id],
+                            page_number=precise_page
+                        )
+                        if word_spans:
+                            quote_dict["has_bounding_boxes"] = True
+                            quote_dict["word_spans"] = word_spans
+                        else:
+                            quote_dict["has_bounding_boxes"] = False
+                    except Exception as e:
+                        logger.warning(f"Failed to match bbox: {e}")
+                        quote_dict["has_bounding_boxes"] = False
+                else:
+                    quote_dict["has_bounding_boxes"] = False
+
+                quotes.append(quote_dict)
+
+            return quotes
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse single quote response: {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"Error processing single quote response: {e}")
+            return []
 
     def _create_batch_quote_extraction_prompt(self, questions_needing_quotes: List[Dict[str, Any]]) -> str:
         """
@@ -1178,7 +1419,7 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
                     question_id = f"{placeholder}__table_{target['row']}_{target['key']}"
 
             questions_section += f"""
-=== ITEM {idx} (ID: {question_id}) ===
+=== ITEM {idx} (item_id: {question_id}) ===
 QUESTION: {question_prompt}
 ANSWER TO SUPPORT: {answer}
 
@@ -1194,14 +1435,19 @@ EXTRACTION RULES:
 3. SELF-CONTAINED - Each quote should make sense on its own
 4. DIRECTLY RELEVANT - Only extract text that directly supports or contains the answer
 5. NO FABRICATION - Never invent, paraphrase, or modify source text
+6. NO ITEM_ID MODIFICATION - Use the provided item_id exactly as given
 
 GUIDELINES:
 - Prefer complete sentences over fragments when they provide better context
 - If the answer is a name/number/date, include the surrounding phrase that gives it meaning
 - Maximum {MAX_QUOTE_LENGTH} characters per quote
-- Up to {VECTOR_SEARCH_MAX_SOURCE_QUOTES} quotes per item
+- Up to {VECTOR_SEARCH_MAX_SOURCE_QUOTES} quotes per item_id this is a HARD LIMIT - return fewer if necessary
 - Use EMPTY ARRAY [] when no supporting text exists
+- Make sure page_context is always formatter as "PAGE X" with a single page number X
+- If you are finding quotes for one word answers then a single quote is perfectly acceptable
+- the fewest powerful number of quotes possible is preferred
 
+Here are all the questions and their document chunks needing quotes:
 {questions_section}
 
 RESPONSE FORMAT (JSON object with item IDs as keys):
@@ -1213,7 +1459,6 @@ RESPONSE FORMAT (JSON object with item IDs as keys):
       "page_context": "PAGE X"
     }}
   ],
-  "<another_item_id>": []
 }}
 
 Return valid JSON only."""

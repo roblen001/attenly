@@ -213,6 +213,7 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 MAX_CONCURRENT_UPLOADS = 2
 MAX_CONCURRENT_LLM_REQUESTS = 1
+MAX_CONCURRENT_QUOTE_EXTRACTIONS = 10  # Parallel quote extraction calls
 
 ENABLE_CACHING = False
 CACHE_TTL_SECONDS = 3600

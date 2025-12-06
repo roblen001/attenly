@@ -282,6 +282,9 @@ INSTRUCTIONS:
 
             results = {}
 
+            # First pass: collect all questions that need quote extraction
+            questions_needing_quotes = []
+
             for item in questions_with_chunks:
                 question = item['question']
                 relevant_chunks = item['relevant_chunks']
@@ -290,31 +293,44 @@ INSTRUCTIONS:
                 if placeholder in batch_data:
                     answer = batch_data[placeholder]
 
-                    # Get source chunks based on answer type
-                    if question.answer_type == AnswerType.STRING:
-                        # String answers: use existing quote extraction
-                        answer_str = str(answer) if answer else ""
-                        source_chunks = self._get_source_chunks_for_question(
-                            relevant_chunks,
-                            answer_str,
-                            question.prompt,
-                            bbox_data
-                        )
-                    else:
-                        # List/Table answers: get quotes for individual items/cells
-                        source_chunks = self._get_source_chunks_for_structured_answer(
-                            relevant_chunks,
-                            answer,
-                            question,
-                            bbox_data
-                        )
-
-                    # Create structured result - preserve original answer type for rendering
+                    # Initialize result structure
                     results[placeholder] = {
-                        "answer": answer,  # Keep original type (string, list, or dict list)
-                        "source_chunks": source_chunks,
+                        "answer": answer,
+                        "source_chunks": [],  # Will be populated after batch quote extraction
                         "word_count": self._calculate_word_count(answer)
                     }
+
+                    # Collect questions that need quotes based on answer type
+                    if question.answer_type == AnswerType.STRING:
+                        answer_str = str(answer) if answer else ""
+                        answer_quality = self._analyze_answer_quality(answer_str)
+
+                        if answer_quality == AnswerQuality.FOUND and relevant_chunks:
+                            questions_needing_quotes.append({
+                                "placeholder": placeholder,
+                                "answer": answer_str,
+                                "question_prompt": question.prompt,
+                                "relevant_chunks": relevant_chunks,
+                                "answer_type": "string",
+                                "target": None
+                            })
+                    else:
+                        # List/Table answers: collect individual quotable values
+                        quotable_values = self._get_quotable_values_from_answer(answer, question)
+                        for qv in quotable_values:
+                            value = qv["value"]
+                            target = qv["target"]
+                            answer_quality = self._analyze_answer_quality(value)
+
+                            if answer_quality == AnswerQuality.FOUND and relevant_chunks:
+                                questions_needing_quotes.append({
+                                    "placeholder": placeholder,
+                                    "answer": value,
+                                    "question_prompt": f"Find evidence for: {value}",
+                                    "relevant_chunks": relevant_chunks,
+                                    "answer_type": "structured",
+                                    "target": target
+                                })
                 else:
                     # Question missing from response - create empty result
                     logger.warning(f"Question {placeholder} missing from batch response")
@@ -323,6 +339,21 @@ INSTRUCTIONS:
                         "source_chunks": [],
                         "word_count": 0
                     }
+
+            # Second pass: batch extract quotes for all questions that need them
+            if questions_needing_quotes:
+                logger.info(f"🔍 Batch extracting quotes for {len(questions_needing_quotes)} items")
+                batch_quotes = self._extract_precise_quotes_batch(questions_needing_quotes, bbox_data)
+
+                # Distribute quotes back to results
+                for placeholder, quotes in batch_quotes.items():
+                    if placeholder in results:
+                        # Merge quotes (for structured answers, there may be multiple quote groups)
+                        results[placeholder]["source_chunks"].extend(quotes)
+
+                logger.info(f"✅ Batch quote extraction complete")
+            else:
+                logger.info("No questions needed quote extraction (all answers were NOT_FOUND or empty)")
 
             return results
 
@@ -742,12 +773,7 @@ Text: {chunk['text']}
 
 """
         
-        return f"""You are a precise text extraction system. Your ONLY job is to find EXACT text strings from the document that support the given answer.
-
-1. COPY EXACT TEXT ONLY - Do NOT paraphrase, summarize, or change ANY words
-2. EXTRACT VERBATIM - The text must appear EXACTLY as written in the document
-3. NO INTERPRETATION - Just find and copy the exact supporting strings
-4. MAXIMUM PRECISION - Find the shortest exact text that supports the answer
+        return f"""You are a document quote extraction system. Your task is to find EXACT text from the source document that supports the given answer.
 
 QUESTION: {question}
 
@@ -756,40 +782,41 @@ ANSWER TO SUPPORT: {answer}
 DOCUMENT CHUNKS:
 {chunks_section}
 
-TASK:
-Find the EXACT text strings (word-for-word) from the chunks that support the answer. You must:
+EXTRACTION RULES:
+1. VERBATIM ONLY - Copy text exactly as it appears in the document, character-for-character
+2. COMPLETE QUOTES - Extract enough text to provide meaningful evidence (typically a full sentence or clause)
+3. SELF-CONTAINED - The quote should make sense on its own without needing the surrounding text
+4. DIRECTLY RELEVANT - Only extract text that directly supports or contains the answer
+5. NO FABRICATION - Never invent, paraphrase, or modify the source text
 
-1. Copy text EXACTLY as it appears - no changes, no paraphrasing
-2. Find the shortest exact text that supports the answer
-3. If the answer mentions "Company A", find the exact text containing "Company A" 
-4. Include minimal context (2-3 words before/after) only if needed for clarity
-5. Maximum {MAX_QUOTE_LENGTH} characters per quote
-6. Return up to {VECTOR_SEARCH_MAX_SOURCE_QUOTES} most relevant exact matches
+GUIDELINES:
+- Prefer complete sentences over fragments when they provide better context
+- If the answer is a name/number/date, include the surrounding phrase that gives it meaning
+- Maximum {MAX_QUOTE_LENGTH} characters per quote
+- Return up to {VECTOR_SEARCH_MAX_SOURCE_QUOTES} quotes, prioritized by relevance
 
-RESPONSE FORMAT - EXACT JSON:
+RESPONSE FORMAT (JSON array):
 [
   {{
     "chunk_number": 1,
-    "exact_text": "EXACT STRING FROM DOCUMENT",
-    "page_context": "PAGE X context if available",
-    "start_context": "few words before",
-    "end_context": "few words after"
+    "exact_text": "The complete verbatim quote from the document",
+    "page_context": "PAGE X"
   }}
 ]
 
 EXAMPLE:
-If answer is "Company A Limited" and document contains "The insurer is Company A Limited with policy", respond:
+Answer: "December 31, 2024"
+Document text: "The fiscal year ended December 31, 2024. Total revenue was $5.2M."
+Response:
 [
   {{
     "chunk_number": 1,
-    "exact_text": "Company A Limited",
-    "page_context": "PAGE 5",
-    "start_context": "The insurer is",
-    "end_context": "with policy"
+    "exact_text": "The fiscal year ended December 31, 2024.",
+    "page_context": "PAGE 12"
   }}
 ]
 
-IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make up or approximate text."""
+Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or fabricate quotes."""
 
     def _parse_quote_extraction_response(self, response: str, chunks: List[Dict]) -> List[Dict]:
         """
@@ -819,46 +846,35 @@ IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make 
                 chunk_number = quote_item.get("chunk_number", 0)
                 exact_text = quote_item.get("exact_text", "")
                 page_context = quote_item.get("page_context", "")
-                start_context = quote_item.get("start_context", "")
-                end_context = quote_item.get("end_context", "")
-                
+
                 # Validate chunk number and get corresponding chunk
                 if chunk_number < 1 or chunk_number > len(chunks):
                     logger.warning(f"Invalid chunk number {chunk_number} in quote extraction")
                     continue
-                
+
                 chunk = chunks[chunk_number - 1]  # Convert to 0-based index
                 metadata = chunk.get("metadata", {})
-                
+
                 # Extract document_id and validate it exists
                 document_id = metadata.get("document_id", "")
                 if not document_id:
                     logger.warning(f"Chunk {chunk.get('chunk_id', 'unknown')} missing document_id in metadata, skipping quote")
                     continue
-                
+
                 # Extract precise page number from page_context or chunk text
                 precise_page = self._extract_precise_page_number(exact_text, chunk['text'], page_context, metadata)
-                
-                # Build the full quote text with context for display
-                full_quote_text = ""
-                if start_context:
-                    full_quote_text += start_context + " "
-                full_quote_text += exact_text
-                if end_context:
-                    full_quote_text += " " + end_context
-                
-                # Trim to maximum length if needed
+
+                # Trim exact_text to maximum length if needed
+                full_quote_text = exact_text
                 if len(full_quote_text) > MAX_QUOTE_LENGTH:
                     full_quote_text = full_quote_text[:MAX_QUOTE_LENGTH] + "..."
-                
+
                 # Create precise quote with exact positioning
                 precise_quote = {
                     "chunk_id": chunk["chunk_id"],
                     "document_id": document_id,
                     "text": full_quote_text.strip(),
                     "exact_text": exact_text,  # The exact string for highlighting
-                    "start_context": start_context,
-                    "end_context": end_context,
                     "page_range": str(precise_page) if precise_page else f"{metadata.get('start_page', 'N/A')}-{metadata.get('end_page', 'N/A')}",
                     "precise_page": precise_page,  # Specific page number for highlighting
                     "page_context": page_context,
@@ -1043,12 +1059,313 @@ IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make 
             
             logger.info(f"Successfully extracted {len(precise_quotes)} precise quotes for answer: {answer[:50]}...")
             return precise_quotes
-            
+
         except Exception as e:
             logger.error(f"Failed to extract precise quotes: {e}")
             # Return empty list on failure - don't break the main processing
             return []
-    
+
+    def _extract_precise_quotes_batch(self, questions_needing_quotes: List[Dict[str, Any]],
+                                      bbox_data: Optional[Dict] = None) -> Dict[str, List[Dict]]:
+        """
+        Batch extract quotes for multiple questions in a SINGLE LLM call.
+
+        This dramatically reduces latency by making 1 API call instead of N calls.
+
+        Args:
+            questions_needing_quotes: List of dicts with:
+                - placeholder: Question placeholder ID
+                - answer: The answer text to find quotes for
+                - question_prompt: Original question prompt
+                - relevant_chunks: List of relevant document chunks
+                - answer_type: "string" or "structured"
+                - target: Target info for structured answers (row/column)
+            bbox_data: Optional dictionary mapping document_ids to their bounding box data
+
+        Returns:
+            Dictionary mapping placeholder -> list of quote dictionaries
+        """
+
+        if not questions_needing_quotes:
+            return {}
+
+        try:
+            # Build the batch quote extraction prompt
+            batch_prompt = self._create_batch_quote_extraction_prompt(questions_needing_quotes)
+
+            # Configure for quote extraction (use JSON output)
+            generation_config = self.genai.types.GenerationConfig(
+                temperature=0.0,  # Low temperature for consistent extraction
+                response_mime_type="application/json",
+                max_output_tokens=8192  # Prevent truncation for large batch responses
+            )
+
+            # Single LLM call for ALL quote extractions
+            with time_operation("llm_batch_quote_extraction",
+                              {"question_count": len(questions_needing_quotes)}) as timer:
+                response = self.model.generate_content(
+                    batch_prompt,
+                    generation_config=generation_config
+                )
+                api_time = timer.stop().duration
+
+            logger.info(f"⏱️ Batch quote extraction API call: {api_time*1000:.0f}ms for {len(questions_needing_quotes)} items")
+
+            if not response or not response.text:
+                logger.warning("Empty response from batch quote extraction LLM call")
+                return {q["placeholder"]: [] for q in questions_needing_quotes}
+
+            # Parse the batch response
+            batch_quotes = self._parse_batch_quote_extraction_response(
+                response.text, questions_needing_quotes, bbox_data
+            )
+
+            return batch_quotes
+
+        except Exception as e:
+            logger.error(f"Failed to batch extract quotes: {e}")
+            # Return empty quotes for all questions on failure
+            return {q["placeholder"]: [] for q in questions_needing_quotes}
+
+    def _create_batch_quote_extraction_prompt(self, questions_needing_quotes: List[Dict[str, Any]]) -> str:
+        """
+        Create a single prompt for extracting quotes for ALL questions at once.
+
+        Args:
+            questions_needing_quotes: List of question dicts needing quote extraction
+
+        Returns:
+            Formatted batch prompt string
+        """
+
+        # Build sections for each question
+        questions_section = ""
+
+        # We need to track chunk mappings per question since chunks can overlap
+        for idx, q_item in enumerate(questions_needing_quotes, 1):
+            placeholder = q_item["placeholder"]
+            answer = q_item["answer"]
+            question_prompt = q_item["question_prompt"]
+            relevant_chunks = q_item["relevant_chunks"]
+            target = q_item.get("target")
+
+            # Build chunk context for this question
+            chunks_text = ""
+            for chunk_idx, chunk in enumerate(relevant_chunks, 1):
+                metadata = chunk.get("metadata", {})
+                page_info = f"Pages {metadata.get('start_page', 'N/A')}-{metadata.get('end_page', 'N/A')}"
+                filename = metadata.get('filename', 'Document')
+
+                # Extract page markers from chunk text
+                page_markers = []
+                lines = chunk['text'].split('\n')
+                for line in lines:
+                    if '--- PAGE' in line and '---' in line:
+                        page_markers.append(line.strip())
+
+                page_info_detailed = page_info
+                if page_markers:
+                    page_info_detailed += f" (Contains: {', '.join(page_markers[:3])})"
+
+                chunks_text += f"  [CHUNK {chunk_idx}] Source: {filename} ({page_info_detailed})\n  Text: {chunk['text'][:1500]}{'...' if len(chunk['text']) > 1500 else ''}\n\n"
+
+            # Build question identifier (include target for structured answers)
+            question_id = placeholder
+            if target:
+                if target.get("type") == "list":
+                    question_id = f"{placeholder}__list_{target['index']}"
+                elif target.get("type") == "table":
+                    question_id = f"{placeholder}__table_{target['row']}_{target['key']}"
+
+            questions_section += f"""
+=== ITEM {idx} (ID: {question_id}) ===
+QUESTION: {question_prompt}
+ANSWER TO SUPPORT: {answer}
+
+DOCUMENT CHUNKS FOR THIS ITEM:
+{chunks_text}
+"""
+
+        return f"""You are a document quote extraction system. Extract EXACT text from source documents that supports each answer.
+
+EXTRACTION RULES:
+1. VERBATIM ONLY - Copy text exactly as it appears, character-for-character
+2. COMPLETE QUOTES - Extract enough text to provide meaningful evidence (typically a full sentence or clause)
+3. SELF-CONTAINED - Each quote should make sense on its own
+4. DIRECTLY RELEVANT - Only extract text that directly supports or contains the answer
+5. NO FABRICATION - Never invent, paraphrase, or modify source text
+
+GUIDELINES:
+- Prefer complete sentences over fragments when they provide better context
+- If the answer is a name/number/date, include the surrounding phrase that gives it meaning
+- Maximum {MAX_QUOTE_LENGTH} characters per quote
+- Up to {VECTOR_SEARCH_MAX_SOURCE_QUOTES} quotes per item
+- Use EMPTY ARRAY [] when no supporting text exists
+
+{questions_section}
+
+RESPONSE FORMAT (JSON object with item IDs as keys):
+{{
+  "<item_id>": [
+    {{
+      "chunk_number": 1,
+      "exact_text": "The complete verbatim quote from the document",
+      "page_context": "PAGE X"
+    }}
+  ],
+  "<another_item_id>": []
+}}
+
+Return valid JSON only."""
+
+    def _parse_batch_quote_extraction_response(self, response_text: str,
+                                               questions_needing_quotes: List[Dict[str, Any]],
+                                               bbox_data: Optional[Dict] = None) -> Dict[str, List[Dict]]:
+        """
+        Parse the batch quote extraction response and map quotes back to placeholders.
+
+        Args:
+            response_text: JSON response from LLM
+            questions_needing_quotes: Original list of questions for chunk mapping
+            bbox_data: Optional bbox data for enhancement
+
+        Returns:
+            Dictionary mapping placeholder -> list of processed quote dictionaries
+        """
+
+        try:
+            batch_data = json.loads(response_text)
+
+            if not isinstance(batch_data, dict):
+                logger.warning("Batch quote response is not a dict, returning empty quotes")
+                return {q["placeholder"]: [] for q in questions_needing_quotes}
+
+            # Build a mapping from question_id to question data for chunk lookup
+            id_to_question = {}
+            for q_item in questions_needing_quotes:
+                placeholder = q_item["placeholder"]
+                target = q_item.get("target")
+
+                # Build the same ID used in the prompt
+                question_id = placeholder
+                if target:
+                    if target.get("type") == "list":
+                        question_id = f"{placeholder}__list_{target['index']}"
+                    elif target.get("type") == "table":
+                        question_id = f"{placeholder}__table_{target['row']}_{target['key']}"
+
+                id_to_question[question_id] = q_item
+
+            # Process each item in the response
+            result = {}
+
+            for question_id, quotes_data in batch_data.items():
+                if question_id not in id_to_question:
+                    logger.warning(f"Unknown question_id in batch response: {question_id}")
+                    continue
+
+                q_item = id_to_question[question_id]
+                placeholder = q_item["placeholder"]
+                relevant_chunks = q_item["relevant_chunks"]
+                target = q_item.get("target")
+
+                # Initialize placeholder in result if not present
+                if placeholder not in result:
+                    result[placeholder] = []
+
+                if not isinstance(quotes_data, list):
+                    continue
+
+                # Process each quote for this item
+                for quote_item in quotes_data:
+                    if not isinstance(quote_item, dict):
+                        continue
+
+                    chunk_number = quote_item.get("chunk_number", 0)
+                    exact_text = quote_item.get("exact_text", "")
+                    page_context = quote_item.get("page_context", "")
+
+                    # Validate chunk number
+                    if chunk_number < 1 or chunk_number > len(relevant_chunks):
+                        logger.warning(f"Invalid chunk number {chunk_number} for {question_id}")
+                        continue
+
+                    chunk = relevant_chunks[chunk_number - 1]
+                    metadata = chunk.get("metadata", {})
+
+                    document_id = metadata.get("document_id", "")
+                    if not document_id:
+                        logger.warning(f"Chunk missing document_id, skipping quote")
+                        continue
+
+                    # Extract precise page number
+                    precise_page = self._extract_precise_page_number(
+                        exact_text, chunk['text'], page_context, metadata
+                    )
+
+                    # Trim exact_text to maximum length if needed
+                    full_quote_text = exact_text
+                    if len(full_quote_text) > MAX_QUOTE_LENGTH:
+                        full_quote_text = full_quote_text[:MAX_QUOTE_LENGTH] + "..."
+
+                    # Build quote dict
+                    quote_dict = {
+                        "chunk_id": chunk["chunk_id"],
+                        "document_id": document_id,
+                        "text": full_quote_text.strip(),
+                        "exact_text": exact_text,
+                        "page_range": str(precise_page) if precise_page else f"{metadata.get('start_page', 'N/A')}-{metadata.get('end_page', 'N/A')}",
+                        "precise_page": precise_page,
+                        "page_context": page_context,
+                        "relevance_score": chunk.get("distance", 0.0),
+                    }
+
+                    # Add target info for structured answers
+                    if target:
+                        quote_dict["target"] = target
+
+                    # Enhance with bbox data if available
+                    if bbox_data and document_id in bbox_data:
+                        try:
+                            bbox_matcher = BBoxMatcher()
+                            word_spans = bbox_matcher.match_quote_to_words(
+                                quote_text=exact_text,
+                                document_bboxes=bbox_data[document_id],
+                                page_number=precise_page
+                            )
+                            if word_spans:
+                                quote_dict["has_bounding_boxes"] = True
+                                quote_dict["word_spans"] = word_spans
+                            else:
+                                quote_dict["has_bounding_boxes"] = False
+                        except Exception as e:
+                            logger.warning(f"Failed to match bbox for quote: {e}")
+                            quote_dict["has_bounding_boxes"] = False
+                    else:
+                        quote_dict["has_bounding_boxes"] = False
+
+                    result[placeholder].append(quote_dict)
+
+            # Ensure all placeholders have entries (even if empty)
+            for q_item in questions_needing_quotes:
+                placeholder = q_item["placeholder"]
+                if placeholder not in result:
+                    result[placeholder] = []
+
+            # Log summary
+            total_quotes = sum(len(quotes) for quotes in result.values())
+            logger.info(f"📝 Parsed batch quotes: {total_quotes} quotes for {len(result)} placeholders")
+
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse batch quote JSON: {e}")
+            logger.error(f"Raw response: {response_text}...")
+            return {q["placeholder"]: [] for q in questions_needing_quotes}
+        except Exception as e:
+            logger.error(f"Error processing batch quote response: {e}")
+            return {q["placeholder"]: [] for q in questions_needing_quotes}
+
     def get_service_status(self) -> Dict[str, Any]:
         """Get current status of the LLM service"""
         

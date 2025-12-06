@@ -210,7 +210,7 @@ class ReportService:
                         "page_range": source_chunk["page_range"],
                         "relevance_score": source_chunk.get("relevance_score", 0.0)
                     }
-                    
+
                     # Preserve bbox-related fields if present (from OCR documents)
                     if "exact_text" in source_chunk:
                         quote["exact_text"] = source_chunk["exact_text"]
@@ -220,6 +220,10 @@ class ReportService:
                         quote["has_bounding_boxes"] = source_chunk["has_bounding_boxes"]
                     if "word_spans" in source_chunk:
                         quote["word_spans"] = source_chunk["word_spans"]
+
+                    # Preserve target metadata for list/table item association
+                    if "target" in source_chunk:
+                        quote["target"] = source_chunk["target"]
                     
                     question_quotes.append(quote)
                     all_quotes.append(quote)
@@ -247,11 +251,29 @@ class ReportService:
                     "error": "Question not processed"
                 }
         
+        # Serialize questions for frontend (includes answer_type and columns metadata)
+        questions_json = []
+        for question in agent.questions:
+            q_dict = {
+                "id": question.id,
+                "placeholder": question.placeholder,
+                "prompt": question.prompt,
+                "answer_type": question.answer_type.value if question.answer_type else "string"
+            }
+            # Include columns for table type questions
+            if question.columns:
+                q_dict["columns"] = [
+                    {"key": col.key, "header": col.header}
+                    for col in question.columns
+                ]
+            questions_json.append(q_dict)
+        
         return {
             "template": {
                 "html": agent.reportTemplate,
                 "name": agent.name,
-                "description": agent.description
+                "description": agent.description,
+                "questions": questions_json  # NEW: Include questions with answer_type metadata
             },
             "answers": answers,
             "quotes": all_quotes,

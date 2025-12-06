@@ -1,7 +1,18 @@
+// Answer type enum - defines how LLM answer should be rendered
+export type AnswerType = 'string' | 'list' | 'table';
+
+// Column definition for table-type answers
+export interface ColumnDefinition {
+  key: string;      // JSON property key (e.g., "name")
+  header: string;   // Display header text (e.g., "Name")
+}
+
 export interface Question {
   id: string;
   placeholder: string; // tag that will be replaced with the LLM answer
   prompt: string;
+  answer_type?: AnswerType;  // How to render the answer (default: 'string')
+  columns?: ColumnDefinition[];  // Column definitions for table type
   exampleAnswer?: string; // Example answer from testing
   exampleQuotes?: Quote[]; // Example quotes from testing
 }
@@ -29,6 +40,7 @@ export interface UploadedFile {
 export interface Template {
   html: string;
   name: string;
+  questions?: Question[];  // NEW: Questions with answer_type metadata
 }
 
 export interface WordSpan {
@@ -50,6 +62,12 @@ export interface Quote {
   relevance_score: number;
   has_bounding_boxes?: boolean;
   word_spans?: WordSpan[];
+  target?: {
+    type: 'list' | 'table';
+    index?: number;       // For list items
+    row?: number;         // For table cells
+    key?: string;         // For table cells (column key)
+  };
 }
 
 export interface ReportAnswer {

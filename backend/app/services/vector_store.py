@@ -41,7 +41,7 @@ class VectorStore:
             # We'll use manual embedding generation for better performance
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"user_id": user_id, "embedding_model": "text-embedding-004", "batch_mode": True}
+                metadata={"user_id": user_id, "embedding_model": "gemini-embedding-001", "batch_mode": True}
             )
             
             # Get batch embedding service

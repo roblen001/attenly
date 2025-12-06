@@ -264,10 +264,7 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
                     "processor": self.processor_name,
                     "error": error_msg
                 }
-            
-            # Write debug output files
-            # self._write_debug_files(filename, ocr_result.doctr_export, attently_data, ocr_result.quality_metrics)
-            
+
             logger.info(f"OCR extraction successful for {filename}: {len(attently_data['pages'])} pages, "
                        f"{attently_data['statistics']['total_tokens']} tokens, "
                        f"processing time: {ocr_result.processing_time:.1f}s")
@@ -374,85 +371,7 @@ class OCRDocumentProcessor(BaseDocumentProcessor):
                 "filename": filename,
                 "error": str(e)
             }
-    
-    def _write_debug_files(self, filename: str, doctr_export: Dict[str, Any], 
-                           attenly_data: Dict[str, Any], quality_metrics: Any):
-        """
-        Write debug output files for OCR processing
-        
-        Args:
-            filename: Original filename
-            doctr_export: Raw doctr export data
-            attenly_data: Converted Attenly schema data
-            quality_metrics: OCR quality metrics
-        """
-        
-        try:
-            # Create debug directory
-            debug_dir = Path("ocr_debug")
-            debug_dir.mkdir(exist_ok=True)
-            
-            # Create timestamp and safe filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-")[:50]
-            base_name = f"{timestamp}_{safe_filename}"
-            
-            # Write raw doctr export
-            doctr_file = debug_dir / f"{base_name}_doctr_export.json"
-            with open(doctr_file, 'w', encoding='utf-8') as f:
-                json.dump(doctr_export, f, indent=2, ensure_ascii=False)
-            
-            # Write converted Attenly data
-            attenly_file = debug_dir / f"{base_name}_attenly_schema.json"
-            with open(attenly_file, 'w', encoding='utf-8') as f:
-                json.dump(attenly_data, f, indent=2, ensure_ascii=False)
-            
-            # Write extracted text content
-            text_file = debug_dir / f"{base_name}_extracted_text.txt"
-            with open(text_file, 'w', encoding='utf-8') as f:
-                f.write(f"# OCR Extraction Debug Output\n")
-                f.write(f"# File: {filename}\n")
-                f.write(f"# Timestamp: {datetime.now().isoformat()}\n")
-                f.write(f"# Pages: {len(attenly_data['pages'])}\n")
-                f.write(f"# Total tokens: {attenly_data['statistics']['total_tokens']}\n")
-                f.write(f"# Quality metrics: confidence={quality_metrics.mean_word_confidence:.3f}, ")
-                f.write(f"coverage={quality_metrics.coverage_ratio:.3f}, ")
-                f.write(f"meets_threshold={quality_metrics.meets_quality_threshold}\n\n")
-                
-                f.write("# Full Markdown Content:\n")
-                f.write(attenly_data['full_markdown'])
-                
-                f.write("\n\n# Page-by-Page Content:\n")
-                for page in attenly_data['pages']:
-                    f.write(f"\n--- PAGE {page['page_number']} ({page['token_count']} tokens) ---\n")
-                    f.write(page['markdown'])
-                    f.write("\n")
-            
-            # Write quality metrics
-            metrics_file = debug_dir / f"{base_name}_quality_metrics.json"
-            metrics_data = {
-                "filename": filename,
-                "timestamp": datetime.now().isoformat(),
-                "mean_word_confidence": quality_metrics.mean_word_confidence,
-                "coverage_ratio": quality_metrics.coverage_ratio,
-                "total_words": quality_metrics.total_words,
-                "confident_words": quality_metrics.confident_words,
-                "meets_quality_threshold": quality_metrics.meets_quality_threshold,
-                "pages_processed": len(attenly_data['pages']),
-                "total_tokens": attenly_data['statistics']['total_tokens']
-            }
-            with open(metrics_file, 'w', encoding='utf-8') as f:
-                json.dump(metrics_data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Debug files written for {filename}:")
-            logger.info(f"  - DocTR export: {doctr_file}")
-            logger.info(f"  - Attenly schema: {attenly_file}")
-            logger.info(f"  - Extracted text: {text_file}")
-            logger.info(f"  - Quality metrics: {metrics_file}")
-            
-        except Exception as e:
-            logger.warning(f"Failed to write debug files for {filename}: {e}")
-    
+
     def get_processor_info(self) -> Dict[str, Any]:
         """Get information about OCR processor capabilities"""
         return {

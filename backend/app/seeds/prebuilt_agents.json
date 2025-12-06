@@ -1,303 +1,274 @@
 [
   {
-    "slug": "company-summary-template",
-    "name": "Executive Company Summary Report",
-    "description": "Extract and organize key policy information for underwriter review",
-    "reportTemplate": "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Executive Comppany Summary Report</title>\n  <style>\n    /* Page setup */\n    @page { size: A4;}\n    body {\n      font-family: 'Calibri', sans-serif;\n      font-size: 11pt;\n      color: #333;\n      margin: 0;\n;\n    }\n    /* Header */\n    header {\n      text-align: center;\n      margin-bottom: 18px;\n      background-color: #244785;\n      padding: 10px;\n    }\n    header h1 {\n      font-size: 16pt;\n      margin: 0;\n    }\n    header p {\n      font-size: 10pt;\n      color: #666;\n      margin: 4px 0 0;\n    }\n    /* Section titles */\n    .section {\n      margin-bottom: 18px;\n    }\n    .section-title {\n      font-size: 12pt;\n      font-weight: bold;\n      border-bottom: 1px solid #000;\n      padding-bottom: 4px;\n      margin-bottom: 8px;\n      color: #333;\n    }\n    /* Definition lists for key/value pairs */\n    dl {\n      margin: 0;\n    }\n    dt {\n      font-weight: bold;\n      width: 30%;\n      float: left;\n      clear: left;\n      margin: 0;\n      padding: 2px 0;\n    }\n    dd {\n      margin: 0 0 2px 32%;\n      padding: 2px 0;\n    }\n    /* Tables */\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      font-size: 10pt;\n      margin-top: 4px;\n    }\n    th, td {\n      border: 1px solid #ccc;\n      padding: 4px 6px;\n      text-align: left;\n    }\n    th {\n      background: #f0f0f0;\n      font-weight: bold;\n    }\n    /* Footer */\n    footer {\n      text-align: center;\n      font-size: 8pt;\n      color: #999;\n      margin-top: 24px;\n    }\n  </style>\n</head>\n<body>\n  <header>\n    <h1 style=\"color: white;\">Executive Comppany Summary Report</h1>\n    <p style=\"color: white;\">Comprehensive Underwriting Analysis</p>\n  </header>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Account Header</div>\n    <dl>\n      <dt>Insured Name:</dt><dd>{{InsuredName}}</dd>\n      <dt>Broker / Agent:</dt><dd>{{BrokerAgent}}</dd>\n      <dt>Policy Number:</dt><dd>{{PolicyNumber}}</dd>\n      <dt>Effective Date:</dt><dd>{{EffectiveDate}}</dd>\n      <dt>Expiration Date:</dt><dd>{{ExpirationDate}}</dd>\n      <dt>Lines of Business:</dt><dd>{{LinesOfBusiness}}</dd>\n    </dl>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Company Profile &amp; Operations</div>\n    <dl>\n      <dt>Address:</dt><dd>{{CompanyAddress}}</dd>\n      <dt>Industry Classification:</dt><dd>{{IndustryClassification}}</dd>\n      <dt>Annual Revenue:</dt><dd>{{AnnualRevenue}}</dd>\n      <dt>Annual Payroll:</dt><dd>{{AnnualPayroll}}</dd>\n    </dl>\n    <p><strong>Business Description:</strong><br>{{BusinessDescription}}</p>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Coverage &amp; Limits Overview</div>\n    <table>\n      <thead>\n        <tr>\n          <th>Line</th>\n          <th>Limit</th>\n          <th>Deductible</th>\n          <th>Premium (Est.)</th>\n        </tr>\n      </thead>\n      <tbody>\n        <tr>\n          <td>{{CoverageLine}}</td>\n          <td>{{CoverageLimit}}</td>\n          <td>{{Deductible}}</td>\n          <td>{{EstimatedPremium}}</td>\n        </tr>\n      </tbody>\n    </table>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Loss History</div>\n    <dl>\n      <dt>Total Claims (5 Years):</dt><dd>{{TotalClaims5Yr}}</dd>\n      <dt>Aggregate Incurred:</dt><dd>{{AggregateIncurred}}</dd>\n      <dt>Open Claims:</dt><dd>{{OpenClaims}}</dd>\n    </dl>\n    <p><strong>Recent Large Claims:</strong><br>{{RecentLargeClaims}}</p>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Risk Survey &amp; Financial Strength</div>\n    <dl>\n      <dt>Property Condition:</dt><dd>{{PropertyCondition}}</dd>\n      <dt>Safety Programs:</dt><dd>{{SafetyPrograms}}</dd>\n      <dt>Current Ratio:</dt><dd>{{CurrentRatio}}</dd>\n      <dt>EBITDA Margin:</dt><dd>{{EbitdaMargin}}</dd>\n      <dt>Risk Grade:</dt><dd>{{OverallRiskGrade}}</dd>\n    </dl>\n    <p><strong>Identified Gaps:</strong><br>{{IdentifiedGaps}}</p>\n    <p><strong>Financial Controls:</strong><br>{{FinancialControls}}</p>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Underwriter's Notes &amp; Recommendations</div>\n    <dl>\n      <dt>Pricing Considerations:</dt><dd>{{PricingConsiderations}}</dd>\n      <dt>Conditions / Endorsements:</dt><dd>{{ConditionsEndorsements}}</dd>\n    </dl>\n  </section>\n</body>\n</html>",
+    "slug": "corporate-health-check-template",
+    "name": "Corporate Health Check Report",
+    "description": "Structured corporate records and minute book review report for law firm corporate services / Corporate Health style engagements.",
+    "reportTemplate": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>{{report_title}}</title>\n  <style>\n    .report-html {\n      font-family: \"Times New Roman\", Georgia, serif;\n      font-size: 11pt;\n      line-height: 1.4;\n      color: #222;\n    }\n    .report-html h1, .report-html h2, .report-html h3, .report-html h4 {\n      font-family: \"Times New Roman\", Georgia, serif;\n      margin-top: 18px;\n      margin-bottom: 6px;\n    }\n    .report-html h1 {\n      font-size: 20pt;\n      text-transform: uppercase;\n      letter-spacing: 1px;\n      border-bottom: 2px solid #000;\n      padding-bottom: 4px;\n    }\n    .report-html h2 {\n      font-size: 14pt;\n      border-bottom: 1px solid #444;\n      padding-bottom: 2px;\n    }\n    .report-html h3 {\n      font-size: 12pt;\n      text-decoration: underline;\n    }\n    .report-html .smallcaps {\n      font-variant: small-caps;\n    }\n    .report-html .section-number {\n      font-weight: bold;\n      margin-right: 4px;\n    }\n    .report-html .meta-table, .report-html .content-table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-top: 6px;\n      margin-bottom: 12px;\n      font-size: 10.5pt;\n    }\n    .report-html .meta-table td {\n      padding: 2px 4px;\n      vertical-align: top;\n    }\n    .report-html .content-table th, .report-html .content-table td {\n      border: 1px solid #888;\n      padding: 4px 6px;\n      vertical-align: top;\n    }\n    .report-html .content-table th {\n      background-color: #f2f2f2;\n      font-weight: bold;\n      text-align: left;\n    }\n    .report-html .muted {\n      color: #555;\n      font-size: 10pt;\n    }\n    .report-html .page-break {\n      page-break-before: always;\n    }\n    .report-html ul {\n      margin-top: 4px;\n      margin-bottom: 8px;\n    }\n    .report-html li {\n      margin-bottom: 2px;\n    }\n  </style>\n</head>\n<body>\n\n  <!-- COVER PAGE -->\n  <h1>{{report_title}}</h1>\n\n  <table class=\"meta-table\">\n    <tr>\n      <td class=\"smallcaps\">Client</td>\n      <td>{{client_name}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Corporation</td>\n      <td>{{company_name}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Jurisdiction of Incorporation</td>\n      <td>{{jurisdiction}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Prepared For</td>\n      <td>{{prepared_for}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Prepared By</td>\n      <td>{{prepared_by}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">Report Date</td>\n      <td>{{report_date}}</td>\n    </tr>\n    <tr>\n      <td class=\"smallcaps\">File / Matter No.</td>\n      <td>{{file_matter_reference}}</td>\n    </tr>\n  </table>\n\n  <p class=\"muted\">\n    <u>Confidential</u> – This Corporate Health Check is based solely on the documents and information\n    provided for review as of the Report Date. It is not a substitute for a full legal opinion.\n  </p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 2. EXECUTIVE SUMMARY -->\n  <h2><span class=\"section-number\">2.</span> Executive Summary</h2>\n\n  <h3><span class=\"section-number\">2.1</span> Overall Status</h3>\n  <p>{{overall_status_summary}}</p>\n\n  <h3><span class=\"section-number\">2.2</span> Key Strengths</h3>\n  <ul>\n    {{key_strengths_items}}\n  </ul>\n\n  <h3><span class=\"section-number\">2.3</span> Key Deficiencies (High-Level)</h3>\n  <p>{{key_deficiencies_intro}}</p>\n  <ul>\n    {{key_deficiencies_items}}\n  </ul>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 3. BASIC CORPORATE INFORMATION -->\n  <h2><span class=\"section-number\">3.</span> Basic Corporate Information</h2>\n\n  <table class=\"content-table\">\n    <tr>\n      <th style=\"width: 30%;\">Field</th>\n      <th>Information</th>\n    </tr>\n    <tr>\n      <td>Legal Name</td>\n      <td>{{basic_info_legal_name}}</td>\n    </tr>\n    <tr>\n      <td>Jurisdiction of Incorporation</td>\n      <td>{{basic_info_jurisdiction}}</td>\n    </tr>\n    <tr>\n      <td>Incorporation / Corporate Access Number</td>\n      <td>{{basic_info_corp_number}}</td>\n    </tr>\n    <tr>\n      <td>Date of Incorporation</td>\n      <td>{{basic_info_incorp_date}}</td>\n    </tr>\n    <tr>\n      <td>Registered Office Address</td>\n      <td>{{basic_info_registered_office}}</td>\n    </tr>\n    <tr>\n      <td>Fiscal Year-End</td>\n      <td>{{basic_info_fiscal_year_end}}</td>\n    </tr>\n    <tr>\n      <td>Other Names / Historical Names</td>\n      <td>{{basic_info_other_names}}</td>\n    </tr>\n  </table>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 4. DIRECTORS AND OFFICERS -->\n  <h2><span class=\"section-number\">4.</span> Directors and Officers</h2>\n\n  <h3><span class=\"section-number\">4.1</span> Directors</h3>\n  <table class=\"content-table\">\n    {{directors_table_rows}}\n  </table>\n  <p><strong>Observations:</strong> {{directors_observations}}</p>\n\n  <h3><span class=\"section-number\">4.2</span> Officers</h3>\n  <table class=\"content-table\">\n    {{officers_table_rows}}\n  </table>\n  <p><strong>Observations:</strong> {{officers_observations}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 5. SHARE CAPITAL AND OWNERSHIP -->\n  <h2><span class=\"section-number\">5.</span> Share Capital and Ownership</h2>\n\n  <h3><span class=\"section-number\">5.1</span> Authorized Share Capital (from Articles)</h3>\n  <p>{{share_capital_authorized}}</p>\n\n  <h3><span class=\"section-number\">5.2</span> Issued and Outstanding Shares (Based on Records Reviewed)</h3>\n  <p>{{share_capital_issued}}</p>\n\n  <h3><span class=\"section-number\">5.3</span> Shareholders (Summary)</h3>\n  <p>{{share_capital_shareholders_summary}}</p>\n\n  <h3><span class=\"section-number\">5.4</span> Observations and Gaps</h3>\n  <p>{{share_capital_observations}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 6. MINUTE BOOK CONTENTS -->\n  <h2><span class=\"section-number\">6.</span> Minute Book Contents</h2>\n\n  <h3><span class=\"section-number\">6.1</span> Summary of Contents</h3>\n  <ul>\n    {{minute_book_contents_items}}\n  </ul>\n\n  <h3><span class=\"section-number\">6.2</span> Registers and Ledgers</h3>\n  <p>{{registers_observations}}</p>\n\n  <h3><span class=\"section-number\">6.3</span> Other Corporate Records / Agreements</h3>\n  <p>{{other_corporate_records_notes}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 7. FILINGS AND GOOD STANDING -->\n  <h2><span class=\"section-number\">7.</span> Filings and Good Standing</h2>\n\n  <h3><span class=\"section-number\">7.1</span> Annual Returns and Key Filings (Based on Documents Reviewed)</h3>\n  <p>{{filings_summary}}</p>\n\n  <h3><span class=\"section-number\">7.2</span> Observations</h3>\n  <p>{{filings_observations}}</p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 8. DEFICIENCIES AND RECOMMENDED ACTIONS -->\n  <h2><span class=\"section-number\">8.</span> Deficiencies and Recommended Actions</h2>\n\n  <table class=\"content-table\">\n    {{deficiencies_table_rows}}\n  </table>\n\n  <p class=\"muted\">\n    Note: Priorities are indicative only and do not replace legal advice tailored to the client's risk tolerance and transaction context.\n  </p>\n\n  <div class=\"page-break\"></div>\n\n  <!-- 9. APPENDIX A – DOCUMENTS REVIEWED -->\n  <h2><span class=\"section-number\">9.</span> Appendix A – Documents Reviewed</h2>\n\n  <table class=\"content-table\">\n    {{documents_reviewed_table_rows}}\n  </table>\n\n</body>\n</html>",
     "questions": [
       {
-        "id": "insured-name",
-        "placeholder": "InsuredName",
-        "prompt": "Extract the full legal name of the primary Named Insured from broker submissions/ACORD/policy docs. Include legal suffixes (Inc., Ltd., LLC). Exclude DBAs unless they are the only name. Return text only or 'N/A'."
+        "id": "report-title",
+        "placeholder": "report_title",
+        "prompt": "You are assisting a law firm with a corporate health check report. Question: Based on the documents provided, what should the report title be in the form Corporate Health Check – [Corporation Name], using the corporation's legal name from the documents (prefer the Articles or most recent annual return)? If the name is unclear, use the best-supported name."
       },
       {
-        "id": "broker-agent",
-        "placeholder": "BrokerAgent",
-        "prompt": "Return the brokerage/agency firm name (not the individual producer). Use the most prominent/current firm listed. Text only or 'N/A'."
+        "id": "client-name",
+        "placeholder": "client_name",
+        "prompt": "Question: Based on the engagement, cover materials, or other documents, what is the client's name? If no separate client name is evident, use the corporation's legal name. If the client name cannot be determined, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
-        "id": "policy-number",
-        "placeholder": "PolicyNumber",
-        "prompt": "Return the current term policy number for the line(s) in scope; if multiple, prefer the one matching Coverage Line. Preserve formatting as printed (dashes/spaces). If none, 'N/A'."
+        "id": "company-name",
+        "placeholder": "company_name",
+        "prompt": "Question: What is the corporation's legal name based on the Articles of Incorporation or most recent Annual Return? If there are historical names, provide the most recent legal name followed by earlier names in parentheses, for example: ABC Holdings Inc. (formerly ABC Inc.)."
       },
       {
-        "id": "effective-date",
-        "placeholder": "EffectiveDate",
-        "prompt": "Return the policy effective date for the current term in YYYY-MM-DD. If only month/year given, use the first day of the month (YYYY-MM-01). If unknown, 'N/A'."
+        "id": "jurisdiction",
+        "placeholder": "jurisdiction",
+        "prompt": "Question: In which jurisdiction and under which governing statute is the corporation incorporated? Answer in the form [Jurisdiction] – [Statute], for example, Province of Nova Scotia – Companies Act, or Canada – Canada Business Corporations Act. If the statute is unclear, provide the jurisdiction and note that the statute is unclear from the documents reviewed."
       },
       {
-        "id": "expiration-date",
-        "placeholder": "ExpirationDate",
-        "prompt": "Return the policy expiration date for the current term in YYYY-MM-DD. If only month/year given, use the last day of the month. If unknown, 'N/A'."
+        "id": "prepared-for",
+        "placeholder": "prepared_for",
+        "prompt": "Question: For whom is this report prepared? Typically this will be the Board of Directors of the corporation, the shareholders of the corporation, or management and owners of the corporation. Use the best-supported wording based on the documents."
       },
       {
-        "id": "lines-of-business",
-        "placeholder": "LinesOfBusiness",
-        "prompt": "List comma-separated canonical lines of business present (Property, General Liability, Auto, Workers' Comp, Umbrella/Excess, Cyber, D&O, E&O, Inland Marine, Cargo). Map synonyms (e.g., CGL→General Liability)."
+        "id": "prepared-by",
+        "placeholder": "prepared_by",
+        "prompt": "Question: Who is preparing this report? Use the law firm name and practice group if clearly specified in the documents, for example, McInnes Cooper – MC Corporate Health / Corporate Services Team. If no firm is identified, answer using the exact phrase: To be completed by firm."
       },
       {
-        "id": "company-address",
-        "placeholder": "CompanyAddress",
-        "prompt": "Return the principal location mailing address on one line: 'Street, City, State/Prov, Country, Postal/ZIP'. If multiple, choose HQ or primary risk location. 'N/A' if missing."
+        "id": "report-date",
+        "placeholder": "report_date",
+        "prompt": "Question: What is today's date? Use the current system date in long form, for example, December 3, 2025."
       },
       {
-        "id": "industry-classification",
-        "placeholder": "IndustryClassification",
-        "prompt": "Return NAICS (or SIC) code with label if available, e.g., 'NAICS 236220 — Commercial and Institutional Building Construction'; otherwise a concise industry description. Text only or 'N/A'."
+        "id": "file-matter-reference",
+        "placeholder": "file_matter_reference",
+        "prompt": "Question: What file or matter number is shown in the documents? If a file or matter number appears explicitly, return it exactly as printed. If none appears, answer using the exact phrase: To be completed by firm."
       },
       {
-        "id": "annual-revenue",
-        "placeholder": "AnnualRevenue",
-        "prompt": "Return the most recent single-year gross revenue as a number only (no symbols/commas), annualized if needed. If a range, pick the latest/most recent figure. 'N/A' if not found."
+        "id": "overall-status-summary",
+        "placeholder": "overall_status_summary",
+        "prompt": "Question: Based solely on the documents reviewed, what is the overall assessment of the corporation's corporate health? Answer in 3–5 full sentences in a neutral, professional legal tone, mentioning whether core constitutional documents are present, whether records appear generally up to date, and whether there are material gaps or risks."
       },
       {
-        "id": "annual-payroll",
-        "placeholder": "AnnualPayroll",
-        "prompt": "Return total annual payroll as a number only (no symbols/commas), annualized if needed. Use the most recent figure. 'N/A' if not found."
+        "id": "key-strengths-items",
+        "placeholder": "key_strengths_items",
+        "prompt": "Question: What are the main strengths or positive aspects of the corporation's records? Provide 3–6 concrete strengths, such as that articles and by-laws are located and consistent, or that recent annual returns are on file.",
+        "answer_type": "list"
       },
       {
-        "id": "business-description",
-        "placeholder": "BusinessDescription",
-        "prompt": "Summarize core operations and major exposures in 1–2 sentences (≤35 words). Avoid marketing language. If unknown, 'N/A'."
+        "id": "key-deficiencies-intro",
+        "placeholder": "key_deficiencies_intro",
+        "prompt": "Question: How should you introduce the key deficiencies section of this report? Provide 1–2 sentences that briefly state that the following items summarise deficiencies and risk areas identified in the corporation's records."
       },
       {
-        "id": "coverage-line",
-        "placeholder": "CoverageLine",
-        "prompt": "Return the coverage line name in canonical form (e.g., Property, General Liability, Auto, Workers' Comp, Umbrella/Excess, Cyber, D&O, E&O, Inland Marine, Cargo)."
+        "id": "key-deficiencies-items",
+        "placeholder": "key_deficiencies_items",
+        "prompt": "Question: What are the most significant deficiencies or risks identified at a high level? Provide 3–8 items, each describing a distinct issue such as missing annual returns, incomplete registers, or unclear share issuances.",
+        "answer_type": "list"
       },
       {
-        "id": "coverage-limit",
-        "placeholder": "CoverageLimit",
-        "prompt": "Return the most material limit for the coverage line (prefer per occurrence; otherwise aggregate) AS PRINTED in the source (keep symbols and qualifiers like 'per occ/agg'). If missing, 'N/A'."
+        "id": "basic-info-legal-name",
+        "placeholder": "basic_info_legal_name",
+        "prompt": "Question: What is the corporation's legal name based on the core formation and registry documents? Use the name from the Articles of Incorporation or most recent Annual Return, and if there is a discrepancy, give the most recent name and, if useful, note earlier names in parentheses."
       },
       {
-        "id": "deductible",
-        "placeholder": "Deductible",
-        "prompt": "Return the deductible/retention for the coverage line AS PRINTED (retain symbols and units, e.g., '$10,000 per loss'). If multiple, pick the primary. 'N/A' if none."
+        "id": "basic-info-jurisdiction",
+        "placeholder": "basic_info_jurisdiction",
+        "prompt": "Question: What is the corporation's jurisdiction and statute of incorporation? Answer in the form [Jurisdiction] – [Statute abbreviation if applicable], for example, Nova Scotia – Companies Act (NSCA) or Canada – Canada Business Corporations Act (CBCA). If the statute is unclear, provide the jurisdiction only."
       },
       {
-        "id": "estimated-premium",
-        "placeholder": "EstimatedPremium",
-        "prompt": "Return the estimated/quoted premium AS PRINTED (retain symbols and any breakdown notes like 'subject to audit'). If unknown, 'N/A'."
+        "id": "basic-info-corp-number",
+        "placeholder": "basic_info_corp_number",
+        "prompt": "Question: What is the incorporation, corporate access, or similar registry number for the corporation? If no such number is clearly found, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
-        "id": "total-claims-5yr",
-        "placeholder": "TotalClaims5Yr",
-        "prompt": "Count total claims in the last 5 full policy years. Return an integer. If only partial data appears, count what is available and return the integer."
+        "id": "basic-info-incorp-date",
+        "placeholder": "basic_info_incorp_date",
+        "prompt": "Question: What is the corporation's date of incorporation or formation? Use a single date in the format YYYY-MM-DD based on the Articles, certificate of incorporation, or equivalent. If the date cannot be determined, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
-        "id": "aggregate-incurred",
-        "placeholder": "AggregateIncurred",
-        "prompt": "Sum paid + outstanding reserves for the last 5 years. Return a number only with 2 decimals (no symbols/commas). If unavailable, 'N/A'."
+        "id": "basic-info-registered-office",
+        "placeholder": "basic_info_registered_office",
+        "prompt": "Question: What is the corporation's registered office address according to the most recent document that specifies it? If no registered office address can be identified, answer using the exact phrase: Not clearly stated in documents reviewed."
       },
       {
-        "id": "open-claims",
-        "placeholder": "OpenClaims",
-        "prompt": "Count currently open claims (status not closed). Return an integer; 0 if none."
+        "id": "basic-info-fiscal-year-end",
+        "placeholder": "basic_info_fiscal_year_end",
+        "prompt": "Question: What is the corporation's fiscal year-end, if stated in the documents? If it is not stated or cannot be confirmed, answer using the exact phrase: Not specified in documents reviewed."
       },
       {
-        "id": "recent-large-claims",
-        "placeholder": "RecentLargeClaims",
-        "prompt": "List up to the top 3 largest claims in the last 5 years as: 'YYYY-MM-DD — Cause/Type — $Amount incurred' separated by semicolons. If none, 'N/A'."
+        "id": "basic-info-other-names",
+        "placeholder": "basic_info_other_names",
+        "prompt": "Question: Are any historical names, trade names, or name changes for the corporation referenced in the documents? If there are such names, list them and clearly indicate whether they are former names or trade names. If none are mentioned, answer using the exact phrase: None noted."
       },
       {
-        "id": "property-condition",
-        "placeholder": "PropertyCondition",
-        "prompt": "Condense property condition into a short assessment (e.g., 'Good: 2019 roof; updated wiring 2022; sprinklered 100%'). If unknown, 'N/A'."
+        "id": "directors-table-rows",
+        "placeholder": "directors_table_rows",
+        "prompt": "Question: Based on the documents reviewed, who appears to be or to have been a director of the corporation? For each director provide: their name, city or province if available, position (e.g., Director or Chair of the Board), appointment date (approximate if necessary), cessation date (or indicate if none is recorded), and key sources relied on (e.g., specific annual returns or minutes).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "name",
+            "header": "Name"
+          },
+          {
+            "key": "city_province",
+            "header": "Address (City / Province)"
+          },
+          {
+            "key": "position",
+            "header": "Position"
+          },
+          {
+            "key": "appointment_date",
+            "header": "Appointment Date"
+          },
+          {
+            "key": "cessation_date",
+            "header": "Cessation Date (if any)"
+          },
+          {
+            "key": "key_sources",
+            "header": "Key Source(s)"
+          }
+        ]
       },
       {
-        "id": "safety-programs",
-        "placeholder": "SafetyPrograms",
-        "prompt": "Comma-separated list of documented safety programs/certifications (e.g., 'formal RTW, driver MVR checks, hot-work permit'). If none noted, 'N/A'."
+        "id": "directors-observations",
+        "placeholder": "directors_observations",
+        "prompt": "Question: What notable observations or inconsistencies arise from the directors' information? Answer in 2–4 sentences in a neutral, professional legal tone, commenting on issues such as differences between annual returns and minutes, missing resignation dates, gaps in board composition, or confirming that records appear consistent."
       },
       {
-        "id": "identified-gaps",
-        "placeholder": "IdentifiedGaps",
-        "prompt": "List specific risk/control gaps as short phrases separated by semicolons (e.g., 'no central alarm; limited driver training; aging roof'). 'N/A' if none."
+        "id": "officers-table-rows",
+        "placeholder": "officers_table_rows",
+        "prompt": "Question: Based on the documents reviewed, who appears to be or to have been an officer of the corporation? For each officer provide: their name, office held (e.g., President, Secretary, or CFO), appointment date, cessation date (or indicate if none is recorded), and key sources relied on (e.g., by-laws or board minutes).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "name",
+            "header": "Name"
+          },
+          {
+            "key": "office_held",
+            "header": "Office Held"
+          },
+          {
+            "key": "appointment_date",
+            "header": "Appointment Date"
+          },
+          {
+            "key": "cessation_date",
+            "header": "Cessation Date (if any)"
+          },
+          {
+            "key": "key_sources",
+            "header": "Key Source(s)"
+          }
+        ]
       },
       {
-        "id": "current-ratio",
-        "placeholder": "CurrentRatio",
-        "prompt": "Return Current Ratio as a decimal with 2 decimals (e.g., '1.35'). If only working capital is given and current liabilities unknown, return 'N/A'."
+        "id": "officers-observations",
+        "placeholder": "officers_observations",
+        "prompt": "Question: What issues or observations arise from the officer appointments and related records? Answer in 2–4 sentences in a neutral legal tone, noting points such as whether officer positions listed in the by-laws are filled, whether there are minutes documenting appointments, and any discrepancies between minutes and registers, or confirming that records seem complete and consistent."
       },
       {
-        "id": "ebitda-margin",
-        "placeholder": "EbitdaMargin",
-        "prompt": "Return EBITDA margin as a percent with '%' (e.g., '12.4%'). If only EBITDA and revenue are provided, compute margin. If not derivable, 'N/A'."
+        "id": "share-capital-authorized",
+        "placeholder": "share_capital_authorized",
+        "prompt": "Question: What does the corporation's authorized share capital look like as set out in the Articles or equivalent document? Answer in 2–6 sentences describing each share class, key rights or restrictions such as voting or non-voting and common or preferred, and any notable features."
       },
       {
-        "id": "financial-controls",
-        "placeholder": "FinancialControls",
-        "prompt": "List notable financial controls as short phrases separated by semicolons (e.g., 'annual audit; dual-signature checks; inventory cycle counts'). 'N/A' if none."
+        "id": "share-capital-issued",
+        "placeholder": "share_capital_issued",
+        "prompt": "Question: Based on all resolutions, registers, and annual returns reviewed, what are the issued and outstanding shares of the corporation? Answer in 1–2 short paragraphs summarizing the number of issued and outstanding shares for each class and any material qualifiers, clearly stating any assumptions where the information is incomplete or inferred."
       },
       {
-        "id": "overall-risk-grade",
-        "placeholder": "OverallRiskGrade",
-        "prompt": "Return an overall risk grade present in the file (e.g., 'A', 'B', 'C', or 'Low/Medium/High'). If absent, infer succinctly as 'Low', 'Medium', or 'High' based on controls and loss experience."
+        "id": "share-capital-shareholders-summary",
+        "placeholder": "share_capital_shareholders_summary",
+        "prompt": "Question: What is the apparent shareholder structure of the corporation? Answer in 1–2 short paragraphs identifying any controlling or majority shareholders, indicating whether shareholdings appear concentrated or widely held, and noting where information is inferred or incomplete."
       },
       {
-        "id": "pricing-considerations",
-        "placeholder": "PricingConsiderations",
-        "prompt": "Provide 2–5 concise pricing drivers separated by semicolons (e.g., 'recent large loss 2023; frame construction; improved housekeeping 2024; modest payroll growth')."
+        "id": "share-capital-observations",
+        "placeholder": "share_capital_observations",
+        "prompt": "Question: What issues, risks, or gaps are apparent in the share capital and ownership records? Answer in 3–6 sentences highlighting points such as absence of a formal share register, missing share certificates or resolutions, inconsistencies between resolutions, registers, and returns, and any other material concerns, together with clear, neutral recommendations."
       },
       {
-        "id": "conditions-endorsements",
-        "placeholder": "ConditionsEndorsements",
-        "prompt": "Provide 2–6 recommended conditions/endorsements separated by semicolons (e.g., 'sprinkler warranty; hot-work permit; driver MVR program; burglary alarm certificate')."
-      }
-    ]
-  },
-  {
-    "slug": "loss-history-template",
-    "name": "Loss-History Snapshot",
-    "description": "Extract and present historical loss data for renewal evaluation",
-    "reportTemplate": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Business Loss Run Summary</title>\n  <style>\n    /* PDF Page Setup - Landscape orientation for wide tables */\n    @page {\n      size: A4 landscape;\n      margin: 0.5in;\n    }\n    \n    /* Print-specific styles */\n    @media print {\n      body {\n        margin: 0;;\n        font-size: 10pt;\n      }\n      .header h1 {\n        font-size: 18pt;\n      }\n      .section-title {\n        font-size: 14pt;\n        page-break-after: avoid;\n      }\n      table {\n        page-break-inside: avoid;\n        font-size: 9pt;\n      }\n      th, td {\n        padding: 4px 6px;\n      }\n    }\n    \n    body {\n      font-family: Arial, sans-serif;\n      color: #333;\n      margin: 0.5in;\n      line-height: 1.3;\n      font-size: 11pt;\n    }\n    \n    .header {\n      text-align: left;\n      margin-bottom: 20px;\n    }\n    \n    .header h1 {\n      margin: 0;\n      font-size: 20px;\n    }\n    \n    .header .meta {\n      margin-top: 8px;\n      font-size: 12px;\n      line-height: 1.4;\n    }\n    \n    .section-title {\n      font-size: 16px;\n      margin-top: 25px;\n      margin-bottom: 10px;\n      text-decoration: underline;\n      page-break-after: avoid;\n    }\n    \n    /* Optimized table styling for PDF */\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-bottom: 20px;\n      table-layout: fixed;\n      font-size: 10px;\n    }\n    \n    table, th, td {\n      border: 1px solid #666;\n    }\n    \n    th, td {\n      padding: 4px 6px;\n      text-align: left;\n      word-wrap: break-word;\n      overflow: hidden;\n    }\n    \n    th {\n      background-color: #f2f2f2;\n      font-weight: bold;\n      font-size: 9px;\n      text-align: center;\n    }\n    \n    /* Policy Term Summary Table - Optimized column widths */\n    .policy-term-table th:nth-child(1),\n    .policy-term-table td:nth-child(1) { width: 12%; } /* Policy Term */\n    .policy-term-table th:nth-child(2),\n    .policy-term-table td:nth-child(2) { width: 10%; } /* Policy Type */\n    .policy-term-table th:nth-child(3),\n    .policy-term-table td:nth-child(3) { width: 8%; }  /* No. of Claims */\n    .policy-term-table th:nth-child(4),\n    .policy-term-table td:nth-child(4) { width: 12%; } /* L&E Reserves */\n    .policy-term-table th:nth-child(5),\n    .policy-term-table td:nth-child(5) { width: 10%; } /* Losses Paid */\n    .policy-term-table th:nth-child(6),\n    .policy-term-table td:nth-child(6) { width: 10%; } /* Expenses Paid */\n    .policy-term-table th:nth-child(7),\n    .policy-term-table td:nth-child(7) { width: 12%; } /* L&E Paid */\n    .policy-term-table th:nth-child(8),\n    .policy-term-table td:nth-child(8) { width: 8%; }  /* Recovery */\n    .policy-term-table th:nth-child(9),\n    .policy-term-table td:nth-child(9) { width: 10%; } /* Total Incurred */\n    \n    /* Claim Details Table - Optimized column widths */\n    .claim-details-table th:nth-child(1),\n    .claim-details-table td:nth-child(1) { width: 12%; } /* Claim # */\n    .claim-details-table th:nth-child(2),\n    .claim-details-table td:nth-child(2) { width: 9%; }  /* Loss Date */\n    .claim-details-table th:nth-child(3),\n    .claim-details-table td:nth-child(3) { width: 9%; }  /* Reported Date */\n    .claim-details-table th:nth-child(4),\n    .claim-details-table td:nth-child(4) { width: 9%; }  /* Close Date */\n    .claim-details-table th:nth-child(5),\n    .claim-details-table td:nth-child(5) { width: 12%; } /* Location */\n    .claim-details-table th:nth-child(6),\n    .claim-details-table td:nth-child(6) { width: 20%; } /* Description */\n    .claim-details-table th:nth-child(7),\n    .claim-details-table td:nth-child(7) { width: 8%; }  /* Status */\n    .claim-details-table th:nth-child(8),\n    .claim-details-table td:nth-child(8) { width: 9%; }  /* Paid Loss */\n    .claim-details-table th:nth-child(9),\n    .claim-details-table td:nth-child(9) { width: 8%; }  /* Reserve */\n    .claim-details-table th:nth-child(10),\n    .claim-details-table td:nth-child(10) { width: 9%; } /* Total Incurred */\n    \n    /* Numeric columns - right align and no wrap */\n    .policy-term-table td:nth-child(3),\n    .policy-term-table td:nth-child(4),\n    .policy-term-table td:nth-child(5),\n    .policy-term-table td:nth-child(6),\n    .policy-term-table td:nth-child(7),\n    .policy-term-table td:nth-child(8),\n    .policy-term-table td:nth-child(9),\n    .claim-details-table td:nth-child(8),\n    .claim-details-table td:nth-child(9),\n    .claim-details-table td:nth-child(10) {\n      text-align: right;\n      white-space: nowrap;\n    }\n    \n    /* Description column - allow text wrapping */\n    .claim-details-table td:nth-child(6) {\n      word-wrap: break-word;\n      white-space: normal;\n    }\n    \n    .summary-metrics {\n      font-weight: bold;\n      margin-bottom: 30px;\n      font-size: 11px;\n      line-height: 1.5;\n    }\n    \n    .footer-note {\n      font-size: 10px;\n      color: #555;\n      margin-top: 30px;\n      border-top: 1px solid #ddd;\n      padding-top: 10px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>Business Loss Run Summary</h1>\n    <div class=\"meta\">\n      <div><strong>Agency Name:</strong> {{BrokerAgent}}</div>\n      <div><strong>Current As of Date:</strong> {{CurrentAsOfDate}}</div>\n      <div><strong>Insured Name:</strong> {{InsuredName}}</div>\n      <div><strong>Policy Number:</strong> {{PolicyNumber}}</div>\n      <div><strong>Coverage Line:</strong> {{CoverageLine}}</div>\n      <div><strong>Policy Period:</strong> {{PolicyPeriod}}</div>\n    </div>\n  </div>\n\n  <div class=\"section-title\">Summary by Policy Term</div>\n  <table class=\"policy-term-table\">\n    <thead>\n      <tr>\n        <th>Policy Term</th>\n        <th>Policy Type</th>\n        <th>No. of Claims</th>\n        <th>L&amp;E Reserves</th>\n        <th>Losses Paid</th>\n        <th>Expenses Paid</th>\n        <th>L&amp;E Paid</th>\n        <th>Recovery</th>\n        <th>Total Incurred</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>{{PolicyTerm}}</td>\n        <td>{{PolicyType}}</td>\n        <td>{{TermClaimsCount}}</td>\n        <td>{{LossExpenseReserves}}</td>\n        <td>{{LossesPaid}}</td>\n        <td>{{ExpensesPaid}}</td>\n        <td>{{LossesExpensesPaid}}</td>\n        <td>{{Recovery}}</td>\n        <td>{{TermTotalIncurred}}</td>\n      </tr>\n    </tbody>\n    <tfoot>\n      <tr>\n        <th colspan=\"2\">Totals</th>\n        <th>{{TotalClaims}}</th>\n        <th>{{TotalReserves}}</th>\n        <th>{{TotalPaid}}</th>\n        <th>{{ExpensesPaid}}</th>\n        <th>{{LossesExpensesPaid}}</th>\n        <th>{{Recovery}}</th>\n        <th>{{TotalIncurred}}</th>\n      </tr>\n    </tfoot>\n  </table>\n\n  <div class=\"section-title\">Claim Details</div>\n  <table class=\"claim-details-table\">\n    <thead>\n      <tr>\n        <th>Claim #</th>\n        <th>Loss Date</th>\n        <th>Reported Date</th>\n        <th>Close Date</th>\n        <th>Location</th>\n        <th>Description</th>\n        <th>Status</th>\n        <th>Paid Loss</th>\n        <th>Reserve</th>\n        <th>Total Incurred</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>{{ClaimNumber}}</td>\n        <td>{{LossDate}}</td>\n        <td>{{ReportedDate}}</td>\n        <td>{{CloseDate}}</td>\n        <td>{{LossLocation}}</td>\n        <td>{{ClaimDescription}}</td>\n        <td>{{ClaimStatus}}</td>\n        <td>{{PaidLoss}}</td>\n        <td>{{ReserveAmount}}</td>\n        <td>{{TotalIncurred}}</td>\n      </tr>\n    </tbody>\n  </table>\n\n  <div class=\"summary-metrics\">\n    <div>Total Number of Claims: <strong>{{TotalClaims}}</strong></div>\n    <div>Total Paid Losses: <strong>{{TotalPaid}}</strong></div>\n    <div>Total Reserves: <strong>{{TotalReserves}}</strong></div>\n    <div>Total Incurred: <strong>{{TotalIncurred}}</strong></div>\n    <div>Open Claims: <strong>{{OpenClaims}}</strong></div>\n  </div>\n\n  <div class=\"footer-note\">\n    <p><em>Important Notice:</em> This information is provided \"as is\" and has not been audited. Please verify all figures before use.</p>\n  </div>\n</body>\n</html>",
-    "questions": [
-      {
-        "id": "insured-name",
-        "placeholder": "InsuredName",
-        "prompt": "Insured Name"
+        "id": "minute-book-contents-items",
+        "placeholder": "minute_book_contents_items",
+        "prompt": "Question: What are the main categories of documents present in the minute book? Provide a list briefly describing each category, for example articles of incorporation with their date, general by-laws, board minutes for particular periods, and annual returns for particular years.",
+        "answer_type": "list"
       },
       {
-
-        "id": "broker-agent",
-        "placeholder": "BrokerAgent",
-        "prompt": "Agency Name"
+        "id": "registers-observations",
+        "placeholder": "registers_observations",
+        "prompt": "Question: What is the state of the corporation's registers and ledgers, including the share register, director register, officer register, and any securities register? Answer in 2–4 sentences indicating which registers are present, which appear incomplete, which are missing, and suggesting appropriate remedial steps where necessary."
       },
       {
-        "id": "policy-number",
-        "placeholder": "PolicyNumber",
-        "prompt": "Policy Number"
+        "id": "other-corporate-records-notes",
+        "placeholder": "other_corporate_records_notes",
+        "prompt": "Question: What other significant corporate records or agreements were located, for example shareholders' agreements, banking resolutions, or option plans, and what is their general subject matter? Answer in a short paragraph summarizing the existence and general nature of these documents without providing detailed legal analysis."
       },
       {
-        "id": "coverage-line",
-        "placeholder": "CoverageLine",
-        "prompt": "Coverage Line"
+        "id": "filings-summary",
+        "placeholder": "filings_summary",
+        "prompt": "Question: What annual returns and other key corporate filings are visible in the minute book, and for which years? Answer in 1–2 concise paragraphs indicating the years for which returns are present, any notable gaps or irregularities, and explicitly noting if no returns are found."
       },
       {
-        "id": "current-as-of-date",
-        "placeholder": "CurrentAsOfDate",
-        "prompt": "Current As of Date"
+        "id": "filings-observations",
+        "placeholder": "filings_observations",
+        "prompt": "Question: Based solely on the documents reviewed, what can be inferred about the corporation's apparent good standing with respect to filings? Answer in 3–5 sentences highlighting missing or late returns, discrepancies between internal records and what would be expected by statute, and any recommendation to confirm status directly with the corporate registry."
       },
       {
-        "id": "policy-period",
-        "placeholder": "PolicyPeriod",
-        "prompt": "Policy Period"
+        "id": "deficiencies-table-rows",
+        "placeholder": "deficiencies_table_rows",
+        "prompt": "Question: What deficiencies and recommended actions have been identified for this corporation? For each deficiency provide: a short reference (e.g., D-1), the area (e.g., Filings, Registers, Share Capital, or Minutes), a concise description of the deficiency or risk, the recommended action, and the priority (High, Medium, or Low).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "reference",
+            "header": "Ref."
+          },
+          {
+            "key": "area",
+            "header": "Area"
+          },
+          {
+            "key": "deficiency_risk",
+            "header": "Deficiency / Risk"
+          },
+          {
+            "key": "recommended_action",
+            "header": "Recommended Action"
+          },
+          {
+            "key": "priority",
+            "header": "Priority"
+          }
+        ]
       },
       {
-        "id": "total-claims",
-        "placeholder": "TotalClaims",
-        "prompt": "Total Claims"
-      },
-      {
-        "id": "total-paid",
-        "placeholder": "TotalPaid",
-        "prompt": "Total Paid Losses"
-      },
-      {
-        "id": "total-reserves",
-        "placeholder": "TotalReserves",
-        "prompt": "Total Reserves"
-      },
-      {
-        "id": "total-incurred",
-        "placeholder": "TotalIncurred",
-        "prompt": "Total Incurred"
-      },
-      {
-        "id": "open-claims",
-        "placeholder": "OpenClaims",
-        "prompt": "Open Claims"
-      },
-      {
-        "id": "claim-number",
-        "placeholder": "ClaimNumber",
-        "prompt": "Claim Number"
-      },
-      {
-        "id": "loss-date",
-        "placeholder": "LossDate",
-        "prompt": "Loss Date"
-      },
-      {
-        "id": "reported-date",
-        "placeholder": "ReportedDate",
-        "prompt": "Reported Date"
-      },
-      {
-        "id": "close-date",
-        "placeholder": "CloseDate",
-        "prompt": "Close Date"
-      },
-      {
-        "id": "loss-location",
-        "placeholder": "LossLocation",
-        "prompt": "Loss Location"
-      },
-      {
-        "id": "claim-description",
-        "placeholder": "ClaimDescription",
-        "prompt": "Claim Description"
-      },
-      {
-        "id": "claim-status",
-        "placeholder": "ClaimStatus",
-        "prompt": "Claim Status"
-      },
-      {
-        "id": "paid-loss",
-        "placeholder": "PaidLoss",
-        "prompt": "Paid Loss"
-      },
-      {
-        "id": "reserve-amount",
-        "placeholder": "ReserveAmount",
-        "prompt": "Reserve Amount"
-      },
-      {
-        "id": "policy-term",
-        "placeholder": "PolicyTerm",
-        "prompt": "Policy Term"
-      },
-      {
-        "id": "policy-type",
-        "placeholder": "PolicyType",
-        "prompt": "Policy Type"
-      },
-      {
-        "id": "term-claims-count",
-        "placeholder": "TermClaimsCount",
-        "prompt": "Number of Claims (Term)"
-      },
-      {
-        "id": "loss-expense-reserves",
-        "placeholder": "LossExpenseReserves",
-        "prompt": "Loss & Expense Reserves"
-      },
-      {
-        "id": "losses-paid",
-        "placeholder": "LossesPaid",
-        "prompt": "Losses Paid"
-      },
-      {
-        "id": "expenses-paid",
-        "placeholder": "ExpensesPaid",
-        "prompt": "Expenses Paid"
-      },
-      {
-        "id": "losses-expenses-paid",
-        "placeholder": "LossesExpensesPaid",
-        "prompt": "Losses & Expenses Paid"
-      },
-      {
-        "id": "recovery",
-        "placeholder": "Recovery",
-        "prompt": "Recovery"
-      },
-      {
-        "id": "term-total-incurred",
-        "placeholder": "TermTotalIncurred",
-        "prompt": "Total Incurred (Term)"
+        "id": "documents-reviewed-table-rows",
+        "placeholder": "documents_reviewed_table_rows",
+        "prompt": "Question: Which documents were reviewed for this corporate health check? For each document provide: a short reference (e.g., A-1), a concise description (e.g., articles of incorporation or board minutes), the document date if known (or indicate if not available), and any brief notes (e.g., scanned copy or undated draft).",
+        "answer_type": "table",
+        "columns": [
+          {
+            "key": "reference",
+            "header": "Ref."
+          },
+          {
+            "key": "description",
+            "header": "Document"
+          },
+          {
+            "key": "date",
+            "header": "Date (if known)"
+          },
+          {
+            "key": "notes",
+            "header": "Notes"
+          }
+        ]
       }
     ]
   }

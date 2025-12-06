@@ -1,0 +1,304 @@
+[
+  {
+    "slug": "company-summary-template",
+    "name": "Executive Company Summary Report",
+    "description": "Extract and organize key policy information for underwriter review",
+    "reportTemplate": "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Executive Comppany Summary Report</title>\n  <style>\n    /* Page setup */\n    @page { size: A4;}\n    body {\n      font-family: 'Calibri', sans-serif;\n      font-size: 11pt;\n      color: #333;\n      margin: 0;\n;\n    }\n    /* Header */\n    header {\n      text-align: center;\n      margin-bottom: 18px;\n      background-color: #244785;\n      padding: 10px;\n    }\n    header h1 {\n      font-size: 16pt;\n      margin: 0;\n    }\n    header p {\n      font-size: 10pt;\n      color: #666;\n      margin: 4px 0 0;\n    }\n    /* Section titles */\n    .section {\n      margin-bottom: 18px;\n    }\n    .section-title {\n      font-size: 12pt;\n      font-weight: bold;\n      border-bottom: 1px solid #000;\n      padding-bottom: 4px;\n      margin-bottom: 8px;\n      color: #333;\n    }\n    /* Definition lists for key/value pairs */\n    dl {\n      margin: 0;\n    }\n    dt {\n      font-weight: bold;\n      width: 30%;\n      float: left;\n      clear: left;\n      margin: 0;\n      padding: 2px 0;\n    }\n    dd {\n      margin: 0 0 2px 32%;\n      padding: 2px 0;\n    }\n    /* Tables */\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      font-size: 10pt;\n      margin-top: 4px;\n    }\n    th, td {\n      border: 1px solid #ccc;\n      padding: 4px 6px;\n      text-align: left;\n    }\n    th {\n      background: #f0f0f0;\n      font-weight: bold;\n    }\n    /* Footer */\n    footer {\n      text-align: center;\n      font-size: 8pt;\n      color: #999;\n      margin-top: 24px;\n    }\n  </style>\n</head>\n<body>\n  <header>\n    <h1 style=\"color: white;\">Executive Comppany Summary Report</h1>\n    <p style=\"color: white;\">Comprehensive Underwriting Analysis</p>\n  </header>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Account Header</div>\n    <dl>\n      <dt>Insured Name:</dt><dd>{{InsuredName}}</dd>\n      <dt>Broker / Agent:</dt><dd>{{BrokerAgent}}</dd>\n      <dt>Policy Number:</dt><dd>{{PolicyNumber}}</dd>\n      <dt>Effective Date:</dt><dd>{{EffectiveDate}}</dd>\n      <dt>Expiration Date:</dt><dd>{{ExpirationDate}}</dd>\n      <dt>Lines of Business:</dt><dd>{{LinesOfBusiness}}</dd>\n    </dl>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Company Profile &amp; Operations</div>\n    <dl>\n      <dt>Address:</dt><dd>{{CompanyAddress}}</dd>\n      <dt>Industry Classification:</dt><dd>{{IndustryClassification}}</dd>\n      <dt>Annual Revenue:</dt><dd>{{AnnualRevenue}}</dd>\n      <dt>Annual Payroll:</dt><dd>{{AnnualPayroll}}</dd>\n    </dl>\n    <p><strong>Business Description:</strong><br>{{BusinessDescription}}</p>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Coverage &amp; Limits Overview</div>\n    <table>\n      <thead>\n        <tr>\n          <th>Line</th>\n          <th>Limit</th>\n          <th>Deductible</th>\n          <th>Premium (Est.)</th>\n        </tr>\n      </thead>\n      <tbody>\n        <tr>\n          <td>{{CoverageLine}}</td>\n          <td>{{CoverageLimit}}</td>\n          <td>{{Deductible}}</td>\n          <td>{{EstimatedPremium}}</td>\n        </tr>\n      </tbody>\n    </table>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Loss History</div>\n    <dl>\n      <dt>Total Claims (5 Years):</dt><dd>{{TotalClaims5Yr}}</dd>\n      <dt>Aggregate Incurred:</dt><dd>{{AggregateIncurred}}</dd>\n      <dt>Open Claims:</dt><dd>{{OpenClaims}}</dd>\n    </dl>\n    <p><strong>Recent Large Claims:</strong><br>{{RecentLargeClaims}}</p>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Risk Survey &amp; Financial Strength</div>\n    <dl>\n      <dt>Property Condition:</dt><dd>{{PropertyCondition}}</dd>\n      <dt>Safety Programs:</dt><dd>{{SafetyPrograms}}</dd>\n      <dt>Current Ratio:</dt><dd>{{CurrentRatio}}</dd>\n      <dt>EBITDA Margin:</dt><dd>{{EbitdaMargin}}</dd>\n      <dt>Risk Grade:</dt><dd>{{OverallRiskGrade}}</dd>\n    </dl>\n    <p><strong>Identified Gaps:</strong><br>{{IdentifiedGaps}}</p>\n    <p><strong>Financial Controls:</strong><br>{{FinancialControls}}</p>\n  </section>\n\n  <section class=\"section\">\n    <div class=\"section-title\">Underwriter's Notes &amp; Recommendations</div>\n    <dl>\n      <dt>Pricing Considerations:</dt><dd>{{PricingConsiderations}}</dd>\n      <dt>Conditions / Endorsements:</dt><dd>{{ConditionsEndorsements}}</dd>\n    </dl>\n  </section>\n</body>\n</html>",
+    "questions": [
+      {
+        "id": "insured-name",
+        "placeholder": "InsuredName",
+        "prompt": "Extract the full legal name of the primary Named Insured from broker submissions/ACORD/policy docs. Include legal suffixes (Inc., Ltd., LLC). Exclude DBAs unless they are the only name. Return text only or 'N/A'."
+      },
+      {
+        "id": "broker-agent",
+        "placeholder": "BrokerAgent",
+        "prompt": "Return the brokerage/agency firm name (not the individual producer). Use the most prominent/current firm listed. Text only or 'N/A'."
+      },
+      {
+        "id": "policy-number",
+        "placeholder": "PolicyNumber",
+        "prompt": "Return the current term policy number for the line(s) in scope; if multiple, prefer the one matching Coverage Line. Preserve formatting as printed (dashes/spaces). If none, 'N/A'."
+      },
+      {
+        "id": "effective-date",
+        "placeholder": "EffectiveDate",
+        "prompt": "Return the policy effective date for the current term in YYYY-MM-DD. If only month/year given, use the first day of the month (YYYY-MM-01). If unknown, 'N/A'."
+      },
+      {
+        "id": "expiration-date",
+        "placeholder": "ExpirationDate",
+        "prompt": "Return the policy expiration date for the current term in YYYY-MM-DD. If only month/year given, use the last day of the month. If unknown, 'N/A'."
+      },
+      {
+        "id": "lines-of-business",
+        "placeholder": "LinesOfBusiness",
+        "prompt": "List comma-separated canonical lines of business present (Property, General Liability, Auto, Workers' Comp, Umbrella/Excess, Cyber, D&O, E&O, Inland Marine, Cargo). Map synonyms (e.g., CGL→General Liability)."
+      },
+      {
+        "id": "company-address",
+        "placeholder": "CompanyAddress",
+        "prompt": "Return the principal location mailing address on one line: 'Street, City, State/Prov, Country, Postal/ZIP'. If multiple, choose HQ or primary risk location. 'N/A' if missing."
+      },
+      {
+        "id": "industry-classification",
+        "placeholder": "IndustryClassification",
+        "prompt": "Return NAICS (or SIC) code with label if available, e.g., 'NAICS 236220 — Commercial and Institutional Building Construction'; otherwise a concise industry description. Text only or 'N/A'."
+      },
+      {
+        "id": "annual-revenue",
+        "placeholder": "AnnualRevenue",
+        "prompt": "Return the most recent single-year gross revenue as a number only (no symbols/commas), annualized if needed. If a range, pick the latest/most recent figure. 'N/A' if not found."
+      },
+      {
+        "id": "annual-payroll",
+        "placeholder": "AnnualPayroll",
+        "prompt": "Return total annual payroll as a number only (no symbols/commas), annualized if needed. Use the most recent figure. 'N/A' if not found."
+      },
+      {
+        "id": "business-description",
+        "placeholder": "BusinessDescription",
+        "prompt": "Summarize core operations and major exposures in 1–2 sentences (≤35 words). Avoid marketing language. If unknown, 'N/A'."
+      },
+      {
+        "id": "coverage-line",
+        "placeholder": "CoverageLine",
+        "prompt": "Return the coverage line name in canonical form (e.g., Property, General Liability, Auto, Workers' Comp, Umbrella/Excess, Cyber, D&O, E&O, Inland Marine, Cargo)."
+      },
+      {
+        "id": "coverage-limit",
+        "placeholder": "CoverageLimit",
+        "prompt": "Return the most material limit for the coverage line (prefer per occurrence; otherwise aggregate) AS PRINTED in the source (keep symbols and qualifiers like 'per occ/agg'). If missing, 'N/A'."
+      },
+      {
+        "id": "deductible",
+        "placeholder": "Deductible",
+        "prompt": "Return the deductible/retention for the coverage line AS PRINTED (retain symbols and units, e.g., '$10,000 per loss'). If multiple, pick the primary. 'N/A' if none."
+      },
+      {
+        "id": "estimated-premium",
+        "placeholder": "EstimatedPremium",
+        "prompt": "Return the estimated/quoted premium AS PRINTED (retain symbols and any breakdown notes like 'subject to audit'). If unknown, 'N/A'."
+      },
+      {
+        "id": "total-claims-5yr",
+        "placeholder": "TotalClaims5Yr",
+        "prompt": "Count total claims in the last 5 full policy years. Return an integer. If only partial data appears, count what is available and return the integer."
+      },
+      {
+        "id": "aggregate-incurred",
+        "placeholder": "AggregateIncurred",
+        "prompt": "Sum paid + outstanding reserves for the last 5 years. Return a number only with 2 decimals (no symbols/commas). If unavailable, 'N/A'."
+      },
+      {
+        "id": "open-claims",
+        "placeholder": "OpenClaims",
+        "prompt": "Count currently open claims (status not closed). Return an integer; 0 if none."
+      },
+      {
+        "id": "recent-large-claims",
+        "placeholder": "RecentLargeClaims",
+        "prompt": "List up to the top 3 largest claims in the last 5 years as: 'YYYY-MM-DD — Cause/Type — $Amount incurred' separated by semicolons. If none, 'N/A'."
+      },
+      {
+        "id": "property-condition",
+        "placeholder": "PropertyCondition",
+        "prompt": "Condense property condition into a short assessment (e.g., 'Good: 2019 roof; updated wiring 2022; sprinklered 100%'). If unknown, 'N/A'."
+      },
+      {
+        "id": "safety-programs",
+        "placeholder": "SafetyPrograms",
+        "prompt": "Comma-separated list of documented safety programs/certifications (e.g., 'formal RTW, driver MVR checks, hot-work permit'). If none noted, 'N/A'."
+      },
+      {
+        "id": "identified-gaps",
+        "placeholder": "IdentifiedGaps",
+        "prompt": "List specific risk/control gaps as short phrases separated by semicolons (e.g., 'no central alarm; limited driver training; aging roof'). 'N/A' if none."
+      },
+      {
+        "id": "current-ratio",
+        "placeholder": "CurrentRatio",
+        "prompt": "Return Current Ratio as a decimal with 2 decimals (e.g., '1.35'). If only working capital is given and current liabilities unknown, return 'N/A'."
+      },
+      {
+        "id": "ebitda-margin",
+        "placeholder": "EbitdaMargin",
+        "prompt": "Return EBITDA margin as a percent with '%' (e.g., '12.4%'). If only EBITDA and revenue are provided, compute margin. If not derivable, 'N/A'."
+      },
+      {
+        "id": "financial-controls",
+        "placeholder": "FinancialControls",
+        "prompt": "List notable financial controls as short phrases separated by semicolons (e.g., 'annual audit; dual-signature checks; inventory cycle counts'). 'N/A' if none."
+      },
+      {
+        "id": "overall-risk-grade",
+        "placeholder": "OverallRiskGrade",
+        "prompt": "Return an overall risk grade present in the file (e.g., 'A', 'B', 'C', or 'Low/Medium/High'). If absent, infer succinctly as 'Low', 'Medium', or 'High' based on controls and loss experience."
+      },
+      {
+        "id": "pricing-considerations",
+        "placeholder": "PricingConsiderations",
+        "prompt": "Provide 2–5 concise pricing drivers separated by semicolons (e.g., 'recent large loss 2023; frame construction; improved housekeeping 2024; modest payroll growth')."
+      },
+      {
+        "id": "conditions-endorsements",
+        "placeholder": "ConditionsEndorsements",
+        "prompt": "Provide 2–6 recommended conditions/endorsements separated by semicolons (e.g., 'sprinkler warranty; hot-work permit; driver MVR program; burglary alarm certificate')."
+      }
+    ]
+  },
+  {
+    "slug": "loss-history-template",
+    "name": "Loss-History Snapshot",
+    "description": "Extract and present historical loss data for renewal evaluation",
+    "reportTemplate": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Business Loss Run Summary</title>\n  <style>\n    /* PDF Page Setup - Landscape orientation for wide tables */\n    @page {\n      size: A4 landscape;\n      margin: 0.5in;\n    }\n    \n    /* Print-specific styles */\n    @media print {\n      body {\n        margin: 0;;\n        font-size: 10pt;\n      }\n      .header h1 {\n        font-size: 18pt;\n      }\n      .section-title {\n        font-size: 14pt;\n        page-break-after: avoid;\n      }\n      table {\n        page-break-inside: avoid;\n        font-size: 9pt;\n      }\n      th, td {\n        padding: 4px 6px;\n      }\n    }\n    \n    body {\n      font-family: Arial, sans-serif;\n      color: #333;\n      margin: 0.5in;\n      line-height: 1.3;\n      font-size: 11pt;\n    }\n    \n    .header {\n      text-align: left;\n      margin-bottom: 20px;\n    }\n    \n    .header h1 {\n      margin: 0;\n      font-size: 20px;\n    }\n    \n    .header .meta {\n      margin-top: 8px;\n      font-size: 12px;\n      line-height: 1.4;\n    }\n    \n    .section-title {\n      font-size: 16px;\n      margin-top: 25px;\n      margin-bottom: 10px;\n      text-decoration: underline;\n      page-break-after: avoid;\n    }\n    \n    /* Optimized table styling for PDF */\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-bottom: 20px;\n      table-layout: fixed;\n      font-size: 10px;\n    }\n    \n    table, th, td {\n      border: 1px solid #666;\n    }\n    \n    th, td {\n      padding: 4px 6px;\n      text-align: left;\n      word-wrap: break-word;\n      overflow: hidden;\n    }\n    \n    th {\n      background-color: #f2f2f2;\n      font-weight: bold;\n      font-size: 9px;\n      text-align: center;\n    }\n    \n    /* Policy Term Summary Table - Optimized column widths */\n    .policy-term-table th:nth-child(1),\n    .policy-term-table td:nth-child(1) { width: 12%; } /* Policy Term */\n    .policy-term-table th:nth-child(2),\n    .policy-term-table td:nth-child(2) { width: 10%; } /* Policy Type */\n    .policy-term-table th:nth-child(3),\n    .policy-term-table td:nth-child(3) { width: 8%; }  /* No. of Claims */\n    .policy-term-table th:nth-child(4),\n    .policy-term-table td:nth-child(4) { width: 12%; } /* L&E Reserves */\n    .policy-term-table th:nth-child(5),\n    .policy-term-table td:nth-child(5) { width: 10%; } /* Losses Paid */\n    .policy-term-table th:nth-child(6),\n    .policy-term-table td:nth-child(6) { width: 10%; } /* Expenses Paid */\n    .policy-term-table th:nth-child(7),\n    .policy-term-table td:nth-child(7) { width: 12%; } /* L&E Paid */\n    .policy-term-table th:nth-child(8),\n    .policy-term-table td:nth-child(8) { width: 8%; }  /* Recovery */\n    .policy-term-table th:nth-child(9),\n    .policy-term-table td:nth-child(9) { width: 10%; } /* Total Incurred */\n    \n    /* Claim Details Table - Optimized column widths */\n    .claim-details-table th:nth-child(1),\n    .claim-details-table td:nth-child(1) { width: 12%; } /* Claim # */\n    .claim-details-table th:nth-child(2),\n    .claim-details-table td:nth-child(2) { width: 9%; }  /* Loss Date */\n    .claim-details-table th:nth-child(3),\n    .claim-details-table td:nth-child(3) { width: 9%; }  /* Reported Date */\n    .claim-details-table th:nth-child(4),\n    .claim-details-table td:nth-child(4) { width: 9%; }  /* Close Date */\n    .claim-details-table th:nth-child(5),\n    .claim-details-table td:nth-child(5) { width: 12%; } /* Location */\n    .claim-details-table th:nth-child(6),\n    .claim-details-table td:nth-child(6) { width: 20%; } /* Description */\n    .claim-details-table th:nth-child(7),\n    .claim-details-table td:nth-child(7) { width: 8%; }  /* Status */\n    .claim-details-table th:nth-child(8),\n    .claim-details-table td:nth-child(8) { width: 9%; }  /* Paid Loss */\n    .claim-details-table th:nth-child(9),\n    .claim-details-table td:nth-child(9) { width: 8%; }  /* Reserve */\n    .claim-details-table th:nth-child(10),\n    .claim-details-table td:nth-child(10) { width: 9%; } /* Total Incurred */\n    \n    /* Numeric columns - right align and no wrap */\n    .policy-term-table td:nth-child(3),\n    .policy-term-table td:nth-child(4),\n    .policy-term-table td:nth-child(5),\n    .policy-term-table td:nth-child(6),\n    .policy-term-table td:nth-child(7),\n    .policy-term-table td:nth-child(8),\n    .policy-term-table td:nth-child(9),\n    .claim-details-table td:nth-child(8),\n    .claim-details-table td:nth-child(9),\n    .claim-details-table td:nth-child(10) {\n      text-align: right;\n      white-space: nowrap;\n    }\n    \n    /* Description column - allow text wrapping */\n    .claim-details-table td:nth-child(6) {\n      word-wrap: break-word;\n      white-space: normal;\n    }\n    \n    .summary-metrics {\n      font-weight: bold;\n      margin-bottom: 30px;\n      font-size: 11px;\n      line-height: 1.5;\n    }\n    \n    .footer-note {\n      font-size: 10px;\n      color: #555;\n      margin-top: 30px;\n      border-top: 1px solid #ddd;\n      padding-top: 10px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>Business Loss Run Summary</h1>\n    <div class=\"meta\">\n      <div><strong>Agency Name:</strong> {{BrokerAgent}}</div>\n      <div><strong>Current As of Date:</strong> {{CurrentAsOfDate}}</div>\n      <div><strong>Insured Name:</strong> {{InsuredName}}</div>\n      <div><strong>Policy Number:</strong> {{PolicyNumber}}</div>\n      <div><strong>Coverage Line:</strong> {{CoverageLine}}</div>\n      <div><strong>Policy Period:</strong> {{PolicyPeriod}}</div>\n    </div>\n  </div>\n\n  <div class=\"section-title\">Summary by Policy Term</div>\n  <table class=\"policy-term-table\">\n    <thead>\n      <tr>\n        <th>Policy Term</th>\n        <th>Policy Type</th>\n        <th>No. of Claims</th>\n        <th>L&amp;E Reserves</th>\n        <th>Losses Paid</th>\n        <th>Expenses Paid</th>\n        <th>L&amp;E Paid</th>\n        <th>Recovery</th>\n        <th>Total Incurred</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>{{PolicyTerm}}</td>\n        <td>{{PolicyType}}</td>\n        <td>{{TermClaimsCount}}</td>\n        <td>{{LossExpenseReserves}}</td>\n        <td>{{LossesPaid}}</td>\n        <td>{{ExpensesPaid}}</td>\n        <td>{{LossesExpensesPaid}}</td>\n        <td>{{Recovery}}</td>\n        <td>{{TermTotalIncurred}}</td>\n      </tr>\n    </tbody>\n    <tfoot>\n      <tr>\n        <th colspan=\"2\">Totals</th>\n        <th>{{TotalClaims}}</th>\n        <th>{{TotalReserves}}</th>\n        <th>{{TotalPaid}}</th>\n        <th>{{ExpensesPaid}}</th>\n        <th>{{LossesExpensesPaid}}</th>\n        <th>{{Recovery}}</th>\n        <th>{{TotalIncurred}}</th>\n      </tr>\n    </tfoot>\n  </table>\n\n  <div class=\"section-title\">Claim Details</div>\n  <table class=\"claim-details-table\">\n    <thead>\n      <tr>\n        <th>Claim #</th>\n        <th>Loss Date</th>\n        <th>Reported Date</th>\n        <th>Close Date</th>\n        <th>Location</th>\n        <th>Description</th>\n        <th>Status</th>\n        <th>Paid Loss</th>\n        <th>Reserve</th>\n        <th>Total Incurred</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>{{ClaimNumber}}</td>\n        <td>{{LossDate}}</td>\n        <td>{{ReportedDate}}</td>\n        <td>{{CloseDate}}</td>\n        <td>{{LossLocation}}</td>\n        <td>{{ClaimDescription}}</td>\n        <td>{{ClaimStatus}}</td>\n        <td>{{PaidLoss}}</td>\n        <td>{{ReserveAmount}}</td>\n        <td>{{TotalIncurred}}</td>\n      </tr>\n    </tbody>\n  </table>\n\n  <div class=\"summary-metrics\">\n    <div>Total Number of Claims: <strong>{{TotalClaims}}</strong></div>\n    <div>Total Paid Losses: <strong>{{TotalPaid}}</strong></div>\n    <div>Total Reserves: <strong>{{TotalReserves}}</strong></div>\n    <div>Total Incurred: <strong>{{TotalIncurred}}</strong></div>\n    <div>Open Claims: <strong>{{OpenClaims}}</strong></div>\n  </div>\n\n  <div class=\"footer-note\">\n    <p><em>Important Notice:</em> This information is provided \"as is\" and has not been audited. Please verify all figures before use.</p>\n  </div>\n</body>\n</html>",
+    "questions": [
+      {
+        "id": "insured-name",
+        "placeholder": "InsuredName",
+        "prompt": "Insured Name"
+      },
+      {
+
+        "id": "broker-agent",
+        "placeholder": "BrokerAgent",
+        "prompt": "Agency Name"
+      },
+      {
+        "id": "policy-number",
+        "placeholder": "PolicyNumber",
+        "prompt": "Policy Number"
+      },
+      {
+        "id": "coverage-line",
+        "placeholder": "CoverageLine",
+        "prompt": "Coverage Line"
+      },
+      {
+        "id": "current-as-of-date",
+        "placeholder": "CurrentAsOfDate",
+        "prompt": "Current As of Date"
+      },
+      {
+        "id": "policy-period",
+        "placeholder": "PolicyPeriod",
+        "prompt": "Policy Period"
+      },
+      {
+        "id": "total-claims",
+        "placeholder": "TotalClaims",
+        "prompt": "Total Claims"
+      },
+      {
+        "id": "total-paid",
+        "placeholder": "TotalPaid",
+        "prompt": "Total Paid Losses"
+      },
+      {
+        "id": "total-reserves",
+        "placeholder": "TotalReserves",
+        "prompt": "Total Reserves"
+      },
+      {
+        "id": "total-incurred",
+        "placeholder": "TotalIncurred",
+        "prompt": "Total Incurred"
+      },
+      {
+        "id": "open-claims",
+        "placeholder": "OpenClaims",
+        "prompt": "Open Claims"
+      },
+      {
+        "id": "claim-number",
+        "placeholder": "ClaimNumber",
+        "prompt": "Claim Number"
+      },
+      {
+        "id": "loss-date",
+        "placeholder": "LossDate",
+        "prompt": "Loss Date"
+      },
+      {
+        "id": "reported-date",
+        "placeholder": "ReportedDate",
+        "prompt": "Reported Date"
+      },
+      {
+        "id": "close-date",
+        "placeholder": "CloseDate",
+        "prompt": "Close Date"
+      },
+      {
+        "id": "loss-location",
+        "placeholder": "LossLocation",
+        "prompt": "Loss Location"
+      },
+      {
+        "id": "claim-description",
+        "placeholder": "ClaimDescription",
+        "prompt": "Claim Description"
+      },
+      {
+        "id": "claim-status",
+        "placeholder": "ClaimStatus",
+        "prompt": "Claim Status"
+      },
+      {
+        "id": "paid-loss",
+        "placeholder": "PaidLoss",
+        "prompt": "Paid Loss"
+      },
+      {
+        "id": "reserve-amount",
+        "placeholder": "ReserveAmount",
+        "prompt": "Reserve Amount"
+      },
+      {
+        "id": "policy-term",
+        "placeholder": "PolicyTerm",
+        "prompt": "Policy Term"
+      },
+      {
+        "id": "policy-type",
+        "placeholder": "PolicyType",
+        "prompt": "Policy Type"
+      },
+      {
+        "id": "term-claims-count",
+        "placeholder": "TermClaimsCount",
+        "prompt": "Number of Claims (Term)"
+      },
+      {
+        "id": "loss-expense-reserves",
+        "placeholder": "LossExpenseReserves",
+        "prompt": "Loss & Expense Reserves"
+      },
+      {
+        "id": "losses-paid",
+        "placeholder": "LossesPaid",
+        "prompt": "Losses Paid"
+      },
+      {
+        "id": "expenses-paid",
+        "placeholder": "ExpensesPaid",
+        "prompt": "Expenses Paid"
+      },
+      {
+        "id": "losses-expenses-paid",
+        "thonaplaceholder": "LossesExpensesPaid",
+        "prompt": "Losses & Expenses Paid"
+      },
+      {
+        "id": "recovery",
+        "placeholder": "Recovery",
+        "prompt": "Recovery"
+      },
+      {
+        "id": "term-total-incurred",
+        "placeholder": "TermTotalIncurred",
+        "prompt": "Total Incurred (Term)"
+      }
+    ]
+  }
+]

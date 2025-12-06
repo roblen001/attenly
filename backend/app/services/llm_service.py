@@ -175,11 +175,7 @@ class LLMService:
                 questions_with_chunks, document_context
             )
             prompt_prep_time = timer.stop().duration
-        
-        # Write the batch prompt to a text file for debugging
-        with open("batch_prompt_debug.txt", "w", encoding="utf-8") as f:
-            f.write(batch_prompt)
-        
+
         try:
             # Configure generation parameters
             generation_config = self.genai.types.GenerationConfig(
@@ -280,11 +276,6 @@ INSTRUCTIONS:
                                                      questions_with_chunks: List[Dict[str, Any]],
                                                      bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
         """Parse batch JSON response for questions with individual contexts"""
-
-        # Write response to debug file
-        with open("response_debug.txt", "w", encoding="utf-8") as f:
-            f.write(response_text)
-
         try:
             # Parse JSON response
             batch_data = json.loads(response_text)
@@ -972,16 +963,13 @@ IMPORTANT: Return EMPTY ARRAY [] if no exact supporting text found. Do NOT make 
                 document_bboxes = bbox_data[document_id]
                 
                 try:
-                    print("===============QUOTE TEXT=================")
-                    print(exact_text)
                     # Use bbox matcher to find word spans for this quote
                     word_spans = bbox_matcher.match_quote_to_words(
                         quote_text=exact_text,
                         document_bboxes=document_bboxes,
                         page_number=precise_page  # Use precise page if available
                     )
-                    print("================WORD SPANS===================")
-                    print(word_spans)
+
                     if word_spans:
                         # Add bbox information to quote
                         enhanced_quote["has_bounding_boxes"] = True

@@ -61,18 +61,23 @@ export const useAnswerEditing = (
     }
 
     // Calculate word count based on answer type
+    // Use regex split with filter to handle multiple spaces, newlines, and empty strings
+    const countWords = (text: string): number => {
+      return text.split(/\s+/).filter(word => word.length > 0).length;
+    };
+
     let wordCount = 0;
     if (typeof updatedAnswer === 'string') {
-      wordCount = updatedAnswer.split(' ').length;
+      wordCount = countWords(updatedAnswer);
     } else if (Array.isArray(updatedAnswer)) {
       // For arrays, count words across all items
       wordCount = updatedAnswer.reduce((count, item) => {
         if (typeof item === 'string') {
-          return count + item.split(' ').length;
+          return count + countWords(item);
         } else if (typeof item === 'object') {
           // For table rows, count words in all cell values
           return count + Object.values(item).reduce((sum: number, val) => {
-            return sum + String(val).split(' ').length;
+            return sum + countWords(String(val));
           }, 0);
         }
         return count;

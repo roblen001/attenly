@@ -14,7 +14,7 @@
 
 import React, { useEffect, useMemo } from 'react';
 import type { ReportData, ReportAnswer, AuditChange } from '../../types';
-import { generatePopulatedHTML } from '../../utils/reportUtils';
+import { generatePopulatedHTML, escapeHtml } from '../../utils/reportUtils';
 import { decorateWithAuditSpans } from '../../utils/auditDecorator';
 import './ReportContent.css';
 
@@ -226,13 +226,13 @@ const ReportContent: React.FC<ReportContentProps> = ({
             if (change.change_type === 'insert') {
               // Insert: text exists in current version
               const changeText = plainText.substring(change.start_offset, change.end_offset);
-              const tooltip = `Added by ${change.user_name} · ${new Date(change.created_at).toLocaleString()}`;
-              decoratedContent += `<span class="audit-trail-insert" title="${tooltip}">${changeText}</span>`;
+              const tooltip = escapeHtml(`Added by ${change.user_name} · ${new Date(change.created_at).toLocaleString()}`);
+              decoratedContent += `<span class="audit-trail-insert" title="${tooltip}">${escapeHtml(changeText)}</span>`;
               currentPosition = change.end_offset;
             } else {
               // Delete: text doesn't exist in current version
-              const tooltip = `Deleted by ${change.user_name} · ${new Date(change.created_at).toLocaleString()}`;
-              decoratedContent += `<span class="audit-trail-delete" title="${tooltip}">${change.text_content}</span>`;
+              const tooltip = escapeHtml(`Deleted by ${change.user_name} · ${new Date(change.created_at).toLocaleString()}`);
+              decoratedContent += `<span class="audit-trail-delete" title="${tooltip}">${escapeHtml(change.text_content)}</span>`;
               // Don't advance currentPosition for deletes (deleted text not in final string)
             }
           }

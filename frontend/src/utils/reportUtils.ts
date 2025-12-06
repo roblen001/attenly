@@ -19,7 +19,7 @@ export const generateSuperscript = (num: number): string => {
 /**
  * HTML escape utility - prevents XSS attacks
  */
-const escapeHtml = (text: string): string => {
+export const escapeHtml = (text: string): string => {
   const map: Record<string, string> = {
     '&': '&amp;',
     '<': '&lt;',

@@ -152,7 +152,7 @@ class WeasyPrintPDFGenerator:
         Generate pixel-perfect PDF report from HTML template
 
         Args:
-            agent: Agent configuration with HTML template
+            agent: Agent configuration with HTML template and CSS
             report_data: Report data with answers and quotes
             with_references: Whether to include reference section
 
@@ -175,6 +175,9 @@ class WeasyPrintPDFGenerator:
             # Add reference section if requested
             if with_references:
                 populated_html = self._add_reference_section(populated_html, report_data)
+            
+            # Inject CSS into HTML for PDF rendering
+            populated_html = self._inject_css(populated_html, agent)
                         
             pdf_bytes = HTML(string=populated_html).write_pdf(
                 presentational_hints=True,  # Respect HTML styling
@@ -329,6 +332,47 @@ class WeasyPrintPDFGenerator:
             html_content += reference_section
         
         return html_content
+
+    def _inject_css(self, html_content: str, agent: Agent) -> str:
+        """
+        Inject CSS into HTML for PDF rendering.
+        
+        If agent has report_template_css, uses that.
+        Otherwise, uses DEFAULT_TEMPLATE_CSS for backward compatibility.
+        
+        Args:
+            html_content: The populated HTML content (body fragment)
+            agent: Agent with CSS configuration
+            
+        Returns:
+            Complete HTML document with CSS injected
+        """
+        # Get CSS from agent or use default
+        css_content = None
+        if hasattr(agent, 'reportTemplateCss') and agent.reportTemplateCss:
+            css_content = agent.reportTemplateCss
+            logger.info(f"Using custom CSS from agent for PDF generation")
+        else:
+            # Fallback to default CSS for backward compatibility
+            from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
+            css_content = DEFAULT_TEMPLATE_CSS
+            logger.info(f"Using default CSS for PDF generation (no custom CSS found)")
+        
+        # Wrap HTML body in complete document structure with CSS
+        complete_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+{css_content}
+    </style>
+</head>
+<body>
+{html_content}
+</body>
+</html>"""
+        
+        return complete_html
 
 
 # Global WeasyPrint PDF generator instance

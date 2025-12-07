@@ -144,8 +144,11 @@ const ReportContent: React.FC<ReportContentProps> = ({
     // Get questions from template for answer_type metadata
     const questions = reportData.template.questions || [];
     
-    // First, generate the base populated HTML with questions metadata
-    const baseHTML = generatePopulatedHTML(reportData.template.html, reportData.answers, questions);
+    // Extract custom CSS from template (if available from AI-processed templates)
+    const customCss = reportData.template.css || '';
+    
+    // First, generate the base populated HTML with questions metadata and custom CSS
+    const baseHTML = generatePopulatedHTML(reportData.template.html, reportData.answers, questions, customCss);
     
     // Determine CSS class based on view mode
     let answerClass = 'answer-content';

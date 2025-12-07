@@ -97,6 +97,7 @@ def load_agent_by_id(agent_id: str, user_id: Optional[str] = None) -> Agent:
                     "name": agent_data["name"],
                     "description": agent_data.get("description", ""),
                     "reportTemplate": agent_data["report_template"],
+                    "reportTemplateCss": agent_data.get("report_template_css"),
                     "questions": questions_out
                 }
                 

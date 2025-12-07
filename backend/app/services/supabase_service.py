@@ -772,8 +772,9 @@ class SupabaseService:
     # Custom Agent CRUD Operations
     
     def create_custom_agent(self, user_jwt: str, user_id: str, created_by_name: str, 
-                           name: str, description: str, report_template: str, 
-                           questions: List[Dict[str, str]]) -> str:
+                           name: str, description: str, report_template: str,
+                           report_template_css: Optional[str] = None,
+                           questions: List[Dict[str, str]] = []) -> str:
         """Create a new custom agent with questions using user JWT"""
         try:
             user_client = self._create_user_client(user_jwt)
@@ -783,6 +784,7 @@ class SupabaseService:
                 "name": name,
                 "description": description,
                 "report_template": report_template,
+                "report_template_css": report_template_css,
                 "user_id": user_id,
                 "is_custom": True,
                 "created_by_name": created_by_name
@@ -898,7 +900,8 @@ class SupabaseService:
 
     def update_custom_agent(self, user_jwt: str, user_id: str, agent_id: str,
                            name: Optional[str] = None, description: Optional[str] = None,
-                           report_template: Optional[str] = None, 
+                           report_template: Optional[str] = None,
+                           report_template_css: Optional[str] = None,
                            questions: Optional[List[Dict[str, str]]] = None) -> bool:
         """Update a custom agent and optionally its questions using user JWT"""
         try:
@@ -912,6 +915,8 @@ class SupabaseService:
                 update_fields["description"] = description
             if report_template is not None:
                 update_fields["report_template"] = report_template
+            if report_template_css is not None:
+                update_fields["report_template_css"] = report_template_css
             
             result = user_client.table("agents")\
                 .update(update_fields)\

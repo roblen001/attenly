@@ -156,61 +156,124 @@ export const renderAnswer = (
   }
   
   if (question.answer_type === 'list') {
-    return renderListAnswer(answer);
+    return renderListAnswer(answer, [], 'temp-id');
   }
   
   if (question.answer_type === 'table') {
-    return renderTableAnswer(answer, question.columns || []);
+    return renderTableAnswer(answer, question.columns || [], [], 'temp-id');
   }
   
   // Fallback to string
   return escapeHtml(String(answer));
 };
 
-export const getBaseReportStyles = (config: ReportStyleConfig): string => {
-  const { context, interactive = true } = config;
+/**
+ * Prefix CSS selectors to increase specificity and prevent global style conflicts
+ * Transforms: "h1 { ... }" → ".template-isolated-content h1 { ... }"
+ */
+const prefixCssSelectors = (css: string, prefix: string): string => {
+  if (!css || !css.trim()) return '';
   
-  const baseStyles = `
-    .editable-answer {
-      position: relative;
-      display: inline;
-      background: #f7fafc;
-      border: 1px solid transparent;
-      border-radius: 2px;
-      padding: 1px 3px;
-      transition: all 0.2s ease;
-      font-weight: 500;
-      color: #1a365d;
-      ${interactive && context === 'preview' ? 'cursor: pointer;' : ''}
+  // Simple regex-based approach to prefix selectors
+  // This handles most common CSS patterns
+  return css.replace(/([^{}]+)\{/g, (match, selector) => {
+    // Clean up the selector
+    const cleanSelector = selector.trim();
+    
+    // Skip @ rules (media queries, keyframes, etc.)
+    if (cleanSelector.startsWith('@')) {
+      return match;
     }
     
-    .editable-answer:hover {
+    // Split multiple selectors (e.g., "h1, h2, h3")
+    const selectors = cleanSelector.split(',').map((s: string) => s.trim());
+    
+    // Prefix each selector
+    const prefixedSelectors = selectors.map((sel: string) => {
+      // If selector already starts with our prefix, don't duplicate
+      if (sel.startsWith(prefix)) {
+        return sel;
+      }
+      
+      // Special handling for body tag - apply styles to container itself
+      if (sel === 'body' || sel.startsWith('body ') || sel.startsWith('body:') || sel.startsWith('body.')) {
+        // Replace body with our container
+        return sel.replace(/^body/, prefix);
+      }
+      
+      // For all other selectors, add prefix as ancestor
+      return `${prefix} ${sel}`;
+    });
+    
+    return `${prefixedSelectors.join(', ')} {`;
+  });
+};
+
+export const getBaseReportStyles = (config: ReportStyleConfig, customCss?: string): string => {
+  const { context, interactive = true } = config;
+  
+  // CSS isolation reset - block Attenly global styles from cascading
+  const isolationReset = `
+    /* CSS Isolation for Template Content - Reset to browser defaults */
+    .template-isolated-content {
+      all: revert;
+    }
+  `;
+  
+  // Base styles for interactive elements with HIGH SPECIFICITY to override everything
+  const baseStyles = `
+    /* Interactive Element Styles (Edit Boxes & Quotes) - Highest Priority */
+    .report-html .template-isolated-content .editable-answer {
+      position: relative !important;
+      display: inline !important;
+      background: #f7fafc !important;
+      border: 1px solid transparent !important;
+      border-radius: 2px !important;
+      padding: 1px 3px !important;
+      transition: all 0.2s ease !important;
+      font-weight: 500 !important;
+      color: #1a365d !important;
+      ${interactive && context === 'preview' ? 'cursor: pointer !important;' : ''}
+    }
+    
+    .report-html .template-isolated-content .editable-answer:hover {
       background: #e6faf5 !important;
       border-color: #00d395 !important;
     }
     
-    .answer-content {
-      font-weight: 500;
-      color: #1a365d;
+    .report-html .template-isolated-content .answer-content {
+      font-weight: 500 !important;
+      color: #1a365d !important;
     }
     
-    .quote-superscript {
-      font-size: 0.7em;
-      vertical-align: super;
-      color: #2196f3;
-      font-weight: bold;
-      margin-left: 2px;
-      ${interactive && context === 'preview' ? 'cursor: pointer;' : ''}
+    .report-html .template-isolated-content .quote-superscript {
+      font-size: 0.7em !important;
+      vertical-align: super !important;
+      color: #2196f3 !important;
+      font-weight: bold !important;
+      margin-left: 2px !important;
+      ${interactive && context === 'preview' ? 'cursor: pointer !important;' : ''}
     }
     
-    .quote-superscript:hover {
-      background-color: #e3f2fd;
-      border-radius: 3px;
-      padding: 1px 2px;
+    .report-html .template-isolated-content .quote-superscript:hover {
+      background-color: #e3f2fd !important;
+      border-radius: 3px !important;
+      padding: 1px 2px !important;
     }
   `;
   
-  return baseStyles;
+  // Prefix custom CSS selectors to increase specificity over global styles
+  const templateCss = customCss && customCss.trim() ? `
+    /* Custom Template Styles (Prefixed for Isolation) */
+    ${prefixCssSelectors(customCss, '.template-isolated-content')}
+  ` : '';
+  
+  // Build final CSS with proper cascade order
+  return `
+    ${isolationReset}
+    ${templateCss}
+    ${baseStyles}
+  `;
 };
 
 export const generateReportHTML = (
@@ -288,11 +351,15 @@ export const generateReportHTML = (
 export const generatePopulatedHTML = (
   template: string,
   answers: { [placeholder: string]: ReportAnswer },
-  questions: Question[] = []
+  questions: Question[] = [],
+  customCss?: string
 ): string => {
   const config: ReportStyleConfig = { context: 'preview', interactive: true };
-  const styles = getBaseReportStyles(config);
+  const styles = getBaseReportStyles(config, customCss);
   const populatedHTML = generateReportHTML(template, answers, config, questions);
 
-  return `<style>${styles}</style>${populatedHTML}`;
+  // Wrap populated HTML in isolation container to prevent global style conflicts
+  const wrappedHTML = `<div class="template-isolated-content">${populatedHTML}</div>`;
+
+  return `<style>${styles}</style>${wrappedHTML}`;
 };

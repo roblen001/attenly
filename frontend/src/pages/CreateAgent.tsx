@@ -5,6 +5,7 @@ import './CreateAgent.css';
 import './AgentExecution.css';
 import EditorStep from '../components/agent-creation/EditorStep';
 import TemplateSelectionStep from '../components/agent-creation/TemplateSelectionStep';
+import TemplateProcessingLoadingState from '../components/agent-creation/TemplateProcessingLoadingState';
 import FileUpload from '../components/AgentExecution/FileUpload';
 import { api } from '../libs/https';
 import type { UploadedFile } from '../types';
@@ -21,6 +22,7 @@ interface CreateCustomAgentRequest {
   name: string;
   description?: string;
   report_template: string;
+  report_template_css?: string;
   questions: QuestionOut[];
 }
 
@@ -43,6 +45,7 @@ interface AgentCreationStep {
   data: {
     uploadedFiles?: UploadedFile[];
     reportTemplate?: string;
+    reportTemplateCss?: string;
     initialTemplateHtml?: string;
     questions?: QuestionOut[];
     agentName?: string;
@@ -69,8 +72,8 @@ const CreateAgent: React.FC = () => {
     data: {}
   });
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [originalAgent, setOriginalAgent] = useState<CustomAgent | null>(null);
   const [loadingAgent, setLoadingAgent] = useState(isEditMode);
+  const [isProcessingTemplate, setIsProcessingTemplate] = useState(false);
 
   // Fetch agent data for edit mode
   useEffect(() => {
@@ -91,7 +94,6 @@ const CreateAgent: React.FC = () => {
         }
 
         const agent = await response.json();
-        setOriginalAgent(agent);
         
         // Apply reverse transformation to convert simple placeholders back to interactive ones
         const { restoredTemplate, mappedQuestions } = restoreInteractivePlaceholders(
@@ -186,7 +188,7 @@ const CreateAgent: React.FC = () => {
   };
 
   const handleCreateAgent = async () => {
-    const { agentName, agentDescription, reportTemplate, questions } = currentStep.data;
+    const { agentName, agentDescription, reportTemplate, reportTemplateCss, questions } = currentStep.data;
 
     // Validate required fields
     if (!agentName || !reportTemplate || !questions || questions.length === 0) {
@@ -198,25 +200,31 @@ const CreateAgent: React.FC = () => {
       // Transform custom agent data to match prebuilt agent format
       const { cleanTemplate, cleanQuestions } = transformCustomAgentData(reportTemplate, questions);
       
-      // Add professional styling to the template
-      const styledTemplate = addProfessionalStyling(cleanTemplate);
+      // Only add professional styling wrapper if NO custom CSS is provided
+      // When CSS is provided, the backend will handle the complete HTML document structure
+      const finalTemplate = reportTemplateCss 
+        ? cleanTemplate 
+        : addProfessionalStyling(cleanTemplate);
 
       const requestPayload: CreateCustomAgentRequest = {
         name: agentName,
         description: agentDescription || '',
-        report_template: styledTemplate,
+        report_template: finalTemplate,
+        report_template_css: reportTemplateCss,
         questions: cleanQuestions
       };
 
       L.group(isEditMode ? 'handleUpdateAgent' : 'handleCreateAgent');
       L.log('Original template length:', reportTemplate.length);
-      L.log('Transformed template length:', styledTemplate.length);
+      L.log('Final template length:', finalTemplate.length);
+      L.log('Has custom CSS:', !!reportTemplateCss);
       L.log('Original questions:', questions.map(q => ({ id: q.id, placeholder: q.placeholder })));
       L.log('Transformed questions:', cleanQuestions.map(q => ({ id: q.id, placeholder: q.placeholder })));
       L.log('payload:', {
         name: requestPayload.name,
         descriptionLen: (requestPayload.description || '').length,
         reportTemplateLen: requestPayload.report_template.length,
+        reportTemplateCssLen: requestPayload.report_template_css?.length ?? 0,
         questionsLen: requestPayload.questions.length,
         questionsIds: ids(requestPayload.questions),
       });
@@ -322,8 +330,17 @@ const CreateAgent: React.FC = () => {
         return (
           <TemplateSelectionStep
             onBack={() => handleStepChange('upload', {})}
-            onSelectScratch={() => handleStepChange('editor', { initialTemplateHtml: '' })}
-            onSelectDocx={(htmlContent) => handleStepChange('editor', { initialTemplateHtml: htmlContent })}
+            onSelectScratch={() => handleStepChange('editor', { initialTemplateHtml: '', reportTemplateCss: '' })}
+            onSelectTemplate={(htmlContent, cssContent, source) => {
+              console.log(`Template uploaded via ${source}, CSS length: ${cssContent.length}`);
+              handleStepChange('editor', { 
+                reportTemplate: htmlContent,
+                reportTemplateCss: cssContent,
+                initialTemplateHtml: htmlContent 
+              });
+            }}
+            onProcessingStart={() => setIsProcessingTemplate(true)}
+            onProcessingEnd={() => setIsProcessingTemplate(false)}
           />
         );
 
@@ -331,6 +348,7 @@ const CreateAgent: React.FC = () => {
         return (
           <EditorStep
             reportTemplate={currentStep.data.reportTemplate || ''}
+            reportTemplateCss={currentStep.data.reportTemplateCss}
             initialTemplateHtml={currentStep.data.initialTemplateHtml}
             questions={currentStep.data.questions || []}
             onTemplateChange={(template) => {
@@ -338,6 +356,12 @@ const CreateAgent: React.FC = () => {
               L.log('templateLen=', template?.length ?? 0);
               L.end();
               handleStepChange('editor', { reportTemplate: template });
+            }}
+            onTemplateCssChange={(css) => {
+              L.group('onTemplateCssChange (parent)');
+              L.log('cssLen=', css?.length ?? 0);
+              L.end();
+              handleStepChange('editor', { reportTemplateCss: css });
             }}
             onQuestionsChange={(questions) => {
               L.group('onQuestionsChange (parent)');
@@ -426,6 +450,11 @@ const CreateAgent: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  // Show full-screen loading state when processing template upload
+  if (isProcessingTemplate) {
+    return <TemplateProcessingLoadingState />;
   }
 
   return (

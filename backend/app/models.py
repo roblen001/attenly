@@ -20,6 +20,9 @@ class Agent(Base):
     # The report template HTML
     report_template = Column(Text, nullable=True)
     
+    # CSS styling for the report template (nullable for backward compatibility)
+    report_template_css = Column(Text, nullable=True)
+    
     # Custom agent fields
     user_id = Column(String, nullable=True)  # Links custom agents to their creators (nullable for prebuilt agents)
     is_custom = Column(Boolean, nullable=False, default=False)  # Distinguishes custom from prebuilt agents

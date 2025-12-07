@@ -7,6 +7,7 @@ import './EditorStep.css';
 
 interface EditorStepProps {
   reportTemplate: string;
+  initialTemplateHtml?: string;
   questions: Question[];
   onTemplateChange: (template: string) => void;
   onQuestionsChange: (questions: Question[]) => void;
@@ -90,6 +91,7 @@ const DEFAULT_TEMPLATE = {
 
 const EditorStep: React.FC<EditorStepProps> = ({
   reportTemplate,
+  initialTemplateHtml,
   questions,
   onTemplateChange,
   onQuestionsChange,
@@ -389,11 +391,13 @@ const EditorStep: React.FC<EditorStepProps> = ({
           id="attenly-editor"
           onInit={(evt, editor) => {
             editorRef.current = editor;
-            if (reportTemplate) {
-              editor.setContent(reportTemplate);
+            // Priority: reportTemplate (existing/edited) > initialTemplateHtml (from DOCX) > empty
+            const contentToLoad = reportTemplate || initialTemplateHtml || '';
+            if (contentToLoad) {
+              editor.setContent(contentToLoad);
             }
           }}
-          initialValue={reportTemplate}
+          initialValue={reportTemplate || initialTemplateHtml || ''}
           init={editorConfig}
         />
       </div>

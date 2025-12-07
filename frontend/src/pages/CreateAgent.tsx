@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './CreateAgent.css';
 import './AgentExecution.css';
 import EditorStep from '../components/agent-creation/EditorStep';
+import TemplateSelectionStep from '../components/agent-creation/TemplateSelectionStep';
 import FileUpload from '../components/AgentExecution/FileUpload';
 import { api } from '../libs/https';
 import type { UploadedFile } from '../types';
@@ -38,10 +39,11 @@ interface CustomAgent {
 }
 
 interface AgentCreationStep {
-  step: 'upload' | 'editor' | 'naming';
+  step: 'upload' | 'template-selection' | 'editor' | 'naming';
   data: {
     uploadedFiles?: UploadedFile[];
     reportTemplate?: string;
+    initialTemplateHtml?: string;
     questions?: QuestionOut[];
     agentName?: string;
     agentDescription?: string;
@@ -98,8 +100,9 @@ const CreateAgent: React.FC = () => {
         );
         
         // Pre-populate all form fields with transformed data
+        // In edit mode, skip directly to editor step (skip template-selection)
         setCurrentStep({
-          step: 'upload',
+          step: 'editor',
           data: {
             agentName: agent.name,
             agentDescription: agent.description,
@@ -110,6 +113,7 @@ const CreateAgent: React.FC = () => {
 
         console.log('Agent loaded for editing:', agent.name);
         console.log('Template transformed for editing - placeholders restored:', mappedQuestions.length);
+        console.log('Edit mode: skipping directly to editor step');
 
       } catch (error) {
         console.error('Error fetching agent for editing:', error);
@@ -142,7 +146,7 @@ const CreateAgent: React.FC = () => {
   }, []); // No dependencies - only clear on actual page unload
 
   const handleStepChange = (
-    newStep: 'upload' | 'editor' | 'naming',
+    newStep: 'upload' | 'template-selection' | 'editor' | 'naming',
     newData: Partial<AgentCreationStep['data']>
   ) => {
     L.group('handleStepChange');
@@ -257,8 +261,9 @@ const CreateAgent: React.FC = () => {
   const renderStepIndicator = () => {
     const steps = [
       { key: 'upload', label: 'Upload Examples', number: 1 },
-      { key: 'editor', label: 'Create Template', number: 2 },
-      { key: 'naming', label: 'Name & Save', number: 3 }
+      { key: 'template-selection', label: 'Choose Method', number: 2 },
+      { key: 'editor', label: 'Create Template', number: 3 },
+      { key: 'naming', label: 'Name & Save', number: 4 }
     ] as const;
 
     return (
@@ -305,18 +310,28 @@ const CreateAgent: React.FC = () => {
               <button
                 className="btn-primary"
                 disabled={uploadedFiles.length === 0}
-                onClick={() => handleStepChange('editor', { uploadedFiles })}
+                onClick={() => handleStepChange('template-selection', { uploadedFiles })}
               >
-                Continue to Template Editor ({uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''})
+                Continue ({uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''})
               </button>
             </div>
           </div>
+        );
+
+      case 'template-selection':
+        return (
+          <TemplateSelectionStep
+            onBack={() => handleStepChange('upload', {})}
+            onSelectScratch={() => handleStepChange('editor', { initialTemplateHtml: '' })}
+            onSelectDocx={(htmlContent) => handleStepChange('editor', { initialTemplateHtml: htmlContent })}
+          />
         );
 
       case 'editor':
         return (
           <EditorStep
             reportTemplate={currentStep.data.reportTemplate || ''}
+            initialTemplateHtml={currentStep.data.initialTemplateHtml}
             questions={currentStep.data.questions || []}
             onTemplateChange={(template) => {
               L.group('onTemplateChange (parent)');
@@ -330,7 +345,7 @@ const CreateAgent: React.FC = () => {
               L.end();
               handleStepChange('editor', { questions });
             }}
-            onBack={() => handleStepChange('upload', {})}
+            onBack={() => handleStepChange('template-selection', {})}
             onNext={() => handleStepChange('naming', {})}
           />
         );

@@ -273,6 +273,7 @@ class ReportService:
                 "html": agent.reportTemplate,
                 "name": agent.name,
                 "description": agent.description,
+                "css": agent.reportTemplateCss if hasattr(agent, 'reportTemplateCss') and agent.reportTemplateCss else None,
                 "questions": questions_json  # NEW: Include questions with answer_type metadata
             },
             "answers": answers,

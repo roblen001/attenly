@@ -76,13 +76,38 @@ class CreateCustomAgentRequest(BaseModel):
     name: str
     description: Optional[str] = None
     report_template: str
+    report_template_css: Optional[str] = None  # CSS styling for template
     questions: List[QuestionOut]  # Use existing QuestionOut schema
 
 class UpdateCustomAgentRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     report_template: Optional[str] = None
+    report_template_css: Optional[str] = None  # CSS styling for template
     questions: Optional[List[QuestionOut]] = None  # Use existing QuestionOut schema
+
+# Template upload schemas
+class TemplateUploadRequest(BaseModel):
+    """Request for uploading and processing template file"""
+    filename: str
+    content_type: str
+    file_size: int
+
+class TemplateIngestResponse(BaseModel):
+    """Response from template ingestion service"""
+    success: bool
+    html_body: str
+    css: str
+    source: str  # "gemini", "mammoth", "blank"
+    error: Optional[str] = None
+    warnings: List[str] = []
+
+class TemplateValidationResult(BaseModel):
+    """Template file validation result"""
+    valid: bool
+    errors: List[str]
+    warnings: List[str]
+    estimated_pages: int
 
 # Schemas for saved reports functionality
 class SaveReportRequest(BaseModel):

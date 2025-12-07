@@ -1994,6 +1994,69 @@ async def download_saved_report_pdf(
         logging.error(f"Failed to generate PDF for saved report {report_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate PDF")
 
+# Template Upload Endpoint
+
+@router.post("/template/upload")
+async def upload_template(
+    file: UploadFile = File(...),
+    current_user = Depends(get_current_user)
+):
+    """Upload and process template file with AI normalization"""
+    user_id = current_user.id
+    
+    try:
+        # Read file content
+        content = await file.read()
+        
+        # Validate template file
+        from app.services.template_validator import TemplateValidator
+        validator = TemplateValidator()
+        
+        validation_result = validator.validate_template_file(content, file.filename)
+        
+        if not validation_result.valid:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "html_body": "",
+                    "css": "",
+                    "source": "error",
+                    "error": "; ".join(validation_result.errors),
+                    "warnings": validation_result.warnings
+                }
+            )
+        
+        # Process template with AI normalization
+        from app.services.template_ingest_service import TemplateIngestService
+        ingest_service = TemplateIngestService()
+        
+        result = ingest_service.process_template_file(content, file.filename)
+        
+        # Return result
+        return {
+            "success": result.success,
+            "html_body": result.html_body,
+            "css": result.css,
+            "source": result.source,
+            "error": result.error,
+            "warnings": result.warnings
+        }
+        
+    except Exception as e:
+        logging.error(f"Template upload failed: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "html_body": "",
+                "css": "",
+                "source": "error",
+                "error": f"Template processing failed: {str(e)}",
+                "warnings": []
+            }
+        )
+
 # Custom Agent CRUD Endpoints
 
 @router.post("/create_custom_agent", response_model=CustomAgentOut)
@@ -2025,6 +2088,7 @@ async def create_custom_agent(
             name=request.name,
             description=request.description or "",
             report_template=request.report_template,
+            report_template_css=request.report_template_css,
             questions=questions_data
         )
         
@@ -2131,6 +2195,7 @@ async def update_custom_agent(
             name=request.name,
             description=request.description,
             report_template=request.report_template,
+            report_template_css=request.report_template_css,
             questions=questions_data
         )
         

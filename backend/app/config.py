@@ -70,6 +70,7 @@ STORAGE_MAX_FILE_SIZE_MB = int(os.getenv("STORAGE_MAX_FILE_SIZE_MB", "100"))
 # =============================================================================
 
 LLM_MODEL_NAME = "gemini-2.5-flash-lite"
+TEMPLATE_INGEST_MODEL_NAME = "gemini-2.5-pro"  # For template normalization (higher quality)
 LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = 4000
 LLM_TEMPERATURE = 0.0
 LLM_THINKING_BUDGET = 0

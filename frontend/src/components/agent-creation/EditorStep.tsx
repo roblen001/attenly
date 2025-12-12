@@ -7,8 +7,11 @@ import './EditorStep.css';
 
 interface EditorStepProps {
   reportTemplate: string;
+  reportTemplateCss?: string;
+  initialTemplateHtml?: string;
   questions: Question[];
   onTemplateChange: (template: string) => void;
+  onTemplateCssChange?: (css: string) => void;
   onQuestionsChange: (questions: Question[]) => void;
   onBack: () => void;
   onNext: () => void;
@@ -34,11 +37,14 @@ const TINYMCE_TOOLBAR = [
   'insertfile image media template link anchor codesample | ltr rtl'
 ].join(' | ');
 
-const EXTENDED_VALID_ELEMENTS = "a[class|data-question-id|href|role|tabindex|aria-label|contenteditable],sup[class|data-quote-index]";
+const EXTENDED_VALID_ELEMENTS =
+  "a[class|data-question-id|href|role|tabindex|aria-label|contenteditable],sup[class|data-quote-index]";
 
 const EDITOR_CONTENT_STYLE = `
   body { 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; 
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                 sans-serif; 
     font-size: 14px; 
     line-height: 1.6;
   }
@@ -87,11 +93,13 @@ const DEFAULT_TEMPLATE = {
   `
 };
 
-
 const EditorStep: React.FC<EditorStepProps> = ({
   reportTemplate,
+  reportTemplateCss = '',
+  initialTemplateHtml,
   questions,
   onTemplateChange,
+  onTemplateCssChange,
   onQuestionsChange,
   onBack,
   onNext
@@ -99,11 +107,18 @@ const EditorStep: React.FC<EditorStepProps> = ({
   const editorRef = useRef<any>(null);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [isCssEditorOpen, setIsCssEditorOpen] = useState(false);
+  const [localCss, setLocalCss] = useState(reportTemplateCss);
 
   // Refs to fix stale closure issue in TinyMCE event handlers
   const questionsRef = useRef(questions);
   const setEditingQuestionRef = useRef(setEditingQuestion);
   const setIsAIModalOpenRef = useRef(setIsAIModalOpen);
+
+  // Update local CSS when prop changes
+  useEffect(() => {
+    setLocalCss(reportTemplateCss);
+  }, [reportTemplateCss]);
 
   // Keep refs updated with current values
   useEffect(() => {
@@ -131,7 +146,10 @@ const EditorStep: React.FC<EditorStepProps> = ({
   const rememberCaret = () => {
     const editor = editorRef.current;
     if (editor && editor.initialized) {
-      bookmarkRef.current = editor.selection.getBookmark(BOOKMARK_TYPE, BOOKMARK_NORMALIZED);
+      bookmarkRef.current = editor.selection.getBookmark(
+        BOOKMARK_TYPE,
+        BOOKMARK_NORMALIZED
+      );
     }
   };
 
@@ -148,7 +166,13 @@ const EditorStep: React.FC<EditorStepProps> = ({
   };
 
   const escapeHtml = (text: string) => {
-    return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+    return text.replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[c]!));
   };
 
   const safeEditorAction = (action: () => void) => {
@@ -165,7 +189,11 @@ const EditorStep: React.FC<EditorStepProps> = ({
     }
   };
 
-  const handleAddToTemplate = (questionText: string, answer: string, quotes: Quote[]) => {
+  const handleAddToTemplate = (
+    questionText: string,
+    answer: string,
+    quotes: Quote[]
+  ) => {
     const currentQuestions = questionsRef.current;
     const editing = editingQuestion;
 
@@ -173,9 +201,9 @@ const EditorStep: React.FC<EditorStepProps> = ({
     const references =
       quotes.length > 0 ? ` [${quotes.map((_, i) => i + 1).join('][')}]` : '';
 
-    if (editing && currentQuestions.some(q => q.id === editing.id)) {
+    if (editing && currentQuestions.some((q) => q.id === editing.id)) {
       // Update existing question
-      const updatedQuestions = currentQuestions.map(q =>
+      const updatedQuestions = currentQuestions.map((q) =>
         q.id === editing.id
           ? { ...q, prompt: questionText, exampleAnswer: answer, exampleQuotes: quotes }
           : q
@@ -186,7 +214,11 @@ const EditorStep: React.FC<EditorStepProps> = ({
       safeEditorAction(() => {
         const editor = editorRef.current;
         const content = editor.getContent();
-        const newHtml = `<a href="#" class="ai-placeholder mceNonEditable ai-locked" data-question-id="${editing.id}" role="button" tabindex="0" contenteditable="false">${escapeHtml(placeholder)}${references}</a>`;
+        const newHtml = `<a href="#" class="ai-placeholder mceNonEditable ai-locked" data-question-id="${
+          editing.id
+        }" role="button" tabindex="0" contenteditable="false">${escapeHtml(
+          placeholder
+        )}${references}</a>`;
 
         const updatedContent = content.replace(
           new RegExp(`<a[^>]*data-question-id="${editing.id}"[^>]*>.*?</a>`, 'g'),
@@ -196,7 +228,9 @@ const EditorStep: React.FC<EditorStepProps> = ({
       });
     } else {
       // Add new question
-      const questionId = `q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const questionId = `q_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
 
       safeEditorAction(() => {
         const editor = editorRef.current;
@@ -210,10 +244,14 @@ const EditorStep: React.FC<EditorStepProps> = ({
           }
         }
 
-        const html = `<a href="#" class="ai-placeholder mceNonEditable ai-locked" data-question-id="${questionId}" role="button" tabindex="0" contenteditable="false">${escapeHtml(placeholder)}${references}</a>&nbsp;`;
+        const html = `<a href="#" class="ai-placeholder mceNonEditable ai-locked" data-question-id="${questionId}" role="button" tabindex="0" contenteditable="false">${escapeHtml(
+          placeholder
+        )}${references}</a>&nbsp;`;
         editor.insertContent(html);
 
-        const node = editor.dom.select(`a[data-question-id="${questionId}"]`)[0];
+        const node = editor.dom.select(
+          `a[data-question-id="${questionId}"]`
+        )[0];
         if (node) {
           editor.selection.select(node);
           editor.selection.collapse(false);
@@ -227,7 +265,7 @@ const EditorStep: React.FC<EditorStepProps> = ({
         placeholder,
         prompt: questionText,
         exampleAnswer: answer,
-        exampleQuotes: quotes,
+        exampleQuotes: quotes
       };
 
       const newQuestionsList = [...currentQuestions, newQuestion];
@@ -240,140 +278,164 @@ const EditorStep: React.FC<EditorStepProps> = ({
     setEditingQuestion(null);
   };
 
-  const editorConfig = useMemo(() => ({
-    height: EDITOR_HEIGHT,
-    menubar: true,
-    plugins: TINYMCE_PLUGINS,
-    toolbar: TINYMCE_TOOLBAR,
-    extended_valid_elements: EXTENDED_VALID_ELEMENTS,
-    noneditable_class: 'ai-locked',
-    content_style: EDITOR_CONTENT_STYLE,
-    setup: (editor: any) => {
-      const getAnchorIds = () => {
-        const ed = editorRef.current;
-        if (!ed) return [];
-        const anchors = ed.dom.select('a.ai-placeholder');
-        return anchors.map((n: any) => ed.dom.getAttrib(n, 'data-question-id'));
-      };
+  const editorConfig = useMemo(
+    () => ({
+      height: EDITOR_HEIGHT,
+      menubar: true,
+      plugins: TINYMCE_PLUGINS,
+      toolbar: TINYMCE_TOOLBAR,
+      extended_valid_elements: EXTENDED_VALID_ELEMENTS,
+      noneditable_class: 'ai-locked',
+      // 🔧 KEY FIX: merge base editor CSS + template CSS
+      content_style: `
+        ${EDITOR_CONTENT_STYLE}
+        ${reportTemplateCss || ''}
+      `,
+      setup: (editor: any) => {
+        const getAnchorIds = () => {
+          const ed = editorRef.current;
+          if (!ed) return [];
+          const anchors = ed.dom.select('a.ai-placeholder');
+          return anchors.map((n: any) => ed.dom.getAttrib(n, 'data-question-id'));
+        };
 
-      const syncQuestionsWithDom = () => {
-        const ed = editorRef.current;
-        if (!ed) return;
+        const syncQuestionsWithDom = () => {
+          const ed = editorRef.current;
+          if (!ed) return;
 
-        const anchorIds = getAnchorIds();
-        const currLen = questionsRef.current.length;
+          const anchorIds = getAnchorIds();
+          const currLen = questionsRef.current.length;
 
-        // Guard: only prune when we have at least one question and at least one anchor
-        if (currLen === 0 || anchorIds.length === 0) {
-          return;
-        }
-
-        const idsInDom = new Set(anchorIds);
-        const newList = questionsRef.current.filter(q => idsInDom.has(q.id));
-        if (newList.length !== questionsRef.current.length) {
-          onQuestionsChange(newList);
-        }
-      };
-
-      const handlePlaceholderClick = (e: any) => {
-        const node = e.target as Element;
-        const placeholder = editor.dom.getParent(node, 'a.ai-placeholder');
-        const isActivateKey = e.type === 'keydown' && (e.key === 'Enter' || e.key === ' ');
-        
-        if (placeholder && (e.type === 'click' || isActivateKey)) {
-          e.preventDefault();
-          const questionId = editor.dom.getAttrib(placeholder, 'data-question-id');
-          const question = questionsRef.current.find(q => q.id === questionId);
-          if (question) {
-            setEditingQuestionRef.current(question);
-            setIsAIModalOpenRef.current(true);
+          // Guard: only prune when we have at least one question and at least one anchor
+          if (currLen === 0 || anchorIds.length === 0) {
+            return;
           }
-        }
-      };
 
-      const handleKeydown = (e: any) => {
-        // Activate if Enter/Space on anchor
-        handlePlaceholderClick(e);
-
-        if (e.key !== 'Backspace' && e.key !== 'Delete') return;
-        const ed = editorRef.current;
-        const node = ed.selection.getNode();
-        const anchor = ed.dom.getParent(node, 'a.ai-placeholder');
-        if (anchor) {
-          e.preventDefault();
-          const id = ed.dom.getAttrib(anchor, 'data-question-id');
-
-          const next = anchor.nextSibling;
-          if (next && next.nodeType === 3 && /\u00A0|\s/.test(next.nodeValue || '')) {
-            next.parentNode?.removeChild(next);
+          const idsInDom = new Set(anchorIds);
+          const newList = questionsRef.current.filter((q) =>
+            idsInDom.has(q.id)
+          );
+          if (newList.length !== questionsRef.current.length) {
+            onQuestionsChange(newList);
           }
-          ed.dom.remove(anchor);
+        };
 
-          const newList = questionsRef.current.filter(q => q.id !== id);
-          onQuestionsChange(newList);
-        }
-      };
+        const handlePlaceholderClick = (e: any) => {
+          const node = e.target as Element;
+          const placeholder = editor.dom.getParent(node, 'a.ai-placeholder');
+          const isActivateKey =
+            e.type === 'keydown' && (e.key === 'Enter' || e.key === ' ');
 
-      const handleInput = () => {
-        latestHtmlRef.current = editor.getContent({ format: 'html' });
-      };
-
-      const handleBlur = () => {
-        onTemplateChange(latestHtmlRef.current);
-      };
-
-      editor.on('click', handlePlaceholderClick);
-      editor.on('keydown', handleKeydown);
-      editor.on('input', syncQuestionsWithDom);
-      editor.on('keyup', (e: any) => {
-        if (e.key === 'Backspace' || e.key === 'Delete') syncQuestionsWithDom();
-      });
-      editor.on('Remove', syncQuestionsWithDom);
-      editor.on('input', handleInput);
-      editor.on('blur', handleBlur);
-
-      editor.on('remove', () => {
-        editor.off('click', handlePlaceholderClick);
-        editor.off('keydown', handleKeydown);
-        editor.off('input', syncQuestionsWithDom);
-        editor.off('keyup', syncQuestionsWithDom);
-        editor.off('Remove', syncQuestionsWithDom);
-        editor.off('input', handleInput);
-        editor.off('blur', handleBlur);
-      });
-    },
-    paste_data_images: true,
-    image_advtab: true,
-    importcss_append: true,
-    file_picker_types: 'image',
-    file_picker_callback: (callback: any, value: any, meta: any) => {
-      if (meta.filetype === 'image') {
-        const input = document.createElement('input');
-        input.setAttribute('type', 'file');
-        input.setAttribute('accept', 'image/*');
-        input.addEventListener('change', (e: Event) => {
-          const target = e.target as HTMLInputElement;
-          const file = target.files?.[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.addEventListener('load', () => {
-              callback(reader.result as string, { alt: file.name });
-            });
-            reader.readAsDataURL(file);
+          if (placeholder && (e.type === 'click' || isActivateKey)) {
+            e.preventDefault();
+            const questionId = editor.dom.getAttrib(
+              placeholder,
+              'data-question-id'
+            );
+            const question = questionsRef.current.find(
+              (q) => q.id === questionId
+            );
+            if (question) {
+              setEditingQuestionRef.current(question);
+              setIsAIModalOpenRef.current(true);
+            }
           }
+        };
+
+        const handleKeydown = (e: any) => {
+          // Activate if Enter/Space on anchor
+          handlePlaceholderClick(e);
+
+          if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+          const ed = editorRef.current;
+          const node = ed.selection.getNode();
+          const anchor = ed.dom.getParent(node, 'a.ai-placeholder');
+          if (anchor) {
+            e.preventDefault();
+            const id = ed.dom.getAttrib(anchor, 'data-question-id');
+
+            const next = anchor.nextSibling;
+            if (
+              next &&
+              next.nodeType === 3 &&
+              /\u00A0|\s/.test(next.nodeValue || '')
+            ) {
+              next.parentNode?.removeChild(next);
+            }
+            ed.dom.remove(anchor);
+
+            const newList = questionsRef.current.filter((q) => q.id !== id);
+            onQuestionsChange(newList);
+          }
+        };
+
+        const handleInput = () => {
+          latestHtmlRef.current = editor.getContent({ format: 'html' });
+        };
+
+        const handleBlur = () => {
+          onTemplateChange(latestHtmlRef.current);
+        };
+
+        editor.on('click', handlePlaceholderClick);
+        editor.on('keydown', handleKeydown);
+        editor.on('input', syncQuestionsWithDom);
+        editor.on('keyup', (e: any) => {
+          if (e.key === 'Backspace' || e.key === 'Delete') syncQuestionsWithDom();
         });
-        input.click();
-      }
-    },
-    templates: [DEFAULT_TEMPLATE]
-  }), []);
+        editor.on('Remove', syncQuestionsWithDom);
+        editor.on('input', handleInput);
+        editor.on('blur', handleBlur);
+
+        editor.on('remove', () => {
+          editor.off('click', handlePlaceholderClick);
+          editor.off('keydown', handleKeydown);
+          editor.off('input', syncQuestionsWithDom);
+          editor.off('keyup', syncQuestionsWithDom);
+          editor.off('Remove', syncQuestionsWithDom);
+          editor.off('input', handleInput);
+          editor.off('blur', handleBlur);
+        });
+      },
+      paste_data_images: true,
+      image_advtab: true,
+      importcss_append: true,
+      file_picker_types: 'image',
+      file_picker_callback: (callback: any, value: any, meta: any) => {
+        if (meta.filetype === 'image') {
+          const input = document.createElement('input');
+          input.setAttribute('type', 'file');
+          input.setAttribute('accept', 'image/*');
+          input.addEventListener('change', (e: Event) => {
+            const target = e.target as HTMLInputElement;
+            const file = target.files?.[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.addEventListener('load', () => {
+                callback(reader.result as string, { alt: file.name });
+              });
+              reader.readAsDataURL(file);
+            }
+          });
+          input.click();
+        }
+      },
+      templates: [DEFAULT_TEMPLATE]
+    }),
+    [reportTemplateCss, onQuestionsChange, onTemplateChange]
+  );
 
   return (
     <div className="editor-step">
       <div className="editor-header">
         <h2>Create Report Template</h2>
-        <p>Design your report template using the rich text editor. Use the "🤖 Add AI Ability" button to insert data extraction points. Note: your questions should be general enough so they work on other files too.</p>
-        
+        <p>
+          Design your report template using the rich text editor. Use the
+          &quot;🤖 Add AI Ability&quot; button to insert data extraction
+          points. Note: your questions should be general enough so they work on
+          other files too.
+        </p>
+
         <button
           className="add-ai-ability-btn"
           onMouseDown={(e) => e.preventDefault()} // keep focus in TinyMCE
@@ -389,14 +451,50 @@ const EditorStep: React.FC<EditorStepProps> = ({
           id="attenly-editor"
           onInit={(evt, editor) => {
             editorRef.current = editor;
-            if (reportTemplate) {
-              editor.setContent(reportTemplate);
+            // Priority: reportTemplate (existing/edited) > initialTemplateHtml (from DOCX) > empty
+            const contentToLoad = reportTemplate || initialTemplateHtml || '';
+            if (contentToLoad) {
+              editor.setContent(contentToLoad);
             }
           }}
-          initialValue={reportTemplate}
+          initialValue={reportTemplate || initialTemplateHtml || ''}
           init={editorConfig}
         />
       </div>
+
+      {/* Advanced CSS Editor (Collapsible) */}
+      {onTemplateCssChange && (
+        <div className="css-editor-section">
+          <button
+            className="css-editor-toggle"
+            onClick={() => setIsCssEditorOpen(!isCssEditorOpen)}
+            type="button"
+          >
+            <span className="toggle-icon">
+              {isCssEditorOpen ? '▼' : '▶'}
+            </span>
+            Advanced CSS (for power users)
+          </button>
+
+          {isCssEditorOpen && (
+            <div className="css-editor-content">
+              <p className="css-editor-hint">
+                Customize the styling of your template. Changes apply to PDF
+                generation.
+              </p>
+              <textarea
+                className="css-editor-textarea"
+                value={localCss}
+                onChange={(e) => setLocalCss(e.target.value)}
+                onBlur={() => onTemplateCssChange(localCss)}
+                placeholder="/* Add custom CSS here... */"
+                spellCheck={false}
+                rows={10}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="editor-actions">
         <button className="btn-secondary" onClick={onBack}>
@@ -407,7 +505,9 @@ const EditorStep: React.FC<EditorStepProps> = ({
           disabled={questions.length === 0}
           onClick={() => {
             const ed = editorRef.current;
-            const html = ed ? ed.getContent({ format: 'html' }) : latestHtmlRef.current;
+            const html = ed
+              ? ed.getContent({ format: 'html' })
+              : latestHtmlRef.current;
             if (html !== reportTemplate) {
               onTemplateChange(html);
             }

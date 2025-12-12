@@ -4,6 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './CreateAgent.css';
 import './AgentExecution.css';
 import EditorStep from '../components/agent-creation/EditorStep';
+import TemplateSelectionStep from '../components/agent-creation/TemplateSelectionStep';
+import TemplateProcessingLoadingState from '../components/agent-creation/TemplateProcessingLoadingState';
 import FileUpload from '../components/AgentExecution/FileUpload';
 import { api } from '../libs/https';
 import type { UploadedFile } from '../types';
@@ -20,6 +22,7 @@ interface CreateCustomAgentRequest {
   name: string;
   description?: string;
   report_template: string;
+  report_template_css?: string;
   questions: QuestionOut[];
 }
 
@@ -38,10 +41,12 @@ interface CustomAgent {
 }
 
 interface AgentCreationStep {
-  step: 'upload' | 'editor' | 'naming';
+  step: 'upload' | 'template-selection' | 'editor' | 'naming';
   data: {
     uploadedFiles?: UploadedFile[];
     reportTemplate?: string;
+    reportTemplateCss?: string;
+    initialTemplateHtml?: string;
     questions?: QuestionOut[];
     agentName?: string;
     agentDescription?: string;
@@ -67,8 +72,8 @@ const CreateAgent: React.FC = () => {
     data: {}
   });
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [originalAgent, setOriginalAgent] = useState<CustomAgent | null>(null);
   const [loadingAgent, setLoadingAgent] = useState(isEditMode);
+  const [isProcessingTemplate, setIsProcessingTemplate] = useState(false);
 
   // Fetch agent data for edit mode
   useEffect(() => {
@@ -89,7 +94,6 @@ const CreateAgent: React.FC = () => {
         }
 
         const agent = await response.json();
-        setOriginalAgent(agent);
         
         // Apply reverse transformation to convert simple placeholders back to interactive ones
         const { restoredTemplate, mappedQuestions } = restoreInteractivePlaceholders(
@@ -98,8 +102,9 @@ const CreateAgent: React.FC = () => {
         );
         
         // Pre-populate all form fields with transformed data
+        // In edit mode, skip directly to editor step (skip template-selection)
         setCurrentStep({
-          step: 'upload',
+          step: 'editor',
           data: {
             agentName: agent.name,
             agentDescription: agent.description,
@@ -110,6 +115,7 @@ const CreateAgent: React.FC = () => {
 
         console.log('Agent loaded for editing:', agent.name);
         console.log('Template transformed for editing - placeholders restored:', mappedQuestions.length);
+        console.log('Edit mode: skipping directly to editor step');
 
       } catch (error) {
         console.error('Error fetching agent for editing:', error);
@@ -142,7 +148,7 @@ const CreateAgent: React.FC = () => {
   }, []); // No dependencies - only clear on actual page unload
 
   const handleStepChange = (
-    newStep: 'upload' | 'editor' | 'naming',
+    newStep: 'upload' | 'template-selection' | 'editor' | 'naming',
     newData: Partial<AgentCreationStep['data']>
   ) => {
     L.group('handleStepChange');
@@ -182,7 +188,7 @@ const CreateAgent: React.FC = () => {
   };
 
   const handleCreateAgent = async () => {
-    const { agentName, agentDescription, reportTemplate, questions } = currentStep.data;
+    const { agentName, agentDescription, reportTemplate, reportTemplateCss, questions } = currentStep.data;
 
     // Validate required fields
     if (!agentName || !reportTemplate || !questions || questions.length === 0) {
@@ -194,25 +200,31 @@ const CreateAgent: React.FC = () => {
       // Transform custom agent data to match prebuilt agent format
       const { cleanTemplate, cleanQuestions } = transformCustomAgentData(reportTemplate, questions);
       
-      // Add professional styling to the template
-      const styledTemplate = addProfessionalStyling(cleanTemplate);
+      // Only add professional styling wrapper if NO custom CSS is provided
+      // When CSS is provided, the backend will handle the complete HTML document structure
+      const finalTemplate = reportTemplateCss 
+        ? cleanTemplate 
+        : addProfessionalStyling(cleanTemplate);
 
       const requestPayload: CreateCustomAgentRequest = {
         name: agentName,
         description: agentDescription || '',
-        report_template: styledTemplate,
+        report_template: finalTemplate,
+        report_template_css: reportTemplateCss,
         questions: cleanQuestions
       };
 
       L.group(isEditMode ? 'handleUpdateAgent' : 'handleCreateAgent');
       L.log('Original template length:', reportTemplate.length);
-      L.log('Transformed template length:', styledTemplate.length);
+      L.log('Final template length:', finalTemplate.length);
+      L.log('Has custom CSS:', !!reportTemplateCss);
       L.log('Original questions:', questions.map(q => ({ id: q.id, placeholder: q.placeholder })));
       L.log('Transformed questions:', cleanQuestions.map(q => ({ id: q.id, placeholder: q.placeholder })));
       L.log('payload:', {
         name: requestPayload.name,
         descriptionLen: (requestPayload.description || '').length,
         reportTemplateLen: requestPayload.report_template.length,
+        reportTemplateCssLen: requestPayload.report_template_css?.length ?? 0,
         questionsLen: requestPayload.questions.length,
         questionsIds: ids(requestPayload.questions),
       });
@@ -257,8 +269,9 @@ const CreateAgent: React.FC = () => {
   const renderStepIndicator = () => {
     const steps = [
       { key: 'upload', label: 'Upload Examples', number: 1 },
-      { key: 'editor', label: 'Create Template', number: 2 },
-      { key: 'naming', label: 'Name & Save', number: 3 }
+      { key: 'template-selection', label: 'Choose Method', number: 2 },
+      { key: 'editor', label: 'Create Template', number: 3 },
+      { key: 'naming', label: 'Name & Save', number: 4 }
     ] as const;
 
     return (
@@ -305,18 +318,38 @@ const CreateAgent: React.FC = () => {
               <button
                 className="btn-primary"
                 disabled={uploadedFiles.length === 0}
-                onClick={() => handleStepChange('editor', { uploadedFiles })}
+                onClick={() => handleStepChange('template-selection', { uploadedFiles })}
               >
-                Continue to Template Editor ({uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''})
+                Continue ({uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''})
               </button>
             </div>
           </div>
+        );
+
+      case 'template-selection':
+        return (
+          <TemplateSelectionStep
+            onBack={() => handleStepChange('upload', {})}
+            onSelectScratch={() => handleStepChange('editor', { initialTemplateHtml: '', reportTemplateCss: '' })}
+            onSelectTemplate={(htmlContent, cssContent, source) => {
+              console.log(`Template uploaded via ${source}, CSS length: ${cssContent.length}`);
+              handleStepChange('editor', { 
+                reportTemplate: htmlContent,
+                reportTemplateCss: cssContent,
+                initialTemplateHtml: htmlContent 
+              });
+            }}
+            onProcessingStart={() => setIsProcessingTemplate(true)}
+            onProcessingEnd={() => setIsProcessingTemplate(false)}
+          />
         );
 
       case 'editor':
         return (
           <EditorStep
             reportTemplate={currentStep.data.reportTemplate || ''}
+            reportTemplateCss={currentStep.data.reportTemplateCss}
+            initialTemplateHtml={currentStep.data.initialTemplateHtml}
             questions={currentStep.data.questions || []}
             onTemplateChange={(template) => {
               L.group('onTemplateChange (parent)');
@@ -324,13 +357,19 @@ const CreateAgent: React.FC = () => {
               L.end();
               handleStepChange('editor', { reportTemplate: template });
             }}
+            onTemplateCssChange={(css) => {
+              L.group('onTemplateCssChange (parent)');
+              L.log('cssLen=', css?.length ?? 0);
+              L.end();
+              handleStepChange('editor', { reportTemplateCss: css });
+            }}
             onQuestionsChange={(questions) => {
               L.group('onQuestionsChange (parent)');
               L.log('questions len=', questions.length, 'ids=', ids(questions));
               L.end();
               handleStepChange('editor', { questions });
             }}
-            onBack={() => handleStepChange('upload', {})}
+            onBack={() => handleStepChange('template-selection', {})}
             onNext={() => handleStepChange('naming', {})}
           />
         );
@@ -411,6 +450,11 @@ const CreateAgent: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  // Show full-screen loading state when processing template upload
+  if (isProcessingTemplate) {
+    return <TemplateProcessingLoadingState />;
   }
 
   return (

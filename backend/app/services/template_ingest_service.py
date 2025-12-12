@@ -15,9 +15,11 @@ import logging
 import os
 import re
 import tempfile
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Set, Dict
 import google.generativeai as genai
 import mammoth
+import nh3
+import tinycss2
 from bs4 import BeautifulSoup
 
 from app.config import GEMINI_API_KEY, TEMPLATE_INGEST_MODEL_NAME
@@ -375,7 +377,7 @@ Finally, output only the JSON object:
                 temp_file.write(file_content)
                 temp_file_path = temp_file.name
             
-            logger.info(f"Temporary file created: {temp_file_path}")
+            logger.info("Temporary file created for Gemini processing")
             
             # Determine MIME type
             mime_types = {
@@ -439,9 +441,9 @@ Finally, output only the JSON object:
             if temp_file_path and os.path.exists(temp_file_path):
                 try:
                     os.unlink(temp_file_path)
-                    logger.debug(f"Temporary file deleted: {temp_file_path}")
+                    logger.debug("Temporary file deleted")
                 except Exception as e:
-                    logger.warning(f"Failed to delete temporary file {temp_file_path}: {str(e)}")
+                    logger.warning(f"Failed to delete temporary file: {str(e)}")
     
     def _fallback_to_mammoth(self, docx_content: bytes) -> str:
         """
@@ -544,73 +546,252 @@ Finally, output only the JSON object:
         
         return html_body, DEFAULT_TEMPLATE_CSS
     
+    # Allowlist of safe HTML tags for template content
+    ALLOWED_HTML_TAGS: Set[str] = {
+        # Structure
+        'div', 'span', 'p', 'br', 'hr',
+        # Headings
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        # Text formatting
+        'strong', 'em', 'b', 'i', 'u', 's', 'sub', 'sup', 'mark',
+        # Lists
+        'ul', 'ol', 'li',
+        # Tables
+        'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
+        # Links and media
+        'a', 'img',
+        # Semantic
+        'header', 'footer', 'section', 'article', 'aside', 'nav', 'main',
+        # Other
+        'blockquote', 'pre', 'code', 'address',
+    }
+
+    # Allowlist of safe HTML attributes per tag
+    # Note: 'rel' is NOT included for 'a' tags because we use link_rel parameter
+    # in nh3.clean() which automatically adds rel="noopener noreferrer"
+    ALLOWED_HTML_ATTRIBUTES: Dict[str, Set[str]] = {
+        '*': {'class', 'id', 'style', 'title', 'lang', 'dir'},
+        'a': {'href', 'target'},  # rel is handled by link_rel parameter
+        'img': {'src', 'alt', 'width', 'height', 'loading'},
+        'table': {'border', 'cellpadding', 'cellspacing', 'width'},
+        'th': {'colspan', 'rowspan', 'scope', 'width'},
+        'td': {'colspan', 'rowspan', 'width', 'height'},
+        'col': {'span', 'width'},
+        'colgroup': {'span'},
+        'ol': {'start', 'type', 'reversed'},
+        'li': {'value'},
+    }
+
     def _sanitize_html(self, html: str) -> str:
         """
-        Security validation for HTML output
-        
+        Security validation for HTML output using nh3 allowlist approach.
+
+        Uses strict allowlist of tags and attributes to prevent XSS attacks.
+        Blocks dangerous URL schemes (javascript:, vbscript:, data:).
+        Fails closed - returns empty string on error.
+
         Args:
             html: HTML string to sanitize
-            
+
         Returns:
-            Sanitized HTML string
+            Sanitized HTML string, or empty string on error
         """
+        if not html or not html.strip():
+            return ""
+
         try:
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Remove dangerous tags
-            dangerous_tags = ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'style']
-            for tag in dangerous_tags:
-                for element in soup.find_all(tag):
-                    element.decompose()
-            
-            # Remove dangerous attributes
-            dangerous_attrs = ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus', 'onblur']
-            for tag in soup.find_all():
-                for attr in dangerous_attrs:
-                    if tag.has_attr(attr):
-                        del tag[attr]
-                
-                # Remove javascript: URLs
-                if tag.has_attr('href') and tag['href'].startswith('javascript:'):
-                    del tag['href']
-                if tag.has_attr('src') and tag['src'].startswith('javascript:'):
-                    del tag['src']
-            
-            return str(soup)
-            
+            # nh3 uses a different attribute format - convert our format
+            # nh3 expects: {"*": {"class", "id"}, "a": {"href"}, ...}
+            sanitized = nh3.clean(
+                html,
+                tags=self.ALLOWED_HTML_TAGS,
+                attributes=self.ALLOWED_HTML_ATTRIBUTES,
+                link_rel="noopener noreferrer",  # Add rel to all links for security
+                url_schemes={'http', 'https', 'mailto'},  # Block javascript:, vbscript:, data:
+            )
+
+            return sanitized
+
         except Exception as e:
             logger.error(f"HTML sanitization failed: {str(e)}")
-            return html  # Return original if sanitization fails
+            # Fail closed - return empty string, not original HTML
+            return ""
     
+    # Dangerous at-rules that should be blocked
+    BLOCKED_CSS_AT_RULES: Set[str] = {'import', 'charset', 'namespace'}
+
+    # Safe at-rules that are allowed
+    ALLOWED_CSS_AT_RULES: Set[str] = {'media', 'page', 'font-face', 'keyframes', '-webkit-keyframes', 'supports'}
+
+    # Dangerous CSS properties (case-insensitive)
+    BLOCKED_CSS_PROPERTIES: Set[str] = {'behavior', '-moz-binding', 'expression'}
+
+    # Dangerous value patterns (compiled regex for performance)
+    BLOCKED_CSS_VALUE_PATTERNS = [
+        re.compile(r'javascript\s*:', re.IGNORECASE),
+        re.compile(r'vbscript\s*:', re.IGNORECASE),
+        re.compile(r'expression\s*\(', re.IGNORECASE),
+    ]
+
+    def _normalize_css_unicode_escapes(self, text: str) -> str:
+        """
+        Normalize CSS unicode escapes to actual characters.
+        Prevents bypass attacks like \\6a\\61\\76\\61 = "java"
+
+        Args:
+            text: CSS text that may contain unicode escapes
+
+        Returns:
+            Text with unicode escapes converted to characters
+        """
+        def replace_escape(match):
+            hex_str = match.group(1)
+            try:
+                return chr(int(hex_str, 16))
+            except (ValueError, OverflowError):
+                return ''
+
+        # CSS unicode escape: backslash + 1-6 hex digits + optional whitespace
+        return re.sub(r'\\([0-9a-fA-F]{1,6})\s?', replace_escape, text)
+
+    def _css_value_is_safe(self, value: str) -> bool:
+        """
+        Check if a CSS value is safe (no dangerous patterns).
+
+        Args:
+            value: CSS property value to check
+
+        Returns:
+            True if safe, False if dangerous
+        """
+        # Normalize unicode escapes before checking
+        normalized = self._normalize_css_unicode_escapes(value)
+        # Also remove CSS comments which could be used for bypass
+        normalized = re.sub(r'/\*.*?\*/', '', normalized, flags=re.DOTALL)
+        # Remove whitespace variations
+        normalized_compact = re.sub(r'\s+', '', normalized)
+
+        for pattern in self.BLOCKED_CSS_VALUE_PATTERNS:
+            if pattern.search(normalized) or pattern.search(normalized_compact):
+                return False
+
+        return True
+
     def _sanitize_css(self, css: str) -> str:
         """
-        Security validation for CSS output
-        
+        Security validation for CSS output using tinycss2 parser.
+
+        Uses parser-based approach to properly handle:
+        - Unicode escape bypasses (\\6a\\61\\76\\61 = "java")
+        - CSS comment bypasses (java/**/script:)
+        - Whitespace variations
+
+        Fails closed - returns empty string on error.
+
         Args:
             css: CSS string to sanitize
-            
+
         Returns:
-            Sanitized CSS string
+            Sanitized CSS string, or empty string on error
         """
+        if not css or not css.strip():
+            return ""
+
         try:
-            # Remove dangerous CSS patterns
-            dangerous_patterns = [
-                r'@import',  # External imports
-                r'expression\s*\(',  # IE expressions
-                r'javascript:',  # JavaScript URLs
-                r'behavior:',  # IE behaviors
-                r'-moz-binding:',  # XBL bindings
-            ]
-            
-            sanitized = css
-            for pattern in dangerous_patterns:
-                sanitized = re.sub(pattern, '', sanitized, flags=re.IGNORECASE)
-            
-            # Remove external URLs (but keep data: URLs for embedded content)
-            sanitized = re.sub(r'url\s*\(\s*["\']?(?!data:)[^)]+["\']?\s*\)', '', sanitized, flags=re.IGNORECASE)
-            
-            return sanitized
-            
+            # Parse CSS using tinycss2
+            rules = tinycss2.parse_stylesheet(css, skip_comments=True, skip_whitespace=True)
+
+            safe_rules = []
+            for rule in rules:
+                sanitized_rule = self._sanitize_css_rule(rule)
+                if sanitized_rule:
+                    safe_rules.append(sanitized_rule)
+
+            return '\n'.join(safe_rules)
+
         except Exception as e:
             logger.error(f"CSS sanitization failed: {str(e)}")
-            return css  # Return original if sanitization fails
+            # Fail closed - return empty string, not original CSS
+            return ""
+
+    def _sanitize_css_rule(self, rule) -> Optional[str]:
+        """
+        Sanitize an individual CSS rule.
+
+        Args:
+            rule: tinycss2 rule object
+
+        Returns:
+            Serialized safe CSS rule, or None if blocked
+        """
+        if rule.type == 'error':
+            # Skip parse errors
+            return None
+
+        elif rule.type == 'at-rule':
+            at_keyword = rule.at_keyword.lower()
+
+            # Block dangerous at-rules
+            if at_keyword in self.BLOCKED_CSS_AT_RULES:
+                logger.warning(f"Blocked dangerous CSS at-rule: @{at_keyword}")
+                return None
+
+            # Allow safe at-rules
+            if at_keyword in self.ALLOWED_CSS_AT_RULES:
+                return tinycss2.serialize([rule])
+
+            # Block unknown at-rules for safety
+            logger.warning(f"Blocked unknown CSS at-rule: @{at_keyword}")
+            return None
+
+        elif rule.type == 'qualified-rule':
+            # This is a regular CSS rule (selector { declarations })
+            return self._sanitize_css_qualified_rule(rule)
+
+        return None
+
+    def _sanitize_css_qualified_rule(self, rule) -> Optional[str]:
+        """
+        Sanitize a qualified CSS rule (selector { properties }).
+
+        Args:
+            rule: tinycss2 qualified rule object
+
+        Returns:
+            Serialized safe CSS rule, or None if all properties blocked
+        """
+        try:
+            # Serialize selector
+            selector = tinycss2.serialize(rule.prelude).strip()
+
+            # Parse and filter declarations
+            declarations = tinycss2.parse_declaration_list(rule.content)
+            safe_declarations = []
+
+            for decl in declarations:
+                if decl.type == 'declaration':
+                    prop_name = decl.name.lower()
+
+                    # Skip blocked properties
+                    if prop_name in self.BLOCKED_CSS_PROPERTIES:
+                        logger.warning(f"Blocked dangerous CSS property: {prop_name}")
+                        continue
+
+                    # Serialize and check value
+                    value = tinycss2.serialize(decl.value).strip()
+
+                    # Check for dangerous patterns in value
+                    if self._css_value_is_safe(value):
+                        important = ' !important' if decl.important else ''
+                        safe_declarations.append(f"  {decl.name}: {value}{important};")
+                    else:
+                        logger.warning(f"Blocked dangerous CSS value in property {prop_name}")
+
+            if safe_declarations:
+                return f"{selector} {{\n" + "\n".join(safe_declarations) + "\n}"
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Error sanitizing CSS rule: {str(e)}")
+            return None

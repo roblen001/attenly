@@ -33,7 +33,10 @@ class FileSecurityService:
         'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/rtf',
-        'text/rtf'
+        'text/rtf',
+        # HTML types for template uploads
+        'text/html',
+        'application/xhtml+xml',
     }
     
     # File extension whitelist (normalized to lowercase)
@@ -45,7 +48,10 @@ class FileSecurityService:
         '.docx',
         '.xls',
         '.xlsx',
-        '.rtf'
+        '.rtf',
+        # HTML extensions for template uploads
+        '.html',
+        '.htm',
     }
     
     # Dangerous file extensions that should never be allowed
@@ -61,7 +67,8 @@ class FileSecurityService:
         'doc': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],  # OLE2 compound document
         'docx': [b'PK\x03\x04'],  # ZIP file (Office Open XML)
         'txt': [],  # Plain text has no magic number
-        'rtf': [b'{\\rtf']
+        'rtf': [b'{\\rtf'],
+        'html': [b'<!DOCTYPE', b'<!doctype', b'<html', b'<HTML', b'<Html'],  # HTML documents
     }
     
     def __init__(self, max_file_size_mb: int = 50):

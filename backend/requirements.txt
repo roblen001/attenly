@@ -71,6 +71,10 @@ requests==2.32.3
 python-multipart
 beautifulsoup4==4.12.3
 
+# Security - HTML/CSS sanitization
+nh3>=0.2.14
+tinycss2>=1.2.1
+
 # Email service
 resend>=0.7.0
 svix>=1.17.0

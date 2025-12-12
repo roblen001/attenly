@@ -17,6 +17,12 @@ The styles define a professional legal/business document appearance with:
 """
 
 DEFAULT_TEMPLATE_CSS = """
+/* PDF page margins - 3/4 inch (0.75in) on all sides */
+@page {
+    size: letter;
+    margin: 0.75in;
+}
+
 /* Base document styles */
 body {
     font-family: "Calibri", Arial, sans-serif;
@@ -25,7 +31,7 @@ body {
     color: #333;
     background-color: #fff;
     margin: 0;
-    padding: 20px;
+    padding: 0;
 }
 
 /* Main template wrapper */
@@ -265,16 +271,17 @@ hr {
 @media print {
     body {
         padding: 0;
+        margin: 0;
     }
-    
+
     .report-wrapper {
         max-width: 100%;
     }
-    
+
     .section {
         page-break-inside: avoid;
     }
-    
+
     .signature-block {
         page-break-before: auto;
     }

@@ -22,6 +22,7 @@ export interface Agent {
   name: string;
   description?: string;
   reportTemplate: string; // mandatory for all agents
+  reportTemplateCss?: string; // optional CSS for custom styling
   questions: Question[];
 }
 
@@ -40,7 +41,18 @@ export interface UploadedFile {
 export interface Template {
   html: string;
   name: string;
+  css?: string;  // Optional CSS for custom template styling (from AI processing)
   questions?: Question[];  // NEW: Questions with answer_type metadata
+}
+
+// Template upload/ingest types
+export interface TemplateIngestResponse {
+  success: boolean;
+  html_body: string;
+  css: string;
+  source: 'gemini' | 'mammoth_fallback' | 'error';
+  error?: string;
+  warnings: string[];
 }
 
 export interface WordSpan {

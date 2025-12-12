@@ -223,15 +223,15 @@ export function addProfessionalStyling(template: string): string {
   <meta charset="UTF-8">
   <title>Custom Report</title>
   <style>
-    /* Page setup */
-    @page { size: A4; margin: 1in; }
+    /* Page setup - 3/4 inch margins for PDF */
+    @page { size: letter; margin: 0.75in; }
     body {
       font-family: 'Calibri', 'Arial', sans-serif;
       font-size: 11pt;
       color: #333;
       line-height: 1.4;
       margin: 0;
-      padding: 20px;
+      padding: 0;
     }
     
     /* Headers */
@@ -298,7 +298,7 @@ export function addProfessionalStyling(template: string): string {
     
     /* Print styles */
     @media print {
-      body { margin: 0; padding: 0.5in; }
+      body { margin: 0; padding: 0; }
       h1 { page-break-after: avoid; }
       h2, h3 { page-break-after: avoid; }
       table { page-break-inside: avoid; }

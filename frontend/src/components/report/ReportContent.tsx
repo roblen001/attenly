@@ -144,8 +144,16 @@ const ReportContent: React.FC<ReportContentProps> = ({
     // Get questions from template for answer_type metadata
     const questions = reportData.template.questions || [];
     
+    // Extract custom CSS from template (AI / builder output)
+    const customCss = reportData.template.css || '';
+    
     // First, generate the base populated HTML with questions metadata
-    const baseHTML = generatePopulatedHTML(reportData.template.html, reportData.answers, questions);
+    const baseHTML = generatePopulatedHTML(
+      reportData.template.html,
+      reportData.answers,
+      questions,
+      customCss
+    );
     
     // Determine CSS class based on view mode
     let answerClass = 'answer-content';
@@ -161,7 +169,6 @@ const ReportContent: React.FC<ReportContentProps> = ({
     let styledHTML = baseHTML;
     
     // Replace the default class from generatePopulatedHTML with our view mode class
-    // The generatePopulatedHTML function wraps answers in spans with data-answer-id
     styledHTML = styledHTML.replace(
       /class="editable-answer"/g,
       `class="${answerClass}"`
@@ -169,40 +176,26 @@ const ReportContent: React.FC<ReportContentProps> = ({
     
     // If in audit mode, apply track change decorations using the decorator utility
     if (viewMode === 'audit' && Object.keys(auditChanges).length > 0) {
-      console.log('[ReportContent] Entering audit mode rendering');
-      
-      // Apply audit decorations to each answer with changes
       Object.entries(reportData.answers).forEach(([placeholder, answer]) => {
         const changes = auditChanges[placeholder];
-        
+
         if (!changes || changes.length === 0) {
           return; // Skip answers with no changes
         }
         
-        console.log(`[ReportContent] Processing answer ${placeholder} with ${changes.length} changes`);
-        
-        // Find the answer content in the HTML using data-answer-id
         const answerIdPattern = new RegExp(
           `<span class="${answerClass}"[^>]*data-answer-id="${answer.id}"[^>]*>(.*?)</span>`,
           'gs'
         );
         
         styledHTML = styledHTML.replace(answerIdPattern, (matchedSpan, capturedContent) => {
-          // Use the plain text version provided by backend (guaranteed to match diff offsets)
-          // This is the same text that was used to compute the diff on the backend
           const answerWithPlain = answer as ReportAnswer & { answer_plain?: string };
           const plainText = answerWithPlain.answer_plain || answer.answer || '';
-          
-          console.log(`[ReportContent] Matched span for ${placeholder}`);
-          console.log(`[ReportContent] Captured content: ${capturedContent}`);
-          console.log(`[ReportContent] Using answer_plain: ${plainText} (len=${plainText.length})`);
-          
+
           // Extract superscripts from captured content to preserve them
           const superscriptPattern = /<sup[^>]*class="quote-superscript"[^>]*>.*?<\/sup>/g;
           const superscripts = capturedContent.match(superscriptPattern) || [];
           const superscriptsHTML = superscripts.join('');
-          
-          console.log(`[ReportContent] Extracted ${superscripts.length} superscripts to preserve`);
           
           // Use the decorator utility for logging and validation
           decorateWithAuditSpans(plainText, changes);
@@ -214,44 +207,41 @@ const ReportContent: React.FC<ReportContentProps> = ({
           let lastProcessedOffset = -1;
           
           for (const change of sortedChanges) {
-            // Add unchanged text before this change, but only if we haven't already processed this offset
-            // This prevents duplication when DELETE and INSERT occur at the same position
             if (currentPosition < change.start_offset && lastProcessedOffset < change.start_offset) {
               const unchangedText = plainText.substring(currentPosition, change.start_offset);
               decoratedContent += unchangedText;
               lastProcessedOffset = change.start_offset;
-              currentPosition = change.start_offset; // Advance position to prevent re-processing this range
+              currentPosition = change.start_offset;
             }
             
             if (change.change_type === 'insert') {
-              // Insert: text exists in current version
               const changeText = plainText.substring(change.start_offset, change.end_offset);
               const tooltip = escapeHtml(`Added by ${change.user_name} · ${new Date(change.created_at).toLocaleString()}`);
               decoratedContent += `<span class="audit-trail-insert" title="${tooltip}">${escapeHtml(changeText)}</span>`;
               currentPosition = change.end_offset;
             } else {
-              // Delete: text doesn't exist in current version
               const tooltip = escapeHtml(`Deleted by ${change.user_name} · ${new Date(change.created_at).toLocaleString()}`);
               decoratedContent += `<span class="audit-trail-delete" title="${tooltip}">${escapeHtml(change.text_content)}</span>`;
-              // Don't advance currentPosition for deletes (deleted text not in final string)
             }
           }
           
-          // Add remaining unchanged text
           if (currentPosition < plainText.length) {
             decoratedContent += plainText.substring(currentPosition);
           }
           
-          // Append the preserved superscripts at the end
           decoratedContent += superscriptsHTML;
           
-          // Return the completely new decorated answer span (this replaces matchedSpan entirely)
           return `<span class="${answerClass}" data-answer-id="${answer.id}">${decoratedContent}</span>`;
         });
       });
     }
     
-    return <div className="report-html" dangerouslySetInnerHTML={{ __html: styledHTML }} />;
+    // CSS is already included in styledHTML from generatePopulatedHTML() with proper
+    // prefixing via prefixCssSelectors() - do NOT inject raw customCss separately as
+    // it would leak globally and override app styles
+    return (
+      <div className="report-html" dangerouslySetInnerHTML={{ __html: styledHTML }} />
+    );
   }, [reportData, viewMode, auditChanges]);
 
   return (

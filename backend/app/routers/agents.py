@@ -132,6 +132,7 @@ def _get_agent_by_id_internal(agent_id: str, user_id: str, jwt_token: Optional[s
                     "name": agent_data["name"],
                     "description": agent_data.get("description", ""),
                     "reportTemplate": agent_data["report_template"],
+                    "reportTemplateCss": agent_data.get("report_template_css"),
                     "questions": questions_out
                 }
                 return agent_dict
@@ -382,7 +383,6 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
             
             if duplicate_file:
                 logging.info(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
-                print(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
                 
                 # Create a unique ID for the duplicate file entry
                 duplicate_file_id = str(uuid.uuid4())
@@ -478,8 +478,6 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
                         performance_monitor.update_file_metric(file_metrics.file_id, "l1_chunks_created", stats.get("l1_chunks", 0))
                         performance_monitor.update_file_metric(file_metrics.file_id, "l2_chunks_created", stats.get("l2_chunks", 0))
                         performance_monitor.update_file_metric(file_metrics.file_id, "chunks_stored", stats.get("stored_chunks", 0))
-                
-                print(f"Processing result for {file.filename}: {processing_result}")
                 
                 if processing_result["success"]:
                     file_record["status"] = "uploaded"
@@ -581,7 +579,7 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
     
     # Log performance summary for this batch
     if successful_uploads or failed_uploads:
-        logging.info(f"🚀 Upload batch completed: {len(successful_uploads)} successful, {len(failed_uploads)} failed")
+        logging.info(f"Upload batch completed: {len(successful_uploads)} successful, {len(failed_uploads)} failed")
         if len(uploaded_files) >= 5:  # Log performance report for larger batches
             performance_monitor.log_performance_report(level=logging.INFO, last_n_files=10)
     
@@ -1994,6 +1992,92 @@ async def download_saved_report_pdf(
         logging.error(f"Failed to generate PDF for saved report {report_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate PDF")
 
+# Template Upload Endpoint
+
+@router.post("/template/upload")
+async def upload_template(
+    file: UploadFile = File(...),
+    current_user = Depends(get_current_user)
+):
+    """Upload and process template file with AI normalization"""
+    user_id = current_user.id
+    
+    try:
+        # Read file content
+        content = await file.read()
+
+        # Security validation: MIME type and content-based file type detection
+        from app.services.file_security import FileSecurityService
+        security_service = FileSecurityService(max_file_size_mb=10)  # 10MB limit for templates
+
+        security_result = security_service.validate_upload(
+            content=content,
+            filename=file.filename,
+            declared_mime_type=file.content_type
+        )
+
+        if not security_result["valid"]:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "html_body": "",
+                    "css": "",
+                    "source": "error",
+                    "error": "; ".join(security_result["errors"]),
+                    "warnings": security_result.get("warnings", [])
+                }
+            )
+
+        # Validate template file (page count, etc.)
+        from app.services.template_validator import TemplateValidator
+        validator = TemplateValidator()
+        
+        validation_result = validator.validate_template_file(content, file.filename)
+        
+        if not validation_result.valid:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "html_body": "",
+                    "css": "",
+                    "source": "error",
+                    "error": "; ".join(validation_result.errors),
+                    "warnings": validation_result.warnings
+                }
+            )
+        
+        # Process template with AI normalization
+        from app.services.template_ingest_service import TemplateIngestService
+        ingest_service = TemplateIngestService()
+        
+        result = ingest_service.process_template_file(content, file.filename)
+        
+        # Return result
+        return {
+            "success": result.success,
+            "html_body": result.html_body,
+            "css": result.css,
+            "source": result.source,
+            "error": result.error,
+            "warnings": result.warnings
+        }
+        
+    except Exception as e:
+        logging.error(f"Template upload failed: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "html_body": "",
+                "css": "",
+                "source": "error",
+                "error": f"Template processing failed: {str(e)}",
+                "warnings": []
+            }
+        )
+
 # Custom Agent CRUD Endpoints
 
 @router.post("/create_custom_agent", response_model=CustomAgentOut)
@@ -2025,6 +2109,7 @@ async def create_custom_agent(
             name=request.name,
             description=request.description or "",
             report_template=request.report_template,
+            report_template_css=request.report_template_css,
             questions=questions_data
         )
         
@@ -2131,6 +2216,7 @@ async def update_custom_agent(
             name=request.name,
             description=request.description,
             report_template=request.report_template,
+            report_template_css=request.report_template_css,
             questions=questions_data
         )
         

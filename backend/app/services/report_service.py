@@ -174,10 +174,10 @@ class ReportService:
             "total_chunks": len(chunks)
         }
     
-    def _build_report_data(self, agent: Agent, llm_results: Dict[str, Any], 
+    def _build_report_data(self, agent: Agent, llm_results: Dict[str, Any],
                           chunks: List[Dict], document_context: Dict) -> Dict[str, Any]:
         """Build complete report data structure"""
-        
+
         # Create answers with integrated quotes
         answers = {}
         all_quotes = []
@@ -273,6 +273,7 @@ class ReportService:
                 "html": agent.reportTemplate,
                 "name": agent.name,
                 "description": agent.description,
+                "css": agent.reportTemplateCss if hasattr(agent, 'reportTemplateCss') and agent.reportTemplateCss else None,
                 "questions": questions_json  # NEW: Include questions with answer_type metadata
             },
             "answers": answers,

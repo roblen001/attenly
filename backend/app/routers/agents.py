@@ -2005,8 +2005,31 @@ async def upload_template(
     try:
         # Read file content
         content = await file.read()
-        
-        # Validate template file
+
+        # Security validation: MIME type and content-based file type detection
+        from app.services.file_security import FileSecurityService
+        security_service = FileSecurityService(max_file_size_mb=10)  # 10MB limit for templates
+
+        security_result = security_service.validate_upload(
+            content=content,
+            filename=file.filename,
+            declared_mime_type=file.content_type
+        )
+
+        if not security_result["valid"]:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "html_body": "",
+                    "css": "",
+                    "source": "error",
+                    "error": "; ".join(security_result["errors"]),
+                    "warnings": security_result.get("warnings", [])
+                }
+            )
+
+        # Validate template file (page count, etc.)
         from app.services.template_validator import TemplateValidator
         validator = TemplateValidator()
         

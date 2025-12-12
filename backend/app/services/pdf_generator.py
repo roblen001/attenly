@@ -171,14 +171,14 @@ class WeasyPrintPDFGenerator:
                 with_references,
                 questions=agent.questions
             )
-            
+
             # Add reference section if requested
             if with_references:
                 populated_html = self._add_reference_section(populated_html, report_data)
             
             # Inject CSS into HTML for PDF rendering
             populated_html = self._inject_css(populated_html, agent)
-                        
+
             pdf_bytes = HTML(string=populated_html).write_pdf(
                 presentational_hints=True,  # Respect HTML styling
                 optimize_images=True  # Optimize for smaller file size
@@ -357,7 +357,7 @@ class WeasyPrintPDFGenerator:
             from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
             css_content = DEFAULT_TEMPLATE_CSS
             logger.info(f"Using default CSS for PDF generation (no custom CSS found)")
-        
+
         # Wrap HTML body in complete document structure with CSS
         complete_html = f"""<!DOCTYPE html>
 <html>

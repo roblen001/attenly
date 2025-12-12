@@ -45,7 +45,8 @@ class BaseAgentOut(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
-    reportTemplate: str  
+    reportTemplate: str
+    reportTemplateCss: Optional[str] = None  # Custom CSS styling for template
     questions: List[QuestionOut] = []
 
     model_config = ConfigDict(from_attributes=True)

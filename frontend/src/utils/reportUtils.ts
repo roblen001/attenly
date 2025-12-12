@@ -35,8 +35,8 @@ export const escapeHtml = (text: string): string => {
  * Returns <li> elements that go inside <ul> wrapper (provided by template)
  */
 export const renderListAnswer = (
-  answer: any,
-  quotes: any[] = [],
+  answer: unknown,
+  quotes: Array<{ index: number; target?: { type: string; index?: number; row?: number; key?: string } }> = [],
   answerId: string,
   context: 'preview' | 'pdf' = 'preview'
 ): string => {
@@ -77,9 +77,9 @@ export const renderListAnswer = (
  * Returns <thead> and <tbody> elements (template provides <table> wrapper)
  */
 export const renderTableAnswer = (
-  answer: any,
+  answer: unknown,
   columns: ColumnDefinition[],
-  quotes: any[] = [],
+  quotes: Array<{ index: number; target?: { type: string; index?: number; row?: number; key?: string } }> = [],
   answerId: string,
   context: 'preview' | 'pdf' = 'preview'
 ): string => {
@@ -147,7 +147,7 @@ export const renderTableAnswer = (
  * Mirrors backend pdf_generator.py rendering logic
  */
 export const renderAnswer = (
-  answer: any,
+  answer: unknown,
   question?: Question
 ): string => {
   // Default to string if no question metadata or no answer_type specified
@@ -211,11 +211,16 @@ const prefixCssSelectors = (css: string, prefix: string): string => {
 
 export const getBaseReportStyles = (config: ReportStyleConfig, customCss?: string): string => {
   const { context, interactive = true } = config;
-  
+
   // CSS isolation reset - block Attenly global styles from cascading
   const isolationReset = `
     /* CSS Isolation for Template Content - Reset to browser defaults */
     .template-isolated-content {
+      all: revert;
+    }
+
+    /* Reset all descendants to prevent app styles from leaking in */
+    .template-isolated-content * {
       all: revert;
     }
   `;
@@ -260,6 +265,32 @@ export const getBaseReportStyles = (config: ReportStyleConfig, customCss?: strin
       border-radius: 3px !important;
       padding: 1px 2px !important;
     }
+
+    /* Audit Trail Styles - Track Changes Visualization */
+    .report-html .template-isolated-content .audit-trail-insert {
+      background-color: #d1fae5 !important;
+      border-bottom: 2px solid #10b981 !important;
+      padding: 2px 4px !important;
+      border-radius: 2px !important;
+      font-weight: 500 !important;
+    }
+
+    .report-html .template-isolated-content .audit-trail-delete {
+      background-color: #fee2e2 !important;
+      text-decoration: line-through !important;
+      text-decoration-color: #ef4444 !important;
+      text-decoration-thickness: 2px !important;
+      padding: 2px 4px !important;
+      border-radius: 2px !important;
+      color: #991b1b !important;
+      font-weight: 500 !important;
+    }
+
+    .report-html .template-isolated-content .audit-trail-insert:hover,
+    .report-html .template-isolated-content .audit-trail-delete:hover {
+      cursor: help !important;
+      opacity: 0.9 !important;
+    }
   `;
   
   // Prefix custom CSS selectors to increase specificity over global styles
@@ -269,11 +300,13 @@ export const getBaseReportStyles = (config: ReportStyleConfig, customCss?: strin
   ` : '';
   
   // Build final CSS with proper cascade order
-  return `
+  const finalCss = `
     ${isolationReset}
     ${templateCss}
     ${baseStyles}
   `;
+
+  return finalCss;
 };
 
 export const generateReportHTML = (
@@ -361,5 +394,7 @@ export const generatePopulatedHTML = (
   // Wrap populated HTML in isolation container to prevent global style conflicts
   const wrappedHTML = `<div class="template-isolated-content">${populatedHTML}</div>`;
 
-  return `<style>${styles}</style>${wrappedHTML}`;
+  const finalHTML = `<style>${styles}</style>${wrappedHTML}`;
+
+  return finalHTML;
 };

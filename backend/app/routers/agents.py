@@ -132,6 +132,7 @@ def _get_agent_by_id_internal(agent_id: str, user_id: str, jwt_token: Optional[s
                     "name": agent_data["name"],
                     "description": agent_data.get("description", ""),
                     "reportTemplate": agent_data["report_template"],
+                    "reportTemplateCss": agent_data.get("report_template_css"),
                     "questions": questions_out
                 }
                 return agent_dict
@@ -382,7 +383,6 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
             
             if duplicate_file:
                 logging.info(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
-                print(f"Duplicate file detected: {file.filename} matches existing file {duplicate_file['name']}")
                 
                 # Create a unique ID for the duplicate file entry
                 duplicate_file_id = str(uuid.uuid4())
@@ -478,8 +478,6 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
                         performance_monitor.update_file_metric(file_metrics.file_id, "l1_chunks_created", stats.get("l1_chunks", 0))
                         performance_monitor.update_file_metric(file_metrics.file_id, "l2_chunks_created", stats.get("l2_chunks", 0))
                         performance_monitor.update_file_metric(file_metrics.file_id, "chunks_stored", stats.get("stored_chunks", 0))
-                
-                print(f"Processing result for {file.filename}: {processing_result}")
                 
                 if processing_result["success"]:
                     file_record["status"] = "uploaded"
@@ -581,7 +579,7 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
     
     # Log performance summary for this batch
     if successful_uploads or failed_uploads:
-        logging.info(f"🚀 Upload batch completed: {len(successful_uploads)} successful, {len(failed_uploads)} failed")
+        logging.info(f"Upload batch completed: {len(successful_uploads)} successful, {len(failed_uploads)} failed")
         if len(uploaded_files) >= 5:  # Log performance report for larger batches
             performance_monitor.log_performance_report(level=logging.INFO, last_n_files=10)
     

@@ -25,7 +25,6 @@ from app.config import (
     LLM_MAX_CONTEXT_TOKENS_PER_QUESTION,
     LLM_TEMPERATURE,
     LLM_THINKING_BUDGET,
-    LLM_SEED,
     LLM_RESPONSE_FORMAT,
     VECTOR_SEARCH_MAX_SOURCE_QUOTES,
     QUOTE_CONTEXT_CHARS,
@@ -764,7 +763,6 @@ Respond with valid JSON only."""
             # Configure generation parameters
             generation_config = self.genai.types.GenerationConfig(
                 temperature=LLM_TEMPERATURE,
-                seed=LLM_SEED,
                 response_mime_type="application/json"
             )
 
@@ -1328,7 +1326,6 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
             # Configure for quote extraction (use JSON output)
             generation_config = self.genai.types.GenerationConfig(
                 temperature=0.0,  # Low temperature for consistent extraction
-                seed=LLM_SEED,
                 response_mime_type="application/json"
             )
             
@@ -1474,7 +1471,6 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
         # Configure for quote extraction
         generation_config = self.genai.types.GenerationConfig(
             temperature=0.0,
-            seed=LLM_SEED,
             response_mime_type="application/json"
         )
 

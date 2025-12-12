@@ -74,7 +74,6 @@ TEMPLATE_INGEST_MODEL_NAME = "gemini-2.5-pro"  # For template normalization (hig
 LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = 4000
 LLM_TEMPERATURE = 0.0
 LLM_THINKING_BUDGET = 0
-LLM_SEED = 42  # Fixed seed for reproducibility
 LLM_RESPONSE_FORMAT = "application/json"
 
 # =============================================================================

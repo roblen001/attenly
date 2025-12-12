@@ -238,6 +238,7 @@ export const getBaseReportStyles = (config: ReportStyleConfig, customCss?: strin
       transition: all 0.2s ease !important;
       font-weight: 500 !important;
       color: #1a365d !important;
+      white-space: pre-wrap !important;
       ${interactive && context === 'preview' ? 'cursor: pointer !important;' : ''}
     }
     
@@ -361,17 +362,9 @@ export const generateReportHTML = (
           ).join('');
         }
         
-        renderedAnswer = `
-          <span class="editable-answer" data-answer-id="${answer.id}">
-            ${renderedAnswer}${superscripts}
-          </span>
-        `;
+        renderedAnswer = `<span class="editable-answer" data-answer-id="${answer.id}">${renderedAnswer}${superscripts}</span>`;
       } else {
-        renderedAnswer = `
-          <span class="editable-answer" data-answer-id="${answer.id}">
-            ${renderedAnswer}
-          </span>
-        `;
+        renderedAnswer = `<span class="editable-answer" data-answer-id="${answer.id}">${renderedAnswer}</span>`;
       }
     }
     

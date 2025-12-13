@@ -889,7 +889,8 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
             agent=agent,
             vector_store=vector_store,
             document_ids=document_ids,
-            bbox_data=bbox_data if bbox_data else None
+            bbox_data=bbox_data if bbox_data else None,
+            user_id=str(user_id)
         )
         
         if not report_result["success"]:
@@ -1018,7 +1019,7 @@ async def test_single_question(
         }
         
         # Process with LLM service
-        llm_result = llm_service.process_agent_questions(questions_with_chunks, document_context)
+        llm_result = llm_service.process_agent_questions(questions_with_chunks, document_context, user_id=str(user_id))
         
         if not llm_result["success"]:
             raise HTTPException(status_code=500, detail=f"LLM processing failed: {llm_result.get('error', 'Unknown error')}")
@@ -2051,8 +2052,8 @@ async def upload_template(
         # Process template with AI normalization
         from app.services.template_ingest_service import TemplateIngestService
         ingest_service = TemplateIngestService()
-        
-        result = ingest_service.process_template_file(content, file.filename)
+
+        result = ingest_service.process_template_file(content, file.filename, user_id=str(user_id))
         
         # Return result
         return {

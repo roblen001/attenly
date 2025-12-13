@@ -25,6 +25,7 @@ from bs4 import BeautifulSoup
 from app.config import GEMINI_API_KEY, TEMPLATE_INGEST_MODEL_NAME
 from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 from app.schemas import TemplateIngestResponse
+from app.services.credit_service import get_credit_service
 
 logger = logging.getLogger(__name__)
 
@@ -235,28 +236,30 @@ Finally, output only the JSON object:
         logger.info(f"TemplateIngestService initialized with model: {self.model_name}")
     
     def process_template_file(
-        self, 
-        content: bytes, 
-        filename: str
+        self,
+        content: bytes,
+        filename: str,
+        user_id: Optional[str] = None
     ) -> TemplateIngestResponse:
         """
         Main orchestrator for template processing
-        
+
         Args:
             content: File content as bytes
             filename: Original filename
-            
+            user_id: Optional user ID for credit tracking
+
         Returns:
             TemplateIngestResponse with HTML, CSS, and metadata
         """
         warnings = []
         file_type = self._detect_file_type(filename)
-        
+
         logger.info(f"Processing template: {filename} (type: {file_type})")
-        
+
         try:
             # Try Gemini normalization first
-            html_body, css = self._normalize_with_gemini(content, file_type, filename)
+            html_body, css = self._normalize_with_gemini(content, file_type, filename, user_id)
             
             if html_body and css:
                 # Success with Gemini
@@ -340,19 +343,21 @@ Finally, output only the JSON object:
             return 'unknown'
     
     def _normalize_with_gemini(
-        self, 
-        file_content: bytes, 
+        self,
+        file_content: bytes,
         file_type: str,
-        filename: str
+        filename: str,
+        user_id: Optional[str] = None
     ) -> Tuple[str, str]:
         """
         Call Gemini 2.5 Pro with strict prompt, return (html_body, css)
-        
+
         Args:
             file_content: File content as bytes
             file_type: Type of file ('pdf', 'docx', 'html')
             filename: Original filename
-            
+            user_id: Optional user ID for credit tracking
+
         Returns:
             Tuple of (html_body, css) - empty strings if failed
         """
@@ -397,7 +402,30 @@ Finally, output only the JSON object:
             # Generate content with prompt
             logger.info(f"Calling Gemini {self.model_name} for template normalization")
             response = model.generate_content([self.GEMINI_PROMPT, uploaded_file])
-            
+
+            # Track credit usage if user_id provided
+            if user_id and hasattr(response, 'usage_metadata') and response.usage_metadata:
+                try:
+                    credit_service = get_credit_service()
+                    input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+                    output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+
+                    cost_cad = credit_service.calculate_cost(self.model_name, input_tokens, output_tokens)
+
+                    credit_service.consume_credits_sync(
+                        user_id=user_id,
+                        cost_cad=cost_cad,
+                        operation_type="llm_template",
+                        model=self.model_name,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        metadata={"filename": filename, "file_type": file_type}
+                    )
+
+                    logger.info(f"Template credit usage: {cost_cad:.6f} CAD ({input_tokens} in, {output_tokens} out)")
+                except Exception as e:
+                    logger.warning(f"Failed to track template credits: {e}")
+
             # Parse response
             response_text = response.text.strip()
             logger.debug(f"Gemini response: {response_text[:500]}...")

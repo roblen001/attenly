@@ -370,7 +370,8 @@ class EmailJobService:
                     agent=agent,
                     vector_store=vector_store,
                     document_ids=document_ids,
-                    bbox_data=bbox_data if bbox_data else None
+                    bbox_data=bbox_data if bbox_data else None,
+                    user_id=user_id
                 )
                 
                 if not report_result["success"]:

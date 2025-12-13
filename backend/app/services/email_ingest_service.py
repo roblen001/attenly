@@ -325,48 +325,6 @@ class EmailIngestService:
             logger.error(f"Verification failed with exception: {str(e)}", exc_info=True)
             return (False, "Verification failed. Please try again.")
     
-    def check_rate_limit(self, user_id: str) -> Tuple[bool, Optional[str]]:
-        """
-        Check if user is within rate limits for job creation.
-        
-        Args:
-            user_id: User's ID
-            
-        Returns:
-            Tuple of (allowed: bool, error_message: Optional[str])
-        """
-        try:
-            # Count jobs created in last 24 hours (exclude discarded)
-            cutoff_time = datetime.utcnow() - timedelta(hours=24)
-
-            # Create service role client for system-level rate limit check
-            from supabase import create_client
-            client = create_client(
-                supabase_service.supabase_url,
-                supabase_service.supabase_service_key
-            )
-
-            result = client.table("email_jobs")\
-                .select("id", count="exact")\
-                .eq("user_id", user_id)\
-                .gte("created_at", cutoff_time.isoformat())\
-                .neq("status", "discarded")\
-                .execute()
-            
-            job_count = result.count if hasattr(result, 'count') else len(result.data)
-            
-            if job_count >= config.EMAIL_RATE_LIMIT_JOBS_PER_DAY:
-                error_msg = f"Rate limit exceeded. Maximum {config.EMAIL_RATE_LIMIT_JOBS_PER_DAY} jobs per 24 hours."
-                logger.warning(f"Rate limit exceeded for user {user_id}: {job_count} jobs")
-                return (False, error_msg)
-            
-            return (True, None)
-            
-        except Exception as e:
-            logger.error(f"Failed to check rate limit for user {user_id}: {str(e)}")
-            # On error, allow the request (fail open for better UX)
-            return (True, None)
-    
     def get_user_settings(self, user_jwt: str, user_id: str) -> Dict:
         """
         Get complete email ingest settings for a user.
@@ -429,7 +387,7 @@ class EmailIngestService:
                     "verified_senders": verified_senders,
                     "usage_summary": {
                         "jobs_last_24h": jobs_count,
-                        "rate_limit": config.EMAIL_RATE_LIMIT_JOBS_PER_DAY
+                        "rate_limit": 0  # Deprecated - now using credit-based limits
                     }
                 }
             else:
@@ -439,7 +397,7 @@ class EmailIngestService:
                     "verified_senders": [],
                     "usage_summary": {
                         "jobs_last_24h": 0,
-                        "rate_limit": config.EMAIL_RATE_LIMIT_JOBS_PER_DAY
+                        "rate_limit": 0  # Deprecated - now using credit-based limits
                     }
                 }
                 
@@ -451,7 +409,7 @@ class EmailIngestService:
                 "verified_senders": [],
                 "usage_summary": {
                     "jobs_last_24h": 0,
-                    "rate_limit": config.EMAIL_RATE_LIMIT_JOBS_PER_DAY
+                    "rate_limit": 0  # Deprecated - now using credit-based limits
                 }
             }
     

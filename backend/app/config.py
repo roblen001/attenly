@@ -77,6 +77,32 @@ LLM_THINKING_BUDGET = 0
 LLM_RESPONSE_FORMAT = "application/json"
 
 # =============================================================================
+# MODEL PRICING (CAD per 1M tokens) - Updated: 2025-01
+# Based on Google Gemini pricing, converted to CAD (~1.35x USD)
+# =============================================================================
+
+MODEL_PRICING = {
+    "gemini-2.5-flash-lite": {
+        "input_per_million": 0.10,   # CAD per 1M input tokens
+        "output_per_million": 0.40,  # CAD per 1M output tokens
+    },
+    "gemini-2.5-pro": {
+        "input_per_million": 1.80,   # CAD per 1M input tokens
+        "output_per_million": 7.20,  # CAD per 1M output tokens
+    },
+    "gemini-embedding-001": {
+        "input_per_million": 0.015,  # CAD per 1M tokens (no output tokens)
+        "output_per_million": 0.00,
+    },
+}
+
+# Credit display settings
+CREDITS_PER_CAD = 100  # 1 CAD = 100 credits (so $50 CAD = 5000 credits)
+DEFAULT_MONTHLY_LIMIT_CAD = float(os.getenv("DEFAULT_MONTHLY_LIMIT_CAD", "15.00"))
+WARNING_THRESHOLD_PERCENT = 70  # Show warning at 70% usage
+CRITICAL_THRESHOLD_PERCENT = 90  # Show critical warning at 90% usage
+
+# =============================================================================
 # VECTOR SEARCH CONFIGURATION
 # =============================================================================
 

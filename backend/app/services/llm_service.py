@@ -19,6 +19,7 @@ from enum import Enum
 from app.schemas import QuestionOut, AnswerType
 from app.services.performance_monitor import time_operation, get_performance_monitor
 from app.services.bbox_matcher import BBoxMatcher
+from app.services.credit_service import get_credit_service, CreditLimitExceeded
 from app.config import (
     LLM_MODEL_NAME,
     GEMINI_API_KEY,
@@ -77,47 +78,82 @@ class LLMService:
             logger.error(f"Failed to initialize Gemini LLM service: {e}")
             self.client = None
     
-    def process_agent_questions(self, questions_with_chunks: List[Dict[str, Any]], 
+    def process_agent_questions(self, questions_with_chunks: List[Dict[str, Any]],
                               document_context: Dict[str, Any],
-                              bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
+                              bbox_data: Optional[Dict] = None,
+                              user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Process all agent questions in a single batch request with question-specific contexts
-        
+
         Args:
             questions_with_chunks: List of dicts with 'question' and 'relevant_chunks' for each question
             document_context: Additional context about the documents
             bbox_data: Optional dictionary mapping document_ids to their bounding box data for OCR documents
-            
+            user_id: Optional user ID for credit tracking
+
         Returns:
             Dictionary with extracted answers and source references
-            
+
         Raises:
             ValueError: If no questions provided or LLM service is not available
+            CreditLimitExceeded: If user has exceeded their monthly credit limit
         """
-        
+
         if not questions_with_chunks:
             raise ValueError("No questions with chunks provided for processing")
-        
+
         if not self.available:
             raise ValueError("LLM service is not available. Please ensure GEMINI_API_KEY is configured and the service is properly initialized.")
-        
+
+        # Check credit limit before processing (if user_id provided)
+        credit_service = get_credit_service()
+        if user_id:
+            credit_status = credit_service.check_credits_sync(user_id)
+            if credit_status.warning_level == "blocked":
+                raise CreditLimitExceeded(credit_status)
+
         try:
             # Process ALL questions in a single batch request with individual contexts and bbox data
-            batch_results = self._process_questions_batch_with_individual_contexts(
+            batch_results, token_usage = self._process_questions_batch_with_individual_contexts(
                 questions_with_chunks, document_context, bbox_data
             )
-            
+
             total_chunks = sum(len(item['relevant_chunks']) for item in questions_with_chunks)
-            
+
+            # Track credit usage after successful processing
+            if user_id and token_usage:
+                input_tokens = token_usage.get("input_tokens", 0)
+                output_tokens = token_usage.get("output_tokens", 0)
+                cost_cad = credit_service.calculate_cost(self.model_name, input_tokens, output_tokens)
+
+                consume_result = credit_service.consume_credits_sync(
+                    user_id=user_id,
+                    cost_cad=cost_cad,
+                    operation_type="llm_extraction",
+                    model=self.model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    metadata={
+                        "question_count": len(questions_with_chunks),
+                        "chunks_processed": total_chunks
+                    }
+                )
+
+                logger.info(f"Credit usage: {cost_cad:.6f} CAD ({input_tokens} in, {output_tokens} out) - "
+                           f"Remaining: {consume_result.credits_remaining} credits")
+
             return {
                 "success": True,
                 "results": batch_results,
                 "total_questions": len(questions_with_chunks),
                 "processed_chunks": total_chunks,
                 "model_used": self.model_name,
-                "processing_method": "batch_optimized_individual_contexts"
+                "processing_method": "batch_optimized_individual_contexts",
+                "token_usage": token_usage
             }
-            
+
+        except CreditLimitExceeded:
+            raise  # Re-raise credit limit exceptions
         except Exception as e:
             logger.error(f"Failed to process agent questions in batch: {e}")
             raise ValueError(f"LLM batch processing failed: {str(e)}")
@@ -162,15 +198,19 @@ class LLMService:
             logger.error(f"Batch processing failed: {e}")
             raise ValueError(f"Failed to process questions in batch: {str(e)}")
     
-    def _process_questions_batch_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]], 
+    def _process_questions_batch_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]],
                                                         document_context: Dict,
-                                                        bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
-        """Process all questions in a single batch request, each with its own relevant context"""
-        
+                                                        bbox_data: Optional[Dict] = None) -> tuple[Dict[str, Any], Dict[str, int]]:
+        """Process all questions in a single batch request, each with its own relevant context
+
+        Returns:
+            Tuple of (batch_results, token_usage) where token_usage contains input/output token counts
+        """
+
         performance_monitor = get_performance_monitor()
-        
+
         # Create a single batch prompt with all questions and their individual contexts
-        with time_operation("llm_batch_prompt_preparation", 
+        with time_operation("llm_batch_prompt_preparation",
                           {"question_count": len(questions_with_chunks)}) as timer:
             batch_prompt = self._create_batch_prompt_with_individual_contexts(
                 questions_with_chunks, document_context
@@ -183,10 +223,10 @@ class LLMService:
                 temperature=LLM_TEMPERATURE,
                 response_mime_type="application/json"
             )
-            
+
             # Single API call for all questions - maximum cost efficiency
-            with time_operation("llm_api_call", 
-                              {"question_count": len(questions_with_chunks), 
+            with time_operation("llm_api_call",
+                              {"question_count": len(questions_with_chunks),
                                "model": self.model_name,
                                "prompt_length": len(batch_prompt)}) as timer:
                 response = self.model.generate_content(
@@ -196,25 +236,33 @@ class LLMService:
                 api_call_time = timer.stop().duration
             if not response or not response.text:
                 raise ValueError("Empty response from Gemini model")
-            
+
+            # Extract token usage from response
+            token_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                token_usage["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+                token_usage["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+                token_usage["total_tokens"] = getattr(response.usage_metadata, 'total_token_count', 0) or 0
+                logger.info(f"Token usage: {token_usage['input_tokens']} input, {token_usage['output_tokens']} output")
+
             # Parse the batch JSON response with bbox data
-            with time_operation("llm_response_parsing", 
+            with time_operation("llm_response_parsing",
                               {"response_length": len(response.text)}) as timer:
                 batch_results = self._parse_batch_response_with_individual_contexts(
                     response.text, questions_with_chunks, bbox_data
                 )
                 parsing_time = timer.stop().duration
-            
+
             # Log comprehensive timing breakdown
             total_time = prompt_prep_time + api_call_time + parsing_time
-            logger.info(f"🤖 LLM Processing Complete: {len(questions_with_chunks)} questions in {total_time:.2f}s")
-            logger.info(f"⏱️  LLM Timing Breakdown - Prep: {prompt_prep_time*1000:.1f}ms, "
+            logger.info(f"LLM Processing Complete: {len(questions_with_chunks)} questions in {total_time:.2f}s")
+            logger.info(f"LLM Timing Breakdown - Prep: {prompt_prep_time*1000:.1f}ms, "
                        f"API: {api_call_time*1000:.1f}ms, Parse: {parsing_time*1000:.1f}ms")
-            logger.info(f"🚀 LLM Performance - {len(questions_with_chunks)/total_time:.1f} questions/sec, "
+            logger.info(f"LLM Performance - {len(questions_with_chunks)/total_time:.1f} questions/sec, "
                        f"API latency: {api_call_time*1000:.0f}ms")
-            
-            return batch_results
-            
+
+            return batch_results, token_usage
+
         except Exception as e:
             logger.error(f"Batch processing with individual contexts failed: {e}")
             raise ValueError(f"Failed to process questions in batch: {str(e)}")

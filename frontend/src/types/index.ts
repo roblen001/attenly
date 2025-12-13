@@ -205,3 +205,34 @@ export interface EmailIngestSettings {
     rate_limit: number;
   };
 }
+
+// Credit/Usage Types
+export type WarningLevel = 'normal' | 'warning' | 'critical' | 'blocked';
+
+export interface CreditStatus {
+  credits_remaining: number;
+  credits_limit: number;
+  credits_used: number;
+  percentage_used: number;
+  warning_level: WarningLevel;
+  reset_date: string;
+  days_until_reset: number;
+  cost_used_cad?: number;
+  monthly_limit_cad?: number;
+}
+
+export interface UsageSummaryItem {
+  operation_type: string;
+  total_credits: number;
+  total_cost_cad: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  request_count: number;
+}
+
+export interface UsageHistoryItem {
+  date: string;
+  total_credits: number;
+  total_cost_cad: number;
+  request_count: number;
+}

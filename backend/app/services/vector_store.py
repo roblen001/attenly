@@ -13,27 +13,62 @@ import os
 import asyncio
 from .embedding_batch_service import get_embedding_service
 from .performance_monitor import time_operation
+from .credit_service import get_credit_service
+from app.config import EMBEDDING_MODEL_NAME
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStore:
     """User-based vector store for document chunks using ChromaDB with Google embeddings"""
-    
+
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.collection_name = f"user_{user_id}"
-        
+        self.credit_service = get_credit_service()
+        self._initialize_chromadb()
+
+    def _estimate_tokens(self, texts: List[str]) -> int:
+        """Estimate token count from text length. ~0.25 tokens per character for English."""
+        total_chars = sum(len(t) for t in texts)
+        return int(total_chars * 0.25)  # Conservative estimate
+
+    def _track_embedding_credits(self, texts: List[str], operation: str = "embedding"):
+        """Track credit usage for embedding operations"""
+        try:
+            estimated_tokens = self._estimate_tokens(texts)
+            cost_cad = self.credit_service.calculate_cost(
+                EMBEDDING_MODEL_NAME,
+                input_tokens=estimated_tokens,
+                output_tokens=0  # Embeddings don't have output tokens
+            )
+
+            self.credit_service.consume_credits_sync(
+                user_id=self.user_id,
+                cost_cad=cost_cad,
+                operation_type=operation,
+                model=EMBEDDING_MODEL_NAME,
+                input_tokens=estimated_tokens,
+                output_tokens=0,
+                metadata={"text_count": len(texts)}
+            )
+
+            logger.debug(f"Embedding credit usage: {cost_cad:.6f} CAD ({estimated_tokens} est. tokens)")
+        except Exception as e:
+            logger.warning(f"Failed to track embedding credits: {e}")
+
+    def _initialize_chromadb(self):
+        """Initialize ChromaDB and embedding service"""
         try:
             import chromadb
             from chromadb.config import Settings
-            
+
             # Validate Google API key
             gemini_api_key = os.getenv("GEMINI_API_KEY")
             if not gemini_api_key:
                 logger.error("GEMINI_API_KEY not found in environment variables")
                 raise ValueError("GEMINI_API_KEY is required for batch embedding generation")
-            
+
             # Initialize ChromaDB client with in-memory storage for users
             self.client = chromadb.EphemeralClient()
 
@@ -41,15 +76,15 @@ class VectorStore:
             # We'll use manual embedding generation for better performance
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"user_id": user_id, "embedding_model": "gemini-embedding-001", "batch_mode": True}
+                metadata={"user_id": self.user_id, "embedding_model": "gemini-embedding-001", "batch_mode": True}
             )
-            
+
             # Get batch embedding service
             self.embedding_service = get_embedding_service()
-            
+
             self.available = True
-            logger.info(f"Initialized vector store for user {user_id} with batch embedding generation")
-            
+            logger.info(f"Initialized vector store for user {self.user_id} with batch embedding generation")
+
         except ImportError as e:
             logger.warning(f"ChromaDB or required dependencies not available: {e}")
             self.client = None
@@ -125,10 +160,13 @@ class VectorStore:
                 metadatas.append(metadata)
             
             # Generate embeddings in batches using the batch embedding service
-            with time_operation("batch_embedding_generation", 
+            with time_operation("batch_embedding_generation",
                               {"document_id": document_id, "chunk_count": len(documents)}) as timer:
                 embeddings = await self.embedding_service.generate_embeddings_batch(documents)
-            
+
+            # Track credit usage for embedding generation
+            self._track_embedding_credits(documents, operation="embedding_storage")
+
             if len(embeddings) != len(documents):
                 raise ValueError(f"Embedding count mismatch: expected {len(documents)}, got {len(embeddings)}")
             
@@ -188,7 +226,10 @@ class VectorStore:
             # Generate embedding for search query using the same batch service
             query_embeddings = await self.embedding_service.generate_embeddings_batch([query])
             query_embedding = query_embeddings[0]
-            
+
+            # Track credit usage for search query embedding
+            self._track_embedding_credits([query], operation="embedding_search")
+
             # Build where clause for filtering
             where_clause = {}
             if document_ids:

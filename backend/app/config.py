@@ -239,8 +239,8 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # =============================================================================
 
 MAX_CONCURRENT_UPLOADS = 2
-MAX_CONCURRENT_LLM_REQUESTS = 1
-MAX_CONCURRENT_QUOTE_EXTRACTIONS = 10  # Parallel quote extraction calls
+MAX_CONCURRENT_LLM_REQUESTS = int(os.getenv("MAX_CONCURRENT_LLM_REQUESTS", "10"))
+MAX_CONCURRENT_QUOTE_EXTRACTIONS = int(os.getenv("MAX_CONCURRENT_QUOTE_EXTRACTIONS", "10"))
 
 ENABLE_CACHING = False
 CACHE_TTL_SECONDS = 3600
@@ -275,6 +275,16 @@ def validate_config():
         errors.append("VECTOR_SEARCH_TOP_K_PER_QUESTION must be at least 1")
     if VECTOR_SEARCH_TOP_K_PER_QUESTION > 100:
         errors.append("VECTOR_SEARCH_TOP_K_PER_QUESTION should not exceed 100")
+
+    # Concurrency
+    if MAX_CONCURRENT_LLM_REQUESTS < 1:
+        errors.append("MAX_CONCURRENT_LLM_REQUESTS must be at least 1")
+    if MAX_CONCURRENT_LLM_REQUESTS > 50:
+        errors.append("MAX_CONCURRENT_LLM_REQUESTS should not exceed 50 to avoid API rate limits")
+    if MAX_CONCURRENT_QUOTE_EXTRACTIONS < 1:
+        errors.append("MAX_CONCURRENT_QUOTE_EXTRACTIONS must be at least 1")
+    if MAX_CONCURRENT_QUOTE_EXTRACTIONS > 50:
+        errors.append("MAX_CONCURRENT_QUOTE_EXTRACTIONS should not exceed 50 to avoid API rate limits")
 
     # Chunking
     if CHUNK_L1_TARGET_TOKENS >= CHUNK_L1_MAX_TOKENS:

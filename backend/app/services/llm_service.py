@@ -11,10 +11,10 @@ TODO: add custom embeddings so we don't need to use chromas default embeddings (
 
 import logging
 import os
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Tuple
 import json
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from app.schemas import QuestionOut, AnswerType
 from app.services.performance_monitor import time_operation, get_performance_monitor
@@ -32,7 +32,8 @@ from app.config import (
     MAX_QUOTE_LENGTH,
     MIN_ANSWER_CONFIDENCE,
     ANSWER_NOT_FOUND_PHRASES,
-    MAX_CONCURRENT_QUOTE_EXTRACTIONS
+    MAX_CONCURRENT_QUOTE_EXTRACTIONS,
+    MAX_CONCURRENT_LLM_REQUESTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,12 +74,89 @@ class LLMService:
             self.genai = genai
             
             logger.info(f"Initialized cost-optimized LLM service with model: {self.model_name}")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize Gemini LLM service: {e}")
             self.client = None
-    
-    def process_agent_questions(self, questions_with_chunks: List[Dict[str, Any]],
+
+    def _execute_parallel(
+        self,
+        items: List[Any],
+        worker_fn: callable,
+        key_fn: callable,
+        max_workers: int,
+        aggregate_lists: bool = False,
+        error_result_fn: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Generic parallel executor for LLM operations using ThreadPoolExecutor.
+
+        This utility provides a reusable pattern for executing multiple independent
+        LLM operations in parallel while handling errors gracefully.
+
+        Args:
+            items: List of items to process
+            worker_fn: Function that processes a single item, returns (key, result) or (key, ..., result, ...)
+            key_fn: Function to extract the key from an item (for error handling fallback)
+            max_workers: Maximum number of concurrent workers
+            aggregate_lists: If True, aggregate results into lists by key (for multi-result per key).
+                           If False, direct assignment (one result per key).
+            error_result_fn: Optional function that returns a default error result given (key, error).
+                           If None, errors are logged but key may be missing from results.
+
+        Returns:
+            Dictionary mapping keys to results (or lists of results if aggregate_lists=True)
+        """
+        results: Dict[str, Any] = {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            futures = {
+                executor.submit(worker_fn, item): key_fn(item)
+                for item in items
+            }
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                fallback_key = futures[future]
+                try:
+                    result = future.result()
+
+                    # Handle different return formats: (key, data) or (key, ..., data, ...)
+                    if isinstance(result, tuple) and len(result) >= 2:
+                        key = result[0]
+                        data = result[-1] if len(result) == 2 else result[1:]
+                    else:
+                        key = fallback_key
+                        data = result
+
+                    if aggregate_lists:
+                        if key not in results:
+                            results[key] = []
+                        if isinstance(data, list):
+                            results[key].extend(data)
+                        else:
+                            results[key].append(data)
+                    else:
+                        # For tuple results like (key, result_dict), extract the result_dict
+                        if isinstance(result, tuple) and len(result) == 2:
+                            results[key] = result[1]
+                        else:
+                            results[key] = data
+
+                except Exception as e:
+                    logger.warning(f"Parallel execution failed for {fallback_key}: {e}")
+                    if error_result_fn:
+                        if aggregate_lists:
+                            if fallback_key not in results:
+                                results[fallback_key] = []
+                            results[fallback_key].append(error_result_fn(fallback_key, e))
+                        else:
+                            results[fallback_key] = error_result_fn(fallback_key, e)
+
+        return results
+
+    def process_agent_questions(self, questions_with_chunks: List[Dict[str, Any]], 
                               document_context: Dict[str, Any],
                               bbox_data: Optional[Dict] = None,
                               user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -148,7 +226,7 @@ class LLMService:
                 "total_questions": len(questions_with_chunks),
                 "processed_chunks": total_chunks,
                 "model_used": self.model_name,
-                "processing_method": "batch_optimized_individual_contexts",
+                "processing_method": "parallel_individual_calls",
                 "token_usage": token_usage
             }
 
@@ -200,72 +278,114 @@ class LLMService:
     
     def _process_questions_batch_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]],
                                                         document_context: Dict,
-                                                        bbox_data: Optional[Dict] = None) -> tuple[Dict[str, Any], Dict[str, int]]:
-        """Process all questions in a single batch request, each with its own relevant context
+                                                        bbox_data: Optional[Dict] = None) -> Tuple[Dict[str, Any], Dict[str, int]]:
+        """
+        Process all questions with individual API calls in parallel.
+
+        REFACTORED: Now uses parallel per-question API calls instead of a single batch prompt.
+        This provides better quality (focused context) with similar latency (parallel execution).
 
         Returns:
-            Tuple of (batch_results, token_usage) where token_usage contains input/output token counts
+            Tuple of (batch_results, token_usage) where token_usage contains aggregated input/output token counts
         """
-
-        performance_monitor = get_performance_monitor()
-
-        # Create a single batch prompt with all questions and their individual contexts
-        with time_operation("llm_batch_prompt_preparation",
+        # Phase 1: Parallel LLM calls for all questions
+        with time_operation("llm_parallel_question_processing",
                           {"question_count": len(questions_with_chunks)}) as timer:
-            batch_prompt = self._create_batch_prompt_with_individual_contexts(
-                questions_with_chunks, document_context
-            )
-            prompt_prep_time = timer.stop().duration
+            raw_results, token_usage = self._process_questions_parallel_threaded(questions_with_chunks, document_context)
+            parallel_processing_time = timer.stop().duration
 
-        try:
-            # Configure generation parameters
-            generation_config = self.genai.types.GenerationConfig(
-                temperature=LLM_TEMPERATURE,
-                response_mime_type="application/json"
-            )
+        logger.info(f"LLM Parallel Processing: {len(questions_with_chunks)} questions in {parallel_processing_time:.2f}s")
 
-            # Single API call for all questions - maximum cost efficiency
-            with time_operation("llm_api_call",
-                              {"question_count": len(questions_with_chunks),
-                               "model": self.model_name,
-                               "prompt_length": len(batch_prompt)}) as timer:
-                response = self.model.generate_content(
-                    batch_prompt,
-                    generation_config=generation_config
-                )
-                api_call_time = timer.stop().duration
-            if not response or not response.text:
-                raise ValueError("Empty response from Gemini model")
+        # Phase 2: Prepare questions needing quote extraction
+        questions_needing_quotes = []
+        results = {}
+        quote_extraction_time = 0
 
-            # Extract token usage from response
-            token_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-            if hasattr(response, 'usage_metadata') and response.usage_metadata:
-                token_usage["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
-                token_usage["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-                token_usage["total_tokens"] = getattr(response.usage_metadata, 'total_token_count', 0) or 0
-                logger.info(f"Token usage: {token_usage['input_tokens']} input, {token_usage['output_tokens']} output")
+        for item in questions_with_chunks:
+            question = item['question']
+            relevant_chunks = item['relevant_chunks']
+            placeholder = question.placeholder
 
-            # Parse the batch JSON response with bbox data
-            with time_operation("llm_response_parsing",
-                              {"response_length": len(response.text)}) as timer:
-                batch_results = self._parse_batch_response_with_individual_contexts(
-                    response.text, questions_with_chunks, bbox_data
-                )
-                parsing_time = timer.stop().duration
+            if placeholder in raw_results:
+                raw_result = raw_results[placeholder]
+                answer = raw_result.get("answer", "Not processed")
 
-            # Log comprehensive timing breakdown
-            total_time = prompt_prep_time + api_call_time + parsing_time
-            logger.info(f"LLM Processing Complete: {len(questions_with_chunks)} questions in {total_time:.2f}s")
-            logger.info(f"LLM Timing Breakdown - Prep: {prompt_prep_time*1000:.1f}ms, "
-                       f"API: {api_call_time*1000:.1f}ms, Parse: {parsing_time*1000:.1f}ms")
-            logger.info(f"LLM Performance - {len(questions_with_chunks)/total_time:.1f} questions/sec, "
-                       f"API latency: {api_call_time*1000:.0f}ms")
+                # Initialize result structure
+                results[placeholder] = {
+                    "answer": answer,
+                    "source_chunks": [],
+                    "word_count": raw_result.get("word_count", 0),
+                }
 
-            return batch_results, token_usage
+                # Add error if present
+                if raw_result.get("error"):
+                    results[placeholder]["error"] = raw_result["error"]
+                    continue  # Skip quote extraction for errored questions
 
-        except Exception as e:
-            logger.error(f"Batch processing with individual contexts failed: {e}")
-            raise ValueError(f"Failed to process questions in batch: {str(e)}")
+                # Collect questions needing quotes based on answer type
+                if question.answer_type == AnswerType.STRING:
+                    answer_str = str(answer) if answer else ""
+                    answer_quality = self._analyze_answer_quality(answer_str)
+
+                    if answer_quality == AnswerQuality.FOUND and relevant_chunks:
+                        questions_needing_quotes.append({
+                            "placeholder": placeholder,
+                            "answer": answer_str,
+                            "question_prompt": question.prompt,
+                            "relevant_chunks": relevant_chunks,
+                            "answer_type": "string",
+                            "target": None
+                        })
+                else:
+                    # List/Table answers: collect individual quotable values
+                    quotable_values = self._get_quotable_values_from_answer(answer, question)
+                    for qv in quotable_values:
+                        value = qv["value"]
+                        target = qv["target"]
+                        answer_quality = self._analyze_answer_quality(value)
+
+                        if answer_quality == AnswerQuality.FOUND and relevant_chunks:
+                            questions_needing_quotes.append({
+                                "placeholder": placeholder,
+                                "answer": value,
+                                "question_prompt": f"Find evidence for: {value}",
+                                "relevant_chunks": relevant_chunks,
+                                "answer_type": "structured",
+                                "target": target
+                            })
+            else:
+                # Question missing from results
+                logger.warning(f"Question {placeholder} missing from parallel results")
+                results[placeholder] = {
+                    "answer": "Not processed",
+                    "source_chunks": [],
+                    "word_count": 0,
+                    "error": "Missing from parallel processing results"
+                }
+
+        # Phase 3: Batch extract quotes (existing parallel quote extraction)
+        if questions_needing_quotes:
+            logger.info(f"Extracting quotes for {len(questions_needing_quotes)} items")
+            with time_operation("llm_quote_extraction",
+                              {"item_count": len(questions_needing_quotes)}) as timer:
+                batch_quotes = self._extract_precise_quotes_batch(questions_needing_quotes, bbox_data)
+                quote_extraction_time = timer.stop().duration
+
+            # Distribute quotes back to results
+            for placeholder, quotes in batch_quotes.items():
+                if placeholder in results:
+                    results[placeholder]["source_chunks"].extend(quotes)
+
+            logger.info(f"Quote extraction: {quote_extraction_time*1000:.0f}ms for {len(questions_needing_quotes)} items")
+        else:
+            logger.info("No questions needed quote extraction")
+
+        # Log comprehensive timing
+        total_time = parallel_processing_time + quote_extraction_time
+        logger.info(f"LLM Processing Complete: {len(questions_with_chunks)} questions in {total_time:.2f}s "
+                   f"({len(questions_with_chunks)/total_time:.1f} questions/sec)")
+
+        return results, token_usage
 
     def _create_batch_prompt_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]],
                                                     document_context: Dict) -> str:
@@ -611,6 +731,197 @@ ANSWER:"""
             return f'"{question.placeholder}": "string value"'
 
         return f'"{question.placeholder}": "string value"'
+
+    def _create_single_question_prompt(self, question: QuestionOut,
+                                       relevant_chunks: List[Dict],
+                                       document_context: Dict) -> str:
+        """
+        Create a focused prompt for a SINGLE question with its relevant context.
+
+        This allows the LLM to focus entirely on answering one specific question
+        with maximum quality, rather than splitting attention across multiple questions.
+        """
+        # Prepare context text from chunks
+        context_text = self._prepare_context_from_chunks(relevant_chunks) if relevant_chunks else "No relevant context found"
+
+        # Get format instruction for this question's answer type
+        format_instruction = self._get_answer_format_instruction(question)
+
+        # Build response schema hint based on answer type
+        response_schema = self._get_response_schema_hint(question)
+
+        return f"""You are an expert data extraction AI. Extract specific information based on the provided context.
+
+QUESTION (ID: {question.placeholder}):
+{question.prompt}
+
+EXPECTED FORMAT: {format_instruction}
+
+RELEVANT CONTEXT:
+{context_text}
+
+INSTRUCTIONS:
+1. Analyze the provided context carefully
+2. Extract the specific information requested
+3. If information is not found, respond with "Not specified" or "Not found"
+4. Be precise and factual - only extract information explicitly supported
+5. For numerical values, include units when specified
+6. For dates, use a consistent format (YYYY-MM-DD or as stated in document)
+7. Directly answer the question
+8. CRITICAL: Follow the EXPECTED FORMAT instruction exactly
+
+RESPONSE FORMAT (JSON):
+{{
+  {response_schema}
+}}
+
+Respond with valid JSON only."""
+
+    def _process_single_question_sync(self, question_item: Dict[str, Any],
+                                       document_context: Dict) -> Tuple[str, Dict[str, Any]]:
+        """
+        Process a single question synchronously (for ThreadPoolExecutor).
+
+        This method is designed to be called from ThreadPoolExecutor threads.
+
+        Args:
+            question_item: Dict with 'question' (QuestionOut) and 'relevant_chunks'
+            document_context: Document context dictionary
+
+        Returns:
+            Tuple of (placeholder, result_dict) where result_dict includes token_usage
+        """
+        question = question_item['question']
+        relevant_chunks = question_item['relevant_chunks']
+        placeholder = question.placeholder
+
+        try:
+            # Create focused prompt for this single question
+            prompt = self._create_single_question_prompt(question, relevant_chunks, document_context)
+
+            # Configure generation parameters
+            generation_config = self.genai.types.GenerationConfig(
+                temperature=LLM_TEMPERATURE,
+                response_mime_type="application/json"
+            )
+
+            # Make synchronous API call
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
+
+            if not response or not response.text:
+                logger.warning(f"Empty response for question {placeholder}")
+                return (placeholder, {
+                    "answer": "No response from LLM",
+                    "source_chunks": [],
+                    "word_count": 0,
+                    "error": "Empty LLM response",
+                    "token_usage": {"input_tokens": 0, "output_tokens": 0}
+                })
+
+            # Extract token usage from response for credit tracking
+            token_usage = {"input_tokens": 0, "output_tokens": 0}
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                token_usage["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+                token_usage["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
+
+            # Parse the JSON response
+            response_data = json.loads(response.text)
+
+            # Extract the answer (it should be keyed by placeholder)
+            if placeholder in response_data:
+                answer = response_data[placeholder]
+            else:
+                # Fallback: try to get any value from response
+                answer = next(iter(response_data.values()), "Not found")
+
+            return (placeholder, {
+                "answer": answer,
+                "relevant_chunks": relevant_chunks,  # Preserve for quote extraction
+                "question": question,  # Preserve for quote extraction
+                "source_chunks": [],  # Will be populated after quote extraction
+                "word_count": self._calculate_word_count(answer),
+                "token_usage": token_usage  # Include for aggregation
+            })
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parse error for question {placeholder}: {e}")
+            return (placeholder, {
+                "answer": "JSON parsing error",
+                "source_chunks": [],
+                "word_count": 0,
+                "error": f"Failed to parse response: {str(e)}",
+                "token_usage": {"input_tokens": 0, "output_tokens": 0}
+            })
+        except Exception as e:
+            logger.warning(f"Error processing question {placeholder}: {e}")
+            return (placeholder, {
+                "answer": "Processing error",
+                "source_chunks": [],
+                "word_count": 0,
+                "error": str(e),
+                "token_usage": {"input_tokens": 0, "output_tokens": 0}
+            })
+
+    def _process_questions_parallel_threaded(self, questions_with_chunks: List[Dict[str, Any]],
+                                              document_context: Dict) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, int]]:
+        """
+        Execute question processing in parallel using the generic parallel executor.
+
+        Args:
+            questions_with_chunks: List of question dicts with 'question' and 'relevant_chunks'
+            document_context: Document context dictionary
+
+        Returns:
+            Tuple of (results_dict, aggregated_token_usage) where:
+            - results_dict: Dictionary mapping placeholder -> result dict
+            - aggregated_token_usage: Dict with total input_tokens and output_tokens
+        """
+        # Create worker closure that captures document_context
+        def process_question(q_item: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+            return self._process_single_question_sync(q_item, document_context)
+
+        def get_placeholder(q_item: Dict[str, Any]) -> str:
+            return q_item['question'].placeholder
+
+        def error_result(key: str, error: Exception) -> Dict[str, Any]:
+            return {
+                "answer": "Thread execution error",
+                "source_chunks": [],
+                "word_count": 0,
+                "error": str(error),
+                "token_usage": {"input_tokens": 0, "output_tokens": 0}
+            }
+
+        results = self._execute_parallel(
+            items=questions_with_chunks,
+            worker_fn=process_question,
+            key_fn=get_placeholder,
+            max_workers=MAX_CONCURRENT_LLM_REQUESTS,
+            aggregate_lists=False,
+            error_result_fn=error_result
+        )
+
+        # Aggregate token usage from all parallel calls
+        total_input_tokens = 0
+        total_output_tokens = 0
+        for placeholder, result in results.items():
+            token_usage = result.get("token_usage", {})
+            total_input_tokens += token_usage.get("input_tokens", 0)
+            total_output_tokens += token_usage.get("output_tokens", 0)
+
+        aggregated_token_usage = {
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens
+        }
+
+        logger.info(f"Aggregated token usage from {len(results)} parallel calls: "
+                   f"{total_input_tokens} input, {total_output_tokens} output")
+
+        return results, aggregated_token_usage
 
     def _build_response_format_section(self, questions_with_chunks: List[Dict[str, Any]]) -> str:
         """Build the response format section with schema examples for all answer types"""
@@ -1160,10 +1471,7 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
     def _extract_quotes_parallel_threaded(self, questions_needing_quotes: List[Dict[str, Any]],
                                           bbox_data: Optional[Dict] = None) -> Dict[str, List[Dict]]:
         """
-        Execute quote extractions in parallel using ThreadPoolExecutor.
-
-        This approach uses threads instead of asyncio to avoid event loop conflicts
-        when called from within FastAPI's async context.
+        Execute quote extractions in parallel using the generic parallel executor.
 
         Args:
             questions_needing_quotes: List of question dicts needing quote extraction
@@ -1172,12 +1480,9 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
         Returns:
             Dictionary mapping placeholder -> list of quote dictionaries
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        results: Dict[str, List[Dict]] = {}
-
-        def extract_single(q_item: Dict[str, Any]) -> tuple:
-            """Extract quotes for a single question in a thread."""
+        # Create worker closure that captures bbox_data and handles target embedding
+        def extract_single(q_item: Dict[str, Any]) -> Tuple[str, List[Dict]]:
+            """Extract quotes for a single question, embedding target info."""
             placeholder = q_item["placeholder"]
             target = q_item.get("target")
 
@@ -1191,34 +1496,26 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
 
             try:
                 quotes = self._extract_single_quote_sync(q_item, bbox_data)
-                return (placeholder, question_id, quotes, target)
+                # Embed target info into quotes before returning
+                if target:
+                    for quote in quotes:
+                        quote["target"] = target
+                return (placeholder, quotes)
             except Exception as e:
                 logger.warning(f"Quote extraction failed for {question_id}: {e}")
-                return (placeholder, question_id, [], target)
+                return (placeholder, [])
 
-        # Use ThreadPoolExecutor for true parallel execution
-        with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_QUOTE_EXTRACTIONS) as executor:
-            # Submit all tasks
-            futures = [executor.submit(extract_single, q_item) for q_item in questions_needing_quotes]
+        def get_placeholder(q_item: Dict[str, Any]) -> str:
+            return q_item["placeholder"]
 
-            # Collect results as they complete
-            for future in as_completed(futures):
-                try:
-                    placeholder, question_id, quotes, target = future.result()
-
-                    if placeholder not in results:
-                        results[placeholder] = []
-
-                    # Add target info to quotes if present
-                    for quote in quotes:
-                        if target:
-                            quote["target"] = target
-                        results[placeholder].append(quote)
-
-                except Exception as e:
-                    logger.warning(f"Failed to get result from quote extraction thread: {e}")
-
-        return results
+        return self._execute_parallel(
+            items=questions_needing_quotes,
+            worker_fn=extract_single,
+            key_fn=get_placeholder,
+            max_workers=MAX_CONCURRENT_QUOTE_EXTRACTIONS,
+            aggregate_lists=True,
+            error_result_fn=None  # Errors handled in worker, returns empty list
+        )
 
     def _extract_single_quote_sync(self, q_item: Dict[str, Any],
                                    bbox_data: Optional[Dict] = None) -> List[Dict]:

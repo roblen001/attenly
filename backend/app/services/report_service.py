@@ -24,23 +24,26 @@ class ReportService:
     def __init__(self):
         self.llm_service = llm_service
     
-    async def generate_report(self, agent: Agent, vector_store: VectorStore, 
+    async def generate_report(self, agent: Agent, vector_store: VectorStore,
                        document_ids: Optional[List[str]] = None,
-                       bbox_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                       bbox_data: Optional[Dict[str, Any]] = None,
+                       user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate a complete report with extracted data and source quotes
-        
+
         Args:
             agent: Agent configuration with questions and template
             vector_store: User's vector store instance
             document_ids: Optional list of specific document IDs to process
             bbox_data: Optional dictionary mapping document_ids to their bounding box data for OCR documents
-            
+            user_id: Optional user ID for credit tracking
+
         Returns:
             Complete report data with answers, quotes, and metadata
-            
+
         Raises:
             ValueError: If vector store is not available, no chunks found, or LLM service is not available
+            CreditLimitExceeded: If user has exceeded their monthly credit limit
         """
         
         if not vector_store.available:
@@ -68,7 +71,7 @@ class ReportService:
             
             # Process questions through LLM service with individual contexts
             llm_results = self.llm_service.process_agent_questions(
-                questions_with_chunks, document_context, bbox_data
+                questions_with_chunks, document_context, bbox_data, user_id
             )
             
             # LLM service now only returns successful results or raises an exception

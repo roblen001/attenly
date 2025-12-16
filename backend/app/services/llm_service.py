@@ -19,6 +19,7 @@ from enum import Enum
 from app.schemas import QuestionOut, AnswerType
 from app.services.performance_monitor import time_operation, get_performance_monitor
 from app.services.bbox_matcher import BBoxMatcher
+from app.services.credit_service import get_credit_service, CreditLimitExceeded
 from app.config import (
     LLM_MODEL_NAME,
     GEMINI_API_KEY,
@@ -157,45 +158,80 @@ class LLMService:
 
     def process_agent_questions(self, questions_with_chunks: List[Dict[str, Any]], 
                               document_context: Dict[str, Any],
-                              bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
+                              bbox_data: Optional[Dict] = None,
+                              user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Process all agent questions in a single batch request with question-specific contexts
-        
+
         Args:
             questions_with_chunks: List of dicts with 'question' and 'relevant_chunks' for each question
             document_context: Additional context about the documents
             bbox_data: Optional dictionary mapping document_ids to their bounding box data for OCR documents
-            
+            user_id: Optional user ID for credit tracking
+
         Returns:
             Dictionary with extracted answers and source references
-            
+
         Raises:
             ValueError: If no questions provided or LLM service is not available
+            CreditLimitExceeded: If user has exceeded their monthly credit limit
         """
-        
+
         if not questions_with_chunks:
             raise ValueError("No questions with chunks provided for processing")
-        
+
         if not self.available:
             raise ValueError("LLM service is not available. Please ensure GEMINI_API_KEY is configured and the service is properly initialized.")
-        
+
+        # Check credit limit before processing (if user_id provided)
+        credit_service = get_credit_service()
+        if user_id:
+            credit_status = credit_service.check_credits_sync(user_id)
+            if credit_status.warning_level == "blocked":
+                raise CreditLimitExceeded(credit_status)
+
         try:
             # Process ALL questions in a single batch request with individual contexts and bbox data
-            batch_results = self._process_questions_batch_with_individual_contexts(
+            batch_results, token_usage = self._process_questions_batch_with_individual_contexts(
                 questions_with_chunks, document_context, bbox_data
             )
-            
+
             total_chunks = sum(len(item['relevant_chunks']) for item in questions_with_chunks)
-            
+
+            # Track credit usage after successful processing
+            if user_id and token_usage:
+                input_tokens = token_usage.get("input_tokens", 0)
+                output_tokens = token_usage.get("output_tokens", 0)
+                cost_cad = credit_service.calculate_cost(self.model_name, input_tokens, output_tokens)
+
+                consume_result = credit_service.consume_credits_sync(
+                    user_id=user_id,
+                    cost_cad=cost_cad,
+                    operation_type="llm_extraction",
+                    model=self.model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    metadata={
+                        "question_count": len(questions_with_chunks),
+                        "chunks_processed": total_chunks
+                    }
+                )
+
+                logger.info(f"Credit usage: {cost_cad:.6f} CAD ({input_tokens} in, {output_tokens} out) - "
+                           f"Remaining: {consume_result.credits_remaining} credits")
+
             return {
                 "success": True,
                 "results": batch_results,
                 "total_questions": len(questions_with_chunks),
                 "processed_chunks": total_chunks,
                 "model_used": self.model_name,
-                "processing_method": "parallel_individual_calls"
+                "processing_method": "parallel_individual_calls",
+                "token_usage": token_usage
             }
-            
+
+        except CreditLimitExceeded:
+            raise  # Re-raise credit limit exceptions
         except Exception as e:
             logger.error(f"Failed to process agent questions in batch: {e}")
             raise ValueError(f"LLM batch processing failed: {str(e)}")
@@ -242,17 +278,20 @@ class LLMService:
     
     def _process_questions_batch_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]],
                                                         document_context: Dict,
-                                                        bbox_data: Optional[Dict] = None) -> Dict[str, Any]:
+                                                        bbox_data: Optional[Dict] = None) -> Tuple[Dict[str, Any], Dict[str, int]]:
         """
         Process all questions with individual API calls in parallel.
 
         REFACTORED: Now uses parallel per-question API calls instead of a single batch prompt.
         This provides better quality (focused context) with similar latency (parallel execution).
+
+        Returns:
+            Tuple of (batch_results, token_usage) where token_usage contains aggregated input/output token counts
         """
         # Phase 1: Parallel LLM calls for all questions
         with time_operation("llm_parallel_question_processing",
                           {"question_count": len(questions_with_chunks)}) as timer:
-            raw_results = self._process_questions_parallel_threaded(questions_with_chunks, document_context)
+            raw_results, token_usage = self._process_questions_parallel_threaded(questions_with_chunks, document_context)
             parallel_processing_time = timer.stop().duration
 
         logger.info(f"LLM Parallel Processing: {len(questions_with_chunks)} questions in {parallel_processing_time:.2f}s")
@@ -346,7 +385,7 @@ class LLMService:
         logger.info(f"LLM Processing Complete: {len(questions_with_chunks)} questions in {total_time:.2f}s "
                    f"({len(questions_with_chunks)/total_time:.1f} questions/sec)")
 
-        return results
+        return results, token_usage
 
     def _create_batch_prompt_with_individual_contexts(self, questions_with_chunks: List[Dict[str, Any]],
                                                     document_context: Dict) -> str:
@@ -750,7 +789,7 @@ Respond with valid JSON only."""
             document_context: Document context dictionary
 
         Returns:
-            Tuple of (placeholder, result_dict)
+            Tuple of (placeholder, result_dict) where result_dict includes token_usage
         """
         question = question_item['question']
         relevant_chunks = question_item['relevant_chunks']
@@ -778,8 +817,15 @@ Respond with valid JSON only."""
                     "answer": "No response from LLM",
                     "source_chunks": [],
                     "word_count": 0,
-                    "error": "Empty LLM response"
+                    "error": "Empty LLM response",
+                    "token_usage": {"input_tokens": 0, "output_tokens": 0}
                 })
+
+            # Extract token usage from response for credit tracking
+            token_usage = {"input_tokens": 0, "output_tokens": 0}
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                token_usage["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
+                token_usage["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
 
             # Parse the JSON response
             response_data = json.loads(response.text)
@@ -796,7 +842,8 @@ Respond with valid JSON only."""
                 "relevant_chunks": relevant_chunks,  # Preserve for quote extraction
                 "question": question,  # Preserve for quote extraction
                 "source_chunks": [],  # Will be populated after quote extraction
-                "word_count": self._calculate_word_count(answer)
+                "word_count": self._calculate_word_count(answer),
+                "token_usage": token_usage  # Include for aggregation
             })
 
         except json.JSONDecodeError as e:
@@ -805,7 +852,8 @@ Respond with valid JSON only."""
                 "answer": "JSON parsing error",
                 "source_chunks": [],
                 "word_count": 0,
-                "error": f"Failed to parse response: {str(e)}"
+                "error": f"Failed to parse response: {str(e)}",
+                "token_usage": {"input_tokens": 0, "output_tokens": 0}
             })
         except Exception as e:
             logger.warning(f"Error processing question {placeholder}: {e}")
@@ -813,11 +861,12 @@ Respond with valid JSON only."""
                 "answer": "Processing error",
                 "source_chunks": [],
                 "word_count": 0,
-                "error": str(e)
+                "error": str(e),
+                "token_usage": {"input_tokens": 0, "output_tokens": 0}
             })
 
     def _process_questions_parallel_threaded(self, questions_with_chunks: List[Dict[str, Any]],
-                                              document_context: Dict) -> Dict[str, Dict[str, Any]]:
+                                              document_context: Dict) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, int]]:
         """
         Execute question processing in parallel using the generic parallel executor.
 
@@ -826,7 +875,9 @@ Respond with valid JSON only."""
             document_context: Document context dictionary
 
         Returns:
-            Dictionary mapping placeholder -> result dict
+            Tuple of (results_dict, aggregated_token_usage) where:
+            - results_dict: Dictionary mapping placeholder -> result dict
+            - aggregated_token_usage: Dict with total input_tokens and output_tokens
         """
         # Create worker closure that captures document_context
         def process_question(q_item: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
@@ -840,10 +891,11 @@ Respond with valid JSON only."""
                 "answer": "Thread execution error",
                 "source_chunks": [],
                 "word_count": 0,
-                "error": str(error)
+                "error": str(error),
+                "token_usage": {"input_tokens": 0, "output_tokens": 0}
             }
 
-        return self._execute_parallel(
+        results = self._execute_parallel(
             items=questions_with_chunks,
             worker_fn=process_question,
             key_fn=get_placeholder,
@@ -851,6 +903,25 @@ Respond with valid JSON only."""
             aggregate_lists=False,
             error_result_fn=error_result
         )
+
+        # Aggregate token usage from all parallel calls
+        total_input_tokens = 0
+        total_output_tokens = 0
+        for placeholder, result in results.items():
+            token_usage = result.get("token_usage", {})
+            total_input_tokens += token_usage.get("input_tokens", 0)
+            total_output_tokens += token_usage.get("output_tokens", 0)
+
+        aggregated_token_usage = {
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens
+        }
+
+        logger.info(f"Aggregated token usage from {len(results)} parallel calls: "
+                   f"{total_input_tokens} input, {total_output_tokens} output")
+
+        return results, aggregated_token_usage
 
     def _build_response_format_section(self, questions_with_chunks: List[Dict[str, Any]]) -> str:
         """Build the response format section with schema examples for all answer types"""

@@ -14,7 +14,8 @@ import { useAuth } from "./feature/auth/useAuth";
 import AgentExecutionPage from "./pages/AgentExecution";
 import ReportView from "./pages/ReportView";
 import CreateAgent from "./pages/CreateAgent";
-import EmailIngestSettings from "./pages/EmailIngestSettings";
+import Settings from "./pages/Settings";
+import CreditWarningBanner from "./components/CreditWarningBanner";
 
 export default function App() {
   const { isAuthenticated, loading, isPasswordRecovery } = useAuth(); 
@@ -36,6 +37,7 @@ export default function App() {
 
   return (
     <Router>
+      {isAuthenticated && <CreditWarningBanner />}
       <Routes>
         {/* Public Routes */}
         <Route
@@ -133,13 +135,19 @@ export default function App() {
           }
         />
 
-        <Route 
-          path="/settings/email-ingest" 
+        <Route
+          path="/settings"
           element={
             <AuthGate>
-              <EmailIngestSettings />
+              <Settings />
             </AuthGate>
           }
+        />
+
+        {/* Backwards compatibility redirect for old email ingest settings URL */}
+        <Route
+          path="/settings/email-ingest"
+          element={<Navigate to="/settings?tab=email" replace />}
         />
 
         {/* Optional: 404 catch-all */}

@@ -74,19 +74,6 @@ export default function UsageInstructions() {
             </div>
           </div>
 
-          <div className="instruction-step">
-            <div className="step-number">4</div>
-            <div className="step-content">
-              <h3>Rate Limits</h3>
-              <p>
-                Your account can process <strong>20 email jobs per 24 hours</strong>. This limit ensures fair usage and optimal performance.
-              </p>
-              <p className="note">
-                Jobs that are discarded (no valid attachments) do not count toward your rate limit.
-              </p>
-            </div>
-          </div>
-
           <div className="example-section">
             <h3>📧 Example Forwarded Email</h3>
             <div className="example-email">

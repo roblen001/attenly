@@ -4,9 +4,7 @@ Credits Router
 API endpoints for managing user credits and viewing usage information.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional
-from datetime import date
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from app.core.deps import get_current_user
@@ -24,9 +22,6 @@ class CreditStatusResponse(BaseModel):
     warning_level: str
     reset_date: str
     days_until_reset: int
-    # Additional debug info (can be hidden in production)
-    cost_used_cad: Optional[float] = None
-    monthly_limit_cad: Optional[float] = None
 
 
 class UsageSummaryItem(BaseModel):
@@ -71,9 +66,7 @@ async def get_credit_status(current_user=Depends(get_current_user)):
         percentage_used=round(status.percentage_used, 2),
         warning_level=status.warning_level,
         reset_date=status.reset_date.isoformat(),
-        days_until_reset=status.days_until_reset,
-        cost_used_cad=round(status.cost_used_cad, 4),
-        monthly_limit_cad=status.monthly_limit_cad
+        days_until_reset=status.days_until_reset
     )
 
 

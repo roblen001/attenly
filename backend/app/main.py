@@ -6,7 +6,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.db import Base, engine
-from app.routers import auth, agents, webhooks, internal, email_ingest
+from app.routers import auth, agents, webhooks, internal, email_ingest, credits
 from app.routes import health
 from app.config import validate_config, get_config_summary
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -123,6 +123,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/auth", tags=["authentication"])
 app.include_router(agents.router, tags=["agents"])
 app.include_router(email_ingest.router, tags=["email-ingest"])
+app.include_router(credits.router, tags=["credits"])
 app.include_router(webhooks.router, tags=["webhooks"])
 app.include_router(internal.router, tags=["internal"])
 

@@ -27,6 +27,7 @@ from app.config import (
 from app.services.email_ingest_service import EmailIngestService
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.services.supabase_service import supabase_service
+from app.services.credit_service import credit_service
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,12 @@ async def handle_inbound_email(request: Request):
         
         endpoint_data = endpoint.data[0]
         user_id = endpoint_data["user_id"]
-        
+
+        # Validate user_id before using it
+        if not user_id:
+            logger.error(f"Email endpoint {to_address} has no user_id")
+            return JSONResponse(content={"status": "ignored", "reason": "invalid_endpoint"})
+
         if not endpoint_data["is_active"]:
             logger.warning(f"Inactive email alias: {to_address}")
             return JSONResponse(content={"status": "ignored", "reason": "inactive_alias"})
@@ -209,12 +215,12 @@ async def handle_inbound_email(request: Request):
             logger.warning(f"Unverified sender: {from_address} for user {user_id}")
             return JSONResponse(content={"status": "ignored", "reason": "unverified_sender"})
         
-        # Step 6: Check rate limit
-        rate_limit_ok, rate_limit_msg = email_ingest_service.check_rate_limit(user_id)
-        
-        if not rate_limit_ok:
-            logger.warning(f"Rate limit exceeded for user {user_id}")
-            
+        # Step 6: Check credit limits (replaces old rate limiting)
+        credit_status = credit_service.check_credits_sync(user_id)
+
+        if credit_status.warning_level == 'blocked':
+            logger.warning(f"Credit limit exceeded for user {user_id}")
+
             job_data = {
                 "user_id": user_id,
                 "ingest_endpoint_id": endpoint_data["id"],
@@ -222,13 +228,13 @@ async def handle_inbound_email(request: Request):
                 "subject": subject[:255],
                 "provider_message_id": provider_message_id,
                 "status": "discarded",
-                "error_message": f"Rate limit exceeded: {rate_limit_msg}",
+                "error_message": "Monthly credit limit reached",
                 "instruction_text": None,
-                "raw_metadata": {"rate_limited": True}
+                "raw_metadata": {"credit_limited": True}
             }
-            
+
             db_client.table("email_jobs").insert(job_data).execute()
-            return JSONResponse(content={"status": "rate_limited"})
+            return JSONResponse(content={"status": "credit_limited"})
         
         # Step 7: Fetch detailed attachment list from Resend Receiving Attachments API
         import httpx

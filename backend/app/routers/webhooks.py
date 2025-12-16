@@ -192,7 +192,12 @@ async def handle_inbound_email(request: Request):
         
         endpoint_data = endpoint.data[0]
         user_id = endpoint_data["user_id"]
-        
+
+        # Validate user_id before using it
+        if not user_id:
+            logger.error(f"Email endpoint {to_address} has no user_id")
+            return JSONResponse(content={"status": "ignored", "reason": "invalid_endpoint"})
+
         if not endpoint_data["is_active"]:
             logger.warning(f"Inactive email alias: {to_address}")
             return JSONResponse(content={"status": "ignored", "reason": "inactive_alias"})

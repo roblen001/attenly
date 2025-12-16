@@ -8,8 +8,7 @@ Integrates with Supabase for persistent storage and provides real-time credit st
 import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
-from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
 
 from app.client import supabase_client
 from app.config import (
@@ -201,8 +200,11 @@ class CreditService:
                 )
 
         except Exception as e:
-            logger.error(f"Failed to check credits for user {user_id}: {e}")
-            # Fail open - allow operation but log error
+            # SECURITY ALERT: Fail-open on credit check error - operation allowed without verification
+            logger.critical(
+                f"SECURITY_ALERT: Credit check failed open for user {user_id}. "
+                f"Error: {e}. User granted default credits without verification."
+            )
             credits_limit = self.cad_to_credits(DEFAULT_MONTHLY_LIMIT_CAD)
             today = date.today()
             if today.month == 12:
@@ -300,9 +302,13 @@ class CreditService:
                 )
 
         except Exception as e:
-            logger.error(f"Failed to consume credits for user {user_id}: {e}")
-            # Fail open - allow the operation but log the error
-            # Still try to log usage
+            # SECURITY ALERT: Fail-open on consume credits error - operation allowed without deduction
+            logger.critical(
+                f"SECURITY_ALERT: Consume credits failed open for user {user_id}. "
+                f"Operation: {operation_type}, Cost: ${cost_cad:.6f} CAD. "
+                f"Error: {e}. Credits not deducted but operation allowed."
+            )
+            # Still try to log usage for auditing
             try:
                 await self._log_usage(
                     user_id=user_id,
@@ -483,7 +489,11 @@ class CreditService:
                 )
 
         except Exception as e:
-            logger.error(f"Failed to check credits for user {user_id}: {e}")
+            # SECURITY ALERT: Fail-open on credit check error - operation allowed without verification
+            logger.critical(
+                f"SECURITY_ALERT: Credit check failed open for user {user_id}. "
+                f"Error: {e}. User granted default credits without verification."
+            )
             credits_limit = self.cad_to_credits(DEFAULT_MONTHLY_LIMIT_CAD)
             today = date.today()
             if today.month == 12:
@@ -566,7 +576,13 @@ class CreditService:
                 )
 
         except Exception as e:
-            logger.error(f"Failed to consume credits for user {user_id}: {e}")
+            # SECURITY ALERT: Fail-open on consume credits error - operation allowed without deduction
+            logger.critical(
+                f"SECURITY_ALERT: Consume credits failed open for user {user_id}. "
+                f"Operation: {operation_type}, Cost: ${cost_cad:.6f} CAD. "
+                f"Error: {e}. Credits not deducted but operation allowed."
+            )
+            # Still try to log usage for auditing
             try:
                 self._log_usage_sync(
                     user_id=user_id,

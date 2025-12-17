@@ -81,6 +81,10 @@ You are allowed to change ONLY these things:
 
    - Inside this fragment, use only these standard HTML tags:
      - `div, p, span, strong, em, h1, h2, h3, ul, ol, li, table, thead, tbody, tr, th, td, br, hr`
+   - **Page breaks**: If the source document contains page breaks, preserve them using the exact HTML comment format: `<!-- pagebreak -->`
+     - This is TinyMCE's standard pagebreak format
+     - Do NOT use `<div class="page-break">`, `<hr>`, or any other format
+     - Place the `<!-- pagebreak -->` comment on its own line where the page break should occur
    - Only use the following CSS classes in `html_body` (no others unless absolutely unavoidable for faithful reproduction):
      - `report-wrapper` (outer container)
      - `report-header`
@@ -196,6 +200,11 @@ In `css`:
 - Only raw CSS rules (no `<style>` tags).
 - Target the selectors listed above.
 - Use neutral, professional, readable styling appropriate for a legal/business report.
+- **CRITICAL - Page Margins**: Do NOT add margins or padding to:
+  - `body` (use `margin: 0; padding: 0;`)
+  - `.report-wrapper` (use `margin: 0; padding: 0;`)
+  - Page margins are handled separately by PDF generation using @page rule
+  - Only use internal spacing (margin/padding) on section elements INSIDE the wrapper
 
 --------------------------------
 FALLBACK BEHAVIOUR
@@ -610,12 +619,16 @@ Finally, output only the JSON object:
         'li': {'value'},
     }
 
+    # Placeholder for preserving pagebreak comments during sanitization
+    PAGEBREAK_PLACEHOLDER = '___ATTENLY_PAGEBREAK_PLACEHOLDER___'
+
     def _sanitize_html(self, html: str) -> str:
         """
         Security validation for HTML output using nh3 allowlist approach.
 
         Uses strict allowlist of tags and attributes to prevent XSS attacks.
         Blocks dangerous URL schemes (javascript:, vbscript:, data:).
+        Preserves TinyMCE pagebreak comments (<!-- pagebreak -->).
         Fails closed - returns empty string on error.
 
         Args:
@@ -628,15 +641,27 @@ Finally, output only the JSON object:
             return ""
 
         try:
+            # Preserve pagebreak comments before sanitization (nh3 strips comments)
+            # Use case-insensitive replacement for variations
+            preserved = re.sub(
+                r'<!--\s*pagebreak\s*-->',
+                self.PAGEBREAK_PLACEHOLDER,
+                html,
+                flags=re.IGNORECASE
+            )
+
             # nh3 uses a different attribute format - convert our format
             # nh3 expects: {"*": {"class", "id"}, "a": {"href"}, ...}
             sanitized = nh3.clean(
-                html,
+                preserved,
                 tags=self.ALLOWED_HTML_TAGS,
                 attributes=self.ALLOWED_HTML_ATTRIBUTES,
                 link_rel="noopener noreferrer",  # Add rel to all links for security
                 url_schemes={'http', 'https', 'mailto'},  # Block javascript:, vbscript:, data:
             )
+
+            # Restore pagebreak comments after sanitization
+            sanitized = sanitized.replace(self.PAGEBREAK_PLACEHOLDER, '<!-- pagebreak -->')
 
             return sanitized
 

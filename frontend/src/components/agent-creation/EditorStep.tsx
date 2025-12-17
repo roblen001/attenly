@@ -38,7 +38,29 @@ const TINYMCE_TOOLBAR = [
 ].join(' | ');
 
 const EXTENDED_VALID_ELEMENTS =
-  "a[class|data-question-id|href|role|tabindex|aria-label|contenteditable],sup[class|data-quote-index]";
+  "a[class|data-question-id|href|role|tabindex|aria-label|contenteditable],sup[class|data-quote-index],div[class|data-mce-type]";
+
+/**
+ * Convert <!-- pagebreak --> HTML comments to visible div elements for TinyMCE editing.
+ * TinyMCE strips HTML comments by default, so we convert them to visible elements.
+ */
+const convertPagebreakCommentsToElements = (html: string): string => {
+  return html.replace(
+    /<!--\s*pagebreak\s*-->/gi,
+    '<div class="mce-pagebreak" data-mce-type="pagebreak">&nbsp;</div>'
+  );
+};
+
+/**
+ * Convert mce-pagebreak div elements back to <!-- pagebreak --> HTML comments for storage.
+ * This ensures the stored format matches TinyMCE's default pagebreak output.
+ */
+const convertPagebreakElementsToComments = (html: string): string => {
+  return html.replace(
+    /<div[^>]*class="[^"]*mce-pagebreak[^"]*"[^>]*>.*?<\/div>/gi,
+    '<!-- pagebreak -->'
+  );
+};
 
 const EDITOR_CONTENT_STYLE = `
   body { 
@@ -67,6 +89,29 @@ const EDITOR_CONTENT_STYLE = `
   }
   a.ai-locked {
     user-select: none;
+  }
+  /* Page break styling - visible in editor */
+  .mce-pagebreak {
+    display: block;
+    border: 0;
+    border-top: 1px dashed #666;
+    margin: 15px 0;
+    padding: 0;
+    height: 1px;
+    cursor: default;
+    page-break-after: always;
+  }
+  .mce-pagebreak::before {
+    content: 'Page Break';
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    color: #666;
+    background: #f5f5f5;
+    padding: 2px 8px;
+    margin: -10px auto 0;
+    width: fit-content;
+    border-radius: 3px;
   }
 `;
 
@@ -370,11 +415,17 @@ const EditorStep: React.FC<EditorStepProps> = ({
         };
 
         const handleInput = () => {
-          latestHtmlRef.current = editor.getContent({ format: 'html' });
+          // Convert pagebreak elements back to comments for storage
+          const rawHtml = editor.getContent({ format: 'html' });
+          latestHtmlRef.current = convertPagebreakElementsToComments(rawHtml);
         };
 
         const handleBlur = () => {
-          onTemplateChange(latestHtmlRef.current);
+          // Ensure pagebreaks are converted to comments before saving
+          const rawHtml = editor.getContent({ format: 'html' });
+          const htmlWithComments = convertPagebreakElementsToComments(rawHtml);
+          latestHtmlRef.current = htmlWithComments;
+          onTemplateChange(htmlWithComments);
         };
 
         editor.on('click', handlePlaceholderClick);
@@ -454,10 +505,12 @@ const EditorStep: React.FC<EditorStepProps> = ({
             // Priority: reportTemplate (existing/edited) > initialTemplateHtml (from DOCX) > empty
             const contentToLoad = reportTemplate || initialTemplateHtml || '';
             if (contentToLoad) {
-              editor.setContent(contentToLoad);
+              // Convert pagebreak comments to visible elements before loading into editor
+              const contentWithVisiblePagebreaks = convertPagebreakCommentsToElements(contentToLoad);
+              editor.setContent(contentWithVisiblePagebreaks);
             }
           }}
-          initialValue={reportTemplate || initialTemplateHtml || ''}
+          initialValue={convertPagebreakCommentsToElements(reportTemplate || initialTemplateHtml || '')}
           init={editorConfig}
         />
       </div>
@@ -505,9 +558,11 @@ const EditorStep: React.FC<EditorStepProps> = ({
           disabled={questions.length === 0}
           onClick={() => {
             const ed = editorRef.current;
-            const html = ed
+            const rawHtml = ed
               ? ed.getContent({ format: 'html' })
               : latestHtmlRef.current;
+            // Convert pagebreak elements back to comments for storage
+            const html = convertPagebreakElementsToComments(rawHtml);
             if (html !== reportTemplate) {
               onTemplateChange(html);
             }

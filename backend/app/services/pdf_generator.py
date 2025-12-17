@@ -29,8 +29,12 @@ class WeasyPrintPDFGenerator:
         return html.escape(str(text)) if text else ""
 
     def _render_string_answer(self, answer: str) -> str:
-        """Render a string answer (default behavior)"""
-        return self._escape_html(answer) if answer else ""
+        """Render a string answer (default behavior), preserving newlines"""
+        if not answer:
+            return ""
+        # Escape HTML and convert newlines to <br> tags for PDF rendering
+        escaped = self._escape_html(answer)
+        return escaped.replace('\n', '<br>')
 
     def _render_list_answer(self, answer: Union[List[str], str]) -> str:
         """
@@ -227,22 +231,13 @@ class WeasyPrintPDFGenerator:
                     question.answer_type == AnswerType.STRING
                 )
 
-                if quotes and answer_html and should_add_refs:
-                    if with_references:
-                        # Use square brackets for references [1] [2] [3]
-                        references = []
-                        for i in range(len(quotes)):
-                            references.append(f'[{self.quote_counter + i}]')
-                        reference_text = ''.join(references)
-                        answer_with_refs = f"{answer_html}{reference_text}"
-                    else:
-                        # Use superscript numbers
-                        superscripts = []
-                        for i in range(len(quotes)):
-                            superscripts.append(f'<sup>{self.quote_counter + i}</sup>')
-                        reference_text = ''.join(superscripts)
-                        answer_with_refs = f"{answer_html}{reference_text}"
+                if quotes and answer_html and should_add_refs and with_references:
+                    # Only add reference numbers when downloading WITH references
+                    references = [f'[{self.quote_counter + i}]' for i in range(len(quotes))]
+                    reference_text = ' '.join(references)
+                    answer_with_refs = f"{answer_html} {reference_text}"
                 else:
+                    # No reference numbers when downloading WITHOUT references
                     answer_with_refs = answer_html
 
                 populated_html = populated_html.replace(placeholder_pattern, answer_with_refs)
@@ -336,42 +331,112 @@ class WeasyPrintPDFGenerator:
     def _inject_css(self, html_content: str, agent: Agent) -> str:
         """
         Inject CSS into HTML for PDF rendering.
-        
-        If agent has report_template_css, uses that.
-        Otherwise, uses DEFAULT_TEMPLATE_CSS for backward compatibility.
-        
+
+        Extracts both body content AND embedded CSS from full HTML documents.
+        Combines with essential page rules for consistent PDF output.
+
         Args:
-            html_content: The populated HTML content (body fragment)
+            html_content: The populated HTML content (may be body fragment or full HTML doc)
             agent: Agent with CSS configuration
-            
+
         Returns:
             Complete HTML document with CSS injected
         """
-        # Get CSS from agent or use default
-        css_content = None
-        if hasattr(agent, 'reportTemplateCss') and agent.reportTemplateCss:
-            css_content = agent.reportTemplateCss
-            logger.info(f"Using custom CSS from agent for PDF generation")
-        else:
-            # Fallback to default CSS for backward compatibility
-            from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
-            css_content = DEFAULT_TEMPLATE_CSS
-            logger.info(f"Using default CSS for PDF generation (no custom CSS found)")
+        from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 
-        # Wrap HTML body in complete document structure with CSS
+        # Essential PDF page rules (always applied first)
+        base_css = """
+/* Essential PDF page rules */
+@page {
+    size: letter;
+    margin: 0.75in;
+}
+
+/* TinyMCE page breaks - multiple selectors for all variations */
+.mce-pagebreak,
+hr.mce-pagebreak,
+div.mce-pagebreak,
+[data-mce-type="pagebreak"] {
+    page-break-before: always !important;
+    page-break-after: always !important;
+    display: block !important;
+    height: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: hidden;
+}
+
+/* Generic page break class */
+.page-break {
+    page-break-before: always !important;
+    display: block;
+    height: 0;
+}
+
+/* Text flow rules */
+p, li {
+    orphans: 2;
+    widows: 2;
+}
+
+/* Preserve whitespace and newlines in content */
+p, span, td, li {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+"""
+
+        # Extract embedded CSS and body from full HTML documents
+        template_css = ""
+        body_content = html_content
+
+        if '<html' in html_content.lower():
+            # Extract CSS from <style> tags
+            style_matches = re.findall(r'<style[^>]*>(.*?)</style>', html_content, re.IGNORECASE | re.DOTALL)
+            if style_matches:
+                template_css = '\n'.join(style_matches)
+                logger.info("Extracted embedded CSS from template HTML")
+
+            # Extract body content
+            body_match = re.search(r'<body[^>]*>(.*?)</body>', html_content, re.IGNORECASE | re.DOTALL)
+            if body_match:
+                body_content = body_match.group(1).strip()
+                logger.info("Extracted body content from full HTML document")
+
+        # Determine content CSS:
+        # 1. If agent has reportTemplateCss, use it (custom agents with separate CSS)
+        # 2. Else if template has embedded CSS, use it (prebuilt agents)
+        # 3. Else use DEFAULT_TEMPLATE_CSS (fallback)
+        if hasattr(agent, 'reportTemplateCss') and agent.reportTemplateCss:
+            content_css = agent.reportTemplateCss
+            logger.info("Using custom CSS from agent.reportTemplateCss")
+        elif template_css:
+            content_css = template_css
+            logger.info("Using embedded CSS from template HTML")
+        else:
+            content_css = DEFAULT_TEMPLATE_CSS
+            logger.info("Using DEFAULT_TEMPLATE_CSS (fallback)")
+
+        # Combine base rules + content CSS
+        final_css = base_css + "\n" + content_css
+
+        # Build clean HTML document with .report-html wrapper for CSS selector matching
         complete_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <style>
-{css_content}
+{final_css}
     </style>
 </head>
 <body>
-{html_content}
+<div class="report-html">
+{body_content}
+</div>
 </body>
 </html>"""
-        
+
         return complete_html
 
 

@@ -23,6 +23,23 @@ DEFAULT_TEMPLATE_CSS = """
     margin: 0.75in;
 }
 
+/* TinyMCE page breaks */
+.mce-pagebreak {
+    page-break-before: always;
+    display: block;
+    height: 0;
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/* Generic page break class */
+.page-break {
+    page-break-before: always;
+    display: block;
+    height: 0;
+}
+
 /* Base document styles */
 body {
     font-family: "Calibri", Arial, sans-serif;
@@ -34,10 +51,10 @@ body {
     padding: 0;
 }
 
-/* Main template wrapper */
+/* Main template wrapper - no margins/padding, page margins handled by @page */
 .report-wrapper {
-    max-width: 800px;
-    margin: 0 auto;
+    margin: 0;
+    padding: 0;
     background-color: #fff;
 }
 
@@ -265,6 +282,12 @@ hr {
     border: none;
     border-top: 1px solid #bdc3c7;
     margin: 20px 0;
+}
+
+/* Text flow rules - prevent orphans and widows */
+p, li {
+    orphans: 2;
+    widows: 2;
 }
 
 /* Print-specific adjustments */

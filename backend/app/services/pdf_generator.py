@@ -13,6 +13,8 @@ import json
 from io import BytesIO
 from typing import Dict, Any, List, Optional, Union
 from weasyprint import HTML, CSS
+from bs4 import BeautifulSoup
+from markupsafe import Markup
 from app.schemas import Agent, QuestionOut, AnswerType, ColumnDefinition
 
 logger = logging.getLogger(__name__)
@@ -29,8 +31,12 @@ class WeasyPrintPDFGenerator:
         return html.escape(str(text)) if text else ""
 
     def _render_string_answer(self, answer: str) -> str:
-        """Render a string answer (default behavior)"""
-        return self._escape_html(answer) if answer else ""
+        """Render a string answer (default behavior), preserving newlines"""
+        if not answer:
+            return ""
+        # Escape HTML and convert newlines to <br> tags for PDF rendering
+        escaped = self._escape_html(answer)
+        return Markup(escaped.replace('\n', '<br>'))
 
     def _render_list_answer(self, answer: Union[List[str], str]) -> str:
         """
@@ -175,7 +181,10 @@ class WeasyPrintPDFGenerator:
             # Add reference section if requested
             if with_references:
                 populated_html = self._add_reference_section(populated_html, report_data)
-            
+
+            # Convert TinyMCE pagebreak comments to styled elements
+            populated_html = self._convert_pagebreak_comments(populated_html)
+
             # Inject CSS into HTML for PDF rendering
             populated_html = self._inject_css(populated_html, agent)
 
@@ -227,28 +236,50 @@ class WeasyPrintPDFGenerator:
                     question.answer_type == AnswerType.STRING
                 )
 
-                if quotes and answer_html and should_add_refs:
-                    if with_references:
-                        # Use square brackets for references [1] [2] [3]
-                        references = []
-                        for i in range(len(quotes)):
-                            references.append(f'[{self.quote_counter + i}]')
-                        reference_text = ''.join(references)
-                        answer_with_refs = f"{answer_html}{reference_text}"
-                    else:
-                        # Use superscript numbers
-                        superscripts = []
-                        for i in range(len(quotes)):
-                            superscripts.append(f'<sup>{self.quote_counter + i}</sup>')
-                        reference_text = ''.join(superscripts)
-                        answer_with_refs = f"{answer_html}{reference_text}"
+                if quotes and answer_html and should_add_refs and with_references:
+                    # Only add reference numbers when downloading WITH references
+                    references = [f'[{self.quote_counter + i}]' for i in range(len(quotes))]
+                    reference_text = ' '.join(references)
+                    answer_with_refs = f"{answer_html} {reference_text}"
                 else:
+                    # No reference numbers when downloading WITHOUT references
                     answer_with_refs = answer_html
 
                 populated_html = populated_html.replace(placeholder_pattern, answer_with_refs)
                 self.quote_counter += len(quotes)
 
         return populated_html
+
+    def _convert_pagebreak_comments(self, html_content: str) -> str:
+        """
+        Convert TinyMCE pagebreak HTML comments to styled div elements.
+
+        TinyMCE's pagebreak plugin outputs <!-- pagebreak --> comments by default.
+        This method converts them to <div class="mce-pagebreak"></div> elements
+        that can be styled with CSS for proper page breaks in PDF output.
+
+        Args:
+            html_content: HTML string that may contain pagebreak comments
+
+        Returns:
+            HTML string with pagebreak comments converted to div elements
+        """
+        # TinyMCE default pagebreak format
+        pagebreak_comment = '<!-- pagebreak -->'
+        pagebreak_element = '<div class="mce-pagebreak"></div>'
+
+        # Replace all pagebreak comments with styled elements
+        converted = html_content.replace(pagebreak_comment, pagebreak_element)
+
+        # Also handle variations (case-insensitive, with extra whitespace)
+        converted = re.sub(
+            r'<!--\s*pagebreak\s*-->',
+            pagebreak_element,
+            converted,
+            flags=re.IGNORECASE
+        )
+
+        return converted
 
     def _add_reference_section(self, html_content: str, report_data: Dict[str, Any]) -> str:
         """Add professional reference section to HTML before PDF generation"""
@@ -336,42 +367,135 @@ class WeasyPrintPDFGenerator:
     def _inject_css(self, html_content: str, agent: Agent) -> str:
         """
         Inject CSS into HTML for PDF rendering.
-        
-        If agent has report_template_css, uses that.
-        Otherwise, uses DEFAULT_TEMPLATE_CSS for backward compatibility.
-        
+
+        Extracts both body content AND embedded CSS from full HTML documents.
+        Combines with essential page rules for consistent PDF output.
+
         Args:
-            html_content: The populated HTML content (body fragment)
+            html_content: The populated HTML content (may be body fragment or full HTML doc)
             agent: Agent with CSS configuration
-            
+
         Returns:
             Complete HTML document with CSS injected
         """
-        # Get CSS from agent or use default
-        css_content = None
-        if hasattr(agent, 'reportTemplateCss') and agent.reportTemplateCss:
-            css_content = agent.reportTemplateCss
-            logger.info(f"Using custom CSS from agent for PDF generation")
-        else:
-            # Fallback to default CSS for backward compatibility
-            from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
-            css_content = DEFAULT_TEMPLATE_CSS
-            logger.info(f"Using default CSS for PDF generation (no custom CSS found)")
+        from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 
-        # Wrap HTML body in complete document structure with CSS
+        # Essential PDF page rules (always applied first)
+        base_css = """
+/* Essential PDF page rules */
+@page {
+    size: letter;
+    margin: 0.75in;
+}
+
+/* TinyMCE page breaks - multiple selectors for all variations */
+.mce-pagebreak,
+hr.mce-pagebreak,
+div.mce-pagebreak,
+[data-mce-type="pagebreak"] {
+    page-break-after: always !important;
+    break-after: page !important;
+    display: block !important;
+    height: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: hidden !important;
+}
+
+/* Generic page break class */
+.page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+    display: block;
+    height: 0;
+}
+
+/* Text flow rules */
+p, li {
+    orphans: 2;
+    widows: 2;
+}
+
+/* Table flow rules - allow tables to split across pages but keep rows intact */
+table {
+    page-break-inside: auto;
+}
+
+tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+}
+
+thead {
+    display: table-header-group;
+}
+
+tfoot {
+    display: table-footer-group;
+}
+
+/* Preserve whitespace and newlines in content */
+p, span, td, li {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+"""
+
+        # Extract embedded CSS and body from full HTML documents
+        template_css = ""
+        body_content = html_content
+
+        if '<html' in html_content.lower():
+            # Use BeautifulSoup to parse HTML safely (avoids regex DoS vulnerabilities)
+            soup = BeautifulSoup(html_content, 'html.parser')
+
+            # Extract CSS from <style> tags
+            style_tags = soup.find_all('style')
+            if style_tags:
+                template_css = '\n'.join(tag.string for tag in style_tags if tag.string)
+                logger.info("Extracted embedded CSS from template HTML")
+
+            # Extract body content
+            body_tag = soup.find('body')
+            if body_tag:
+                # Get inner HTML of body tag
+                body_content = ''.join(str(child) for child in body_tag.children).strip()
+                logger.info("Extracted body content from full HTML document")
+
+        # Determine content CSS:
+        # 1. If agent has reportTemplateCss, use it (custom agents with separate CSS)
+        # 2. Else if template has embedded CSS, use it (prebuilt agents)
+        # 3. Else use DEFAULT_TEMPLATE_CSS (fallback)
+        if hasattr(agent, 'reportTemplateCss') and agent.reportTemplateCss:
+            content_css = agent.reportTemplateCss
+            logger.info("Using custom CSS from agent.reportTemplateCss")
+        elif template_css:
+            content_css = template_css
+            logger.info("Using embedded CSS from template HTML")
+        else:
+            content_css = DEFAULT_TEMPLATE_CSS
+            logger.info("Using DEFAULT_TEMPLATE_CSS (fallback)")
+
+        # Combine base rules + content CSS
+        final_css = base_css + "\n" + content_css
+
+        # Build clean HTML document with .report-html wrapper for CSS selector matching
         complete_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <style>
-{css_content}
+{final_css}
     </style>
 </head>
 <body>
-{html_content}
+<div class="report-html">
+{body_content}
+</div>
 </body>
 </html>"""
-        
+
         return complete_html
 
 

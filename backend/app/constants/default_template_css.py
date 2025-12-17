@@ -23,6 +23,29 @@ DEFAULT_TEMPLATE_CSS = """
     margin: 0.75in;
 }
 
+/* TinyMCE page breaks */
+.mce-pagebreak,
+hr.mce-pagebreak,
+div.mce-pagebreak,
+[data-mce-type="pagebreak"] {
+    page-break-after: always;
+    break-after: page;
+    display: block;
+    height: 0;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    visibility: hidden;
+}
+
+/* Generic page break class */
+.page-break {
+    page-break-after: always;
+    break-after: page;
+    display: block;
+    height: 0;
+}
+
 /* Base document styles */
 body {
     font-family: "Calibri", Arial, sans-serif;
@@ -34,10 +57,10 @@ body {
     padding: 0;
 }
 
-/* Main template wrapper */
+/* Main template wrapper - no margins/padding, page margins handled by @page */
 .report-wrapper {
-    max-width: 800px;
-    margin: 0 auto;
+    margin: 0;
+    padding: 0;
     background-color: #fff;
 }
 
@@ -267,6 +290,12 @@ hr {
     margin: 20px 0;
 }
 
+/* Text flow rules - prevent orphans and widows */
+p, li {
+    orphans: 2;
+    widows: 2;
+}
+
 /* Print-specific adjustments */
 @media print {
     body {
@@ -278,12 +307,26 @@ hr {
         max-width: 100%;
     }
 
-    .section {
-        page-break-inside: avoid;
-    }
-
     .signature-block {
         page-break-before: auto;
     }
+}
+
+/* Table flow rules - allow tables to split across pages but keep rows intact */
+table {
+    page-break-inside: auto;
+}
+
+tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+}
+
+thead {
+    display: table-header-group;
+}
+
+tfoot {
+    display: table-footer-group;
 }
 """

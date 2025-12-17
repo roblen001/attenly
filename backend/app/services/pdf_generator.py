@@ -13,6 +13,8 @@ import json
 from io import BytesIO
 from typing import Dict, Any, List, Optional, Union
 from weasyprint import HTML, CSS
+from bs4 import BeautifulSoup
+from markupsafe import Markup
 from app.schemas import Agent, QuestionOut, AnswerType, ColumnDefinition
 
 logger = logging.getLogger(__name__)
@@ -34,7 +36,7 @@ class WeasyPrintPDFGenerator:
             return ""
         # Escape HTML and convert newlines to <br> tags for PDF rendering
         escaped = self._escape_html(answer)
-        return escaped.replace('\n', '<br>')
+        return Markup(escaped.replace('\n', '<br>'))
 
     def _render_list_answer(self, answer: Union[List[str], str]) -> str:
         """
@@ -179,7 +181,10 @@ class WeasyPrintPDFGenerator:
             # Add reference section if requested
             if with_references:
                 populated_html = self._add_reference_section(populated_html, report_data)
-            
+
+            # Convert TinyMCE pagebreak comments to styled elements
+            populated_html = self._convert_pagebreak_comments(populated_html)
+
             # Inject CSS into HTML for PDF rendering
             populated_html = self._inject_css(populated_html, agent)
 
@@ -244,6 +249,37 @@ class WeasyPrintPDFGenerator:
                 self.quote_counter += len(quotes)
 
         return populated_html
+
+    def _convert_pagebreak_comments(self, html_content: str) -> str:
+        """
+        Convert TinyMCE pagebreak HTML comments to styled div elements.
+
+        TinyMCE's pagebreak plugin outputs <!-- pagebreak --> comments by default.
+        This method converts them to <div class="mce-pagebreak"></div> elements
+        that can be styled with CSS for proper page breaks in PDF output.
+
+        Args:
+            html_content: HTML string that may contain pagebreak comments
+
+        Returns:
+            HTML string with pagebreak comments converted to div elements
+        """
+        # TinyMCE default pagebreak format
+        pagebreak_comment = '<!-- pagebreak -->'
+        pagebreak_element = '<div class="mce-pagebreak"></div>'
+
+        # Replace all pagebreak comments with styled elements
+        converted = html_content.replace(pagebreak_comment, pagebreak_element)
+
+        # Also handle variations (case-insensitive, with extra whitespace)
+        converted = re.sub(
+            r'<!--\s*pagebreak\s*-->',
+            pagebreak_element,
+            converted,
+            flags=re.IGNORECASE
+        )
+
+        return converted
 
     def _add_reference_section(self, html_content: str, report_data: Dict[str, Any]) -> str:
         """Add professional reference section to HTML before PDF generation"""
@@ -357,19 +393,20 @@ class WeasyPrintPDFGenerator:
 hr.mce-pagebreak,
 div.mce-pagebreak,
 [data-mce-type="pagebreak"] {
-    page-break-before: always !important;
     page-break-after: always !important;
+    break-after: page !important;
     display: block !important;
     height: 0 !important;
     border: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    visibility: hidden;
+    visibility: hidden !important;
 }
 
 /* Generic page break class */
 .page-break {
-    page-break-before: always !important;
+    page-break-after: always !important;
+    break-after: page !important;
     display: block;
     height: 0;
 }
@@ -378,6 +415,24 @@ div.mce-pagebreak,
 p, li {
     orphans: 2;
     widows: 2;
+}
+
+/* Table flow rules - allow tables to split across pages but keep rows intact */
+table {
+    page-break-inside: auto;
+}
+
+tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+}
+
+thead {
+    display: table-header-group;
+}
+
+tfoot {
+    display: table-footer-group;
 }
 
 /* Preserve whitespace and newlines in content */
@@ -392,16 +447,20 @@ p, span, td, li {
         body_content = html_content
 
         if '<html' in html_content.lower():
+            # Use BeautifulSoup to parse HTML safely (avoids regex DoS vulnerabilities)
+            soup = BeautifulSoup(html_content, 'html.parser')
+
             # Extract CSS from <style> tags
-            style_matches = re.findall(r'<style[^>]*>(.*?)</style>', html_content, re.IGNORECASE | re.DOTALL)
-            if style_matches:
-                template_css = '\n'.join(style_matches)
+            style_tags = soup.find_all('style')
+            if style_tags:
+                template_css = '\n'.join(tag.string for tag in style_tags if tag.string)
                 logger.info("Extracted embedded CSS from template HTML")
 
             # Extract body content
-            body_match = re.search(r'<body[^>]*>(.*?)</body>', html_content, re.IGNORECASE | re.DOTALL)
-            if body_match:
-                body_content = body_match.group(1).strip()
+            body_tag = soup.find('body')
+            if body_tag:
+                # Get inner HTML of body tag
+                body_content = ''.join(str(child) for child in body_tag.children).strip()
                 logger.info("Extracted body content from full HTML document")
 
         # Determine content CSS:

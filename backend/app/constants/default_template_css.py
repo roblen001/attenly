@@ -24,18 +24,24 @@ DEFAULT_TEMPLATE_CSS = """
 }
 
 /* TinyMCE page breaks */
-.mce-pagebreak {
-    page-break-before: always;
+.mce-pagebreak,
+hr.mce-pagebreak,
+div.mce-pagebreak,
+[data-mce-type="pagebreak"] {
+    page-break-after: always;
+    break-after: page;
     display: block;
     height: 0;
     border: 0;
     margin: 0;
     padding: 0;
+    visibility: hidden;
 }
 
 /* Generic page break class */
 .page-break {
-    page-break-before: always;
+    page-break-after: always;
+    break-after: page;
     display: block;
     height: 0;
 }
@@ -301,12 +307,26 @@ p, li {
         max-width: 100%;
     }
 
-    .section {
-        page-break-inside: avoid;
-    }
-
     .signature-block {
         page-break-before: auto;
     }
+}
+
+/* Table flow rules - allow tables to split across pages but keep rows intact */
+table {
+    page-break-inside: auto;
+}
+
+tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+}
+
+thead {
+    display: table-header-group;
+}
+
+tfoot {
+    display: table-footer-group;
 }
 """

@@ -196,6 +196,11 @@ In `css`:
 - Only raw CSS rules (no `<style>` tags).
 - Target the selectors listed above.
 - Use neutral, professional, readable styling appropriate for a legal/business report.
+- **CRITICAL - Page Margins**: Do NOT add margins or padding to:
+  - `body` (use `margin: 0; padding: 0;`)
+  - `.report-wrapper` (use `margin: 0; padding: 0;`)
+  - Page margins are handled separately by PDF generation using @page rule
+  - Only use internal spacing (margin/padding) on section elements INSIDE the wrapper
 
 --------------------------------
 FALLBACK BEHAVIOUR

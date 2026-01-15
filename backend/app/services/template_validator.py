@@ -3,7 +3,7 @@ Template Validator Service
 
 Validates uploaded template files before processing:
 - Checks file type (DOCX, PDF, HTML)
-- Enforces 2-page limit
+- Enforces 5-page limit
 - Uses PyMuPDF for exact PDF page counting
 - Estimates pages for DOCX/HTML based on character count (~1800 chars/page)
 """
@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 class TemplateValidator:
     """Stateless service for template file validation"""
-    
-    MAX_PAGES = 2
+
+    MAX_PAGES = 5
     CHARS_PER_PAGE = 1800  # Approximate characters per page
     MAX_FILE_SIZE_MB = 10  # Maximum file size
     ALLOWED_EXTENSIONS = ['.docx', '.pdf', '.html', '.htm']

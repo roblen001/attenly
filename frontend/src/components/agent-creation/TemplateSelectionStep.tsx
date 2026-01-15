@@ -10,6 +10,8 @@ interface TemplateSelectionStepProps {
   onSelectTemplate: (htmlContent: string, cssContent: string, source: string) => void;
   onProcessingStart: () => void;
   onProcessingEnd: () => void;
+  uploadError: string | null;
+  onUploadError: (error: string | null) => void;
 }
 
 const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
@@ -18,10 +20,11 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
   onSelectTemplate,
   onProcessingStart,
   onProcessingEnd,
+  uploadError,
+  onUploadError,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
 
   const handleTemplateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,12 +37,12 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
     const isValidType = validExtensions.some(ext => fileName.endsWith(ext));
 
     if (!isValidType) {
-      setError('Please select a valid template file (.docx, .pdf, or .html)');
+      onUploadError('Please select a valid template file (.docx, .pdf, or .html)');
       return;
     }
 
     setIsProcessing(true);
-    setError(null);
+    onUploadError(null);
     setWarnings([]);
     onProcessingStart(); // Show full-screen loading state
 
@@ -57,7 +60,7 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
       const result: TemplateIngestResponse = await response.json();
 
       if (!result.success) {
-        setError(result.error || 'Failed to process template file');
+        onUploadError(result.error || 'Failed to process template file');
         onProcessingEnd(); // Hide loading state on error
         return;
       }
@@ -75,11 +78,30 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
       onProcessingEnd(); // Hide loading state on success
     } catch (err) {
       console.error('Template upload error:', err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to upload template. Please try again.'
-      );
+      let errorMessage = 'Failed to upload template. Please try again.';
+
+      if (err instanceof Error) {
+        // The api helper throws errors like "400 {...json...}"
+        // Try to extract the JSON error message from the response
+        const errorText = err.message;
+        const jsonStartIndex = errorText.indexOf('{');
+        if (jsonStartIndex !== -1) {
+          try {
+            const jsonPart = errorText.substring(jsonStartIndex);
+            const parsed = JSON.parse(jsonPart);
+            if (parsed.error) {
+              errorMessage = parsed.error;
+            }
+          } catch {
+            // If JSON parsing fails, use a generic message
+            errorMessage = 'Failed to upload template. Please try again.';
+          }
+        } else {
+          errorMessage = errorText;
+        }
+      }
+
+      onUploadError(errorMessage);
       onProcessingEnd(); // Hide loading state on error
     } finally {
       setIsProcessing(false);
@@ -108,16 +130,16 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
       <div className="step-header">
         <h2>Choose Your Starting Point</h2>
         <p>
-          Start with a blank template or upload your own from your existing company workflows (DOCX, PDF, or HTML, max 2 pages).
+          Start with a blank template or upload your own from your existing company workflows (DOCX, PDF, or HTML, max 5 pages).
         </p>
       </div>
 
-      {error && (
+      {uploadError && (
         <div className="template-error-message">
           <span className="error-icon">!</span>
-          <span className="error-text">{error}</span>
+          <span className="error-text">{uploadError}</span>
           <button
-            onClick={() => setError(null)}
+            onClick={() => onUploadError(null)}
             className="error-dismiss"
             aria-label="Dismiss error"
           >
@@ -185,12 +207,12 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
           <p>
             {isProcessing
               ? 'Normalizing your template...'
-              : 'Upload DOCX, PDF, or HTML template (max 2 pages) to get started quickly.'}
+              : 'Upload DOCX, PDF, or HTML template (max 5 pages) to get started quickly.'}
           </p>
           <div className="option-features">
             <span className="feature-tag">AI-Powered</span>
             <span className="feature-tag">Multi-Format</span>
-            <span className="feature-tag">2-Page Limit</span>
+            <span className="feature-tag">5-Page Limit</span>
           </div>
           {isProcessing && <div className="converting-spinner" />}
         </div>

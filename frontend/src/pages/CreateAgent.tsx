@@ -74,6 +74,7 @@ const CreateAgent: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [loadingAgent, setLoadingAgent] = useState(isEditMode);
   const [isProcessingTemplate, setIsProcessingTemplate] = useState(false);
+  const [templateUploadError, setTemplateUploadError] = useState<string | null>(null);
 
   // Fetch agent data for edit mode
   useEffect(() => {
@@ -333,14 +334,19 @@ const CreateAgent: React.FC = () => {
             onSelectScratch={() => handleStepChange('editor', { initialTemplateHtml: '', reportTemplateCss: '' })}
             onSelectTemplate={(htmlContent, cssContent, source) => {
               console.log(`Template uploaded via ${source}, CSS length: ${cssContent.length}`);
-              handleStepChange('editor', { 
+              handleStepChange('editor', {
                 reportTemplate: htmlContent,
                 reportTemplateCss: cssContent,
-                initialTemplateHtml: htmlContent 
+                initialTemplateHtml: htmlContent
               });
             }}
-            onProcessingStart={() => setIsProcessingTemplate(true)}
+            onProcessingStart={() => {
+              setTemplateUploadError(null);
+              setIsProcessingTemplate(true);
+            }}
             onProcessingEnd={() => setIsProcessingTemplate(false)}
+            uploadError={templateUploadError}
+            onUploadError={setTemplateUploadError}
           />
         );
 

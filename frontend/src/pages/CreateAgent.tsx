@@ -300,7 +300,7 @@ const CreateAgent: React.FC = () => {
         return (
           <div className="step-content">
             <h2>Upload Example Documents</h2>
-            <p>Upload 1-3 example documents that represent the type of files your agent will process. These help the AI understand your document structure and content.</p>
+            <p>Upload 1-3 source documents that your agent will extract information from to fill a single report. Multiple documents can be combined as sources for one report.</p>
 
             <FileUpload
               files={uploadedFiles}

@@ -1,0 +1,69 @@
+# TODO: Re-enable and expand CI when ready:
+#   - Backend: verify lint (black, isort, pyright) and pytest pass in the Poetry env
+#   - Frontend: add a job for the React/Next.js app (npm install, eslint, tsc, vitest/jest)
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-root
+
+      - name: Black (formatting)
+        run: poetry run black --check .
+
+      - name: isort (import order)
+        run: poetry run isort --check-only .
+
+      - name: Pyright (type checking)
+        run: poetry run pyright
+
+  test:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-root
+
+      - name: Run tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: poetry run pytest --timeout=60 -n auto -q

@@ -1547,7 +1547,7 @@ async def preload_saved_report_documents(
             
             try:
                 # Download PDF from Storage
-                pdf_bytes = storage_service.download_file(
+                pdf_bytes = storage_service.download_document(
                     access_token=access_token,
                     refresh_token=refresh_token,
                     user_id=user_id,

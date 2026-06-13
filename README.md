@@ -41,6 +41,13 @@ cp .env.default.example .env
 Fill in:
 
 ```bash
+APP_PROFILE=default
+AUTH_PROVIDER=supabase
+DATABASE_PROVIDER=supabase
+STORAGE_PROVIDER=supabase
+LLM_PROVIDER=gemini
+EMBEDDING_PROVIDER=gemini
+
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
@@ -59,6 +66,8 @@ Email ingest is optional. Add these only if you use Resend inbound email:
 RESEND_API_KEY=re_your_resend_api_key
 RESEND_WEBHOOK_SECRET=your_resend_webhook_secret
 INTERNAL_CRON_SECRET=generate-a-long-random-secret
+OUTBOUND_EMAIL_PROVIDER=resend
+INBOUND_EMAIL_PROVIDER=resend
 ```
 
 Redis is not required for the current app.
@@ -123,14 +132,18 @@ the target adapter model.
 
 The default profile uses the providers the app was originally built to support:
 
-- `AUTH_PROVIDER=supabase` (planned config name)
-- `DATABASE_PROVIDER=supabase` (planned config name)
-- `STORAGE_PROVIDER=supabase` (planned config name)
-- `LLM_PROVIDER=gemini` (planned config name)
-- `EMAIL_PROVIDER=resend` or `EMAIL_PROVIDER=none` (planned config name)
+- `APP_PROFILE=default`
+- `AUTH_PROVIDER=supabase`
+- `DATABASE_PROVIDER=supabase`
+- `STORAGE_PROVIDER=supabase`
+- `LLM_PROVIDER=gemini`
+- `EMBEDDING_PROVIDER=gemini`
+- `OUTBOUND_EMAIL_PROVIDER=resend` or omitted when email is disabled
+- `INBOUND_EMAIL_PROVIDER=resend` or omitted when email is disabled
 
-These provider names describe the intended adapter model. The current code still
-uses the existing Supabase, Gemini, and Resend environment variables directly.
+These provider names are recognized by the backend config scaffold. The current
+runtime still supports only the default providers; local and enterprise provider
+implementations will land in later branches.
 
 ### Enterprise Example
 
@@ -139,7 +152,8 @@ Graph mail, and no shared SQL service yet, the intended future configuration is
 shown in `.env.enterprise.example`.
 
 That profile is not implemented yet. It is the target for the provider-interface
-refactor.
+refactor. If selected today, the backend will fail startup with a clear
+"not runtime-supported yet" configuration error.
 
 ## Development Setup
 

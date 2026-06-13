@@ -13,14 +13,13 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
-from svix.webhooks import Webhook, WebhookVerificationError
-from supabase import create_client
 
 from app.config import (
     EMAIL_ALLOWED_EXTENSIONS,
     EMAIL_MAX_ATTACHMENTS,
     EMAIL_MAX_ATTACHMENT_SIZE_MB,
     EMAIL_MAX_TOTAL_SIZE_MB,
+    INBOUND_EMAIL_PROVIDER,
     RESEND_WEBHOOK_SECRET,
     RESEND_API_KEY
 )
@@ -34,7 +33,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 email_ingest_service = EmailIngestService()
-storage_service = SupabaseStorageService()
+
+
+def get_storage_service() -> SupabaseStorageService:
+    return SupabaseStorageService()
+
+
+def create_service_role_client():
+    from supabase import create_client
+
+    return create_client(
+        supabase_service.supabase_url,
+        supabase_service.supabase_service_key
+    )
+
+
+def verify_resend_webhook(raw_body: bytes, headers: dict):
+    from svix.webhooks import Webhook, WebhookVerificationError
+
+    try:
+        wh = Webhook(RESEND_WEBHOOK_SECRET)
+        payload = wh.verify(raw_body, headers)
+        logger.info("Webhook signature verified successfully")
+        return payload, None
+    except WebhookVerificationError as exc:
+        logger.warning(f"Invalid webhook signature: {exc}")
+        return None, "Invalid webhook signature"
+    except Exception as exc:
+        logger.error(f"Error verifying webhook signature: {exc}")
+        return None, "Webhook verification failed"
 
 
 def extract_instruction_text(email_body: str) -> str:
@@ -97,6 +124,13 @@ async def handle_inbound_email(request: Request):
         - 200: Valid request (may or may not create job)
     """
     try:
+        if INBOUND_EMAIL_PROVIDER != "resend":
+            logger.info("Inbound Resend webhook called while inbound email provider is disabled")
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"error": "Inbound email webhook is not enabled"}
+            )
+
         # Step 1: Verify webhook signature using Svix
         if not RESEND_WEBHOOK_SECRET:
             logger.error("RESEND_WEBHOOK_SECRET not configured")
@@ -122,21 +156,11 @@ async def handle_inbound_email(request: Request):
             )
         
         # Verify signature using Svix
-        try:
-            wh = Webhook(RESEND_WEBHOOK_SECRET)
-            payload = wh.verify(raw_body, headers)
-            logger.info("Webhook signature verified successfully")
-        except WebhookVerificationError as e:
-            logger.warning(f"Invalid webhook signature: {e}")
+        payload, verification_error = verify_resend_webhook(raw_body, headers)
+        if verification_error:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"error": "Invalid webhook signature"}
-            )
-        except Exception as e:
-            logger.error(f"Error verifying webhook signature: {e}")
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"error": "Webhook verification failed"}
+                content={"error": verification_error}
             )
         
         # Step 2: Parse and process payload (already verified and parsed by Svix)
@@ -163,10 +187,7 @@ async def handle_inbound_email(request: Request):
         
         # Create service role client for system-level database operations
         # Webhooks are system operations without user JWT authentication
-        db_client = create_client(
-            supabase_service.supabase_url,
-            supabase_service.supabase_service_key
-        )
+        db_client = create_service_role_client()
         
         # Step 3: Idempotency check
         existing_job = db_client.table("email_jobs")\
@@ -321,6 +342,7 @@ async def handle_inbound_email(request: Request):
         import uuid
         job_id = str(uuid.uuid4())
         stored_attachments = []
+        storage_service = get_storage_service()
         
         import httpx
         async with httpx.AsyncClient(timeout=30.0) as client:

@@ -68,12 +68,12 @@ ALLOWED_PROVIDER_VALUES: Dict[str, Set[str]] = {
 
 
 CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
-    "auth": {"supabase"},
+    "auth": {"supabase", "local"},
     "database": {"supabase"},
     "storage": {"supabase"},
     "llm": {"gemini"},
     "embedding": {"gemini"},
-    "outbound_email": {"none", "resend"},
+    "outbound_email": {"none", "resend", "microsoft_graph"},
     "inbound_email": {"none", "resend"},
 }
 
@@ -96,6 +96,14 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Local authentication is intended for internal deployments behind an
+# organization-controlled boundary. It accepts one configured bearer token and
+# maps it to a single application user.
+LOCAL_AUTH_TOKEN = os.getenv("LOCAL_AUTH_TOKEN")
+LOCAL_AUTH_USER_ID = os.getenv("LOCAL_AUTH_USER_ID", "local-admin")
+LOCAL_AUTH_EMAIL = os.getenv("LOCAL_AUTH_EMAIL", "local-admin@example.com")
+LOCAL_AUTH_DISPLAY_NAME = os.getenv("LOCAL_AUTH_DISPLAY_NAME", "Local Admin")
 
 # =============================================================================
 # EMAIL SERVICE CONFIGURATION
@@ -407,6 +415,26 @@ def _validate_profile_and_providers(errors: List[str]) -> None:
         if not RESEND_WEBHOOK_SECRET:
             errors.append("RESEND_WEBHOOK_SECRET is required when INBOUND_EMAIL_PROVIDER='resend'")
 
+    if AUTH_PROVIDER == "local" and not LOCAL_AUTH_TOKEN:
+        errors.append("LOCAL_AUTH_TOKEN is required when AUTH_PROVIDER='local'")
+
+    if OUTBOUND_EMAIL_PROVIDER == "microsoft_graph":
+        missing_graph = [
+            name
+            for name, value in {
+                "GRAPH_TENANT_ID": GRAPH_TENANT_ID,
+                "GRAPH_CLIENT_ID": GRAPH_CLIENT_ID,
+                "GRAPH_CLIENT_SECRET": GRAPH_CLIENT_SECRET,
+                "GRAPH_MAILBOX": GRAPH_MAILBOX,
+            }.items()
+            if not value
+        ]
+        if missing_graph:
+            errors.append(
+                "Microsoft Graph outbound email requires: "
+                + ", ".join(missing_graph)
+            )
+
 
 def validate_config():
     errors = []
@@ -566,6 +594,11 @@ def get_config_summary() -> dict:
         },
         "environment": ENVIRONMENT,
         "debug_mode": DEBUG_MODE,
+        "auth": {
+            "provider": AUTH_PROVIDER,
+            "local_auth_token_configured": bool(LOCAL_AUTH_TOKEN),
+            "local_auth_user_id": LOCAL_AUTH_USER_ID if AUTH_PROVIDER == "local" else None,
+        },
         "llm": {
             "model_name": LLM_MODEL_NAME,
             "provider": LLM_PROVIDER,

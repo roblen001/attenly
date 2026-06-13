@@ -141,9 +141,17 @@ The default profile uses the providers the app was originally built to support:
 - `OUTBOUND_EMAIL_PROVIDER=resend` or omitted when email is disabled
 - `INBOUND_EMAIL_PROVIDER=resend` or omitted when email is disabled
 
-These provider names are recognized by the backend config scaffold. The current
-runtime still supports only the default providers; local and enterprise provider
-implementations will land in later branches.
+The backend also has an initial provider-safe runtime slice:
+
+- `AUTH_PROVIDER=local` accepts a configured internal bearer token.
+- `OUTBOUND_EMAIL_PROVIDER=none` disables outbound email without startup errors.
+- `OUTBOUND_EMAIL_PROVIDER=microsoft_graph` sends outbound mail through Microsoft Graph.
+- `INBOUND_EMAIL_PROVIDER=none` disables inbound email webhooks.
+
+The full `local` and `enterprise` profiles are still planned because SQLAlchemy
+persistence for app data, filesystem storage, OpenAI-compatible LLM calls,
+OpenAI-compatible embeddings, Microsoft Graph inbound ingest, and frontend local
+auth are not complete yet.
 
 ### Enterprise Example
 
@@ -151,9 +159,9 @@ For a company with on-prem models that expose an OpenAI-compatible API, Microsof
 Graph mail, and no shared SQL service yet, the intended future configuration is
 shown in `.env.enterprise.example`.
 
-That profile is not implemented yet. It is the target for the provider-interface
-refactor. If selected today, the backend will fail startup with a clear
-"not runtime-supported yet" configuration error.
+That profile is not implemented end-to-end yet. It is the target for the
+provider-interface refactor. If selected today, the backend will fail startup
+with clear configuration errors for the provider pieces that are still planned.
 
 ## Development Setup
 

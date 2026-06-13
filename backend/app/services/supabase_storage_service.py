@@ -13,10 +13,13 @@ All operations use user JWT tokens to enforce Row Level Security policies.
 
 import logging
 import hashlib
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from datetime import datetime
-from supabase import create_client, Client
-from storage3 import SyncStorageClient as StorageClient
+
+try:
+    from storage3 import SyncStorageClient as StorageClient
+except ImportError:
+    StorageClient = None
 
 
 class SupabaseStorageService:
@@ -40,7 +43,12 @@ class SupabaseStorageService:
         logging.info("Supabase Storage service initialized with RLS enforcement")
     
     
-    def _create_storage_client(self, access_token: str) -> StorageClient:
+    def _require_storage_client_class(self):
+        if StorageClient is None:
+            raise RuntimeError("storage3 SDK is not installed")
+        return StorageClient
+
+    def _create_storage_client(self, access_token: str) -> Any:
         """
         Create a dedicated Storage client with explicit authentication headers
         for RLS enforcement.
@@ -51,12 +59,24 @@ class SupabaseStorageService:
         Returns:
             StorageClient configured with Authorization and apikey headers
         """
-        return StorageClient(
+        storage_client_class = self._require_storage_client_class()
+        return storage_client_class(
             f"{self.supabase_url}/storage/v1",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "apikey": self.supabase_anon_key,
                 "X-Client-Info": "storage3/py-explicit",
+            },
+        )
+
+    def _create_service_role_storage_client(self) -> Any:
+        storage_client_class = self._require_storage_client_class()
+        return storage_client_class(
+            f"{self.supabase_url}/storage/v1",
+            headers={
+                "Authorization": f"Bearer {self.supabase_service_role_key}",
+                "apikey": self.supabase_anon_key,
+                "X-Client-Info": "storage3/py-service-role",
             },
         )
     
@@ -208,15 +228,7 @@ class SupabaseStorageService:
             storage_path = self._construct_storage_path(user_id, report_id, content_hash)
 
             # Create Storage client with service role key (bypasses RLS for system operations)
-            from app.config import SUPABASE_SERVICE_ROLE_KEY
-            storage = StorageClient(
-                f"{self.supabase_url}/storage/v1",
-                headers={
-                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                    "apikey": self.supabase_anon_key,
-                    "X-Client-Info": "storage3/py-service-role",
-                },
-            )
+            storage = self._create_service_role_storage_client()
 
             # Check if file already exists (deduplication)
             try:
@@ -390,14 +402,7 @@ class SupabaseStorageService:
                 )
 
             # Create Storage client with service role key for system operations
-            storage = StorageClient(
-                f"{self.supabase_url}/storage/v1",
-                headers={
-                    "Authorization": f"Bearer {self.supabase_service_role_key}",
-                    "apikey": self.supabase_anon_key,
-                    "X-Client-Info": "storage3/py-service-role",
-                },
-            )
+            storage = self._create_service_role_storage_client()
 
             # Download from Storage with service role key (bypasses RLS)
             response = storage.from_(self.bucket_name).download(

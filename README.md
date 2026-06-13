@@ -1,271 +1,235 @@
-# Attenly - AI-Powered Document Processing Platform
+# Attenly
 
-Attenly is a production-ready AI-powered document processing platform that transforms unstructured PDFs into structured, professional reports. Built specifically for insurance professionals, underwriters, and brokers who need to quickly extract and organize key information from complex documents.
+Attenly is an AI-powered document processing and report generation platform for
+insurance, underwriting, legal, and operations teams.
 
-## 🚀 Features
+The current application is built around a proven default stack:
 
-- **Advanced AI Processing**: Gemini 2.5 Flash-Lite integration with cost-optimized batch processing
-- **Professional Report Generation**: Business-ready PDFs with ReportLab formatting
-- **Quote Attribution**: Click quotes to view source documents with precise highlighting
-- **Historical Reports**: Complete report storage and retrieval with Supabase
-- **Advanced Security**: JWT authentication, rate limiting, and comprehensive security headers
-- **Real-time Processing**: Live feedback during document processing
-- **User Isolation**: Complete data separation with Row Level Security policies
+- Supabase for authentication, application data, and document storage
+- Gemini for document extraction, quote extraction, templates, and embeddings
+- Resend for optional email ingest
 
-## 🏗️ Architecture
+The open-source direction is to keep those providers as supported defaults while
+making each provider replaceable over time.
 
-- **Frontend**: React 19 + TypeScript + Vite
-- **Backend**: FastAPI + Python with comprehensive middleware stack
-- **Database**: Supabase PostgreSQL with RLS policies
-- **AI Processing**: Gemini 2.5 Flash-Lite + ChromaDB vector store
-- **Authentication**: Supabase JWT with secure session management
-- **File Storage**: Supabase Storage with signed URLs
-- **Rate Limiting**: Redis-based token bucket + SlowAPI
+## Deployment Profiles
 
-## 🔒 Security Features
+Attenly is being organized around three setup profiles.
 
-### Production Security Stack
-- **JWT Authentication**: Supabase-based with proper token validation
-- **Row Level Security**: Database-level user isolation
-- **Rate Limiting**: Both IP-based and user-based quota management
-- **Security Headers**: CSP, HSTS, X-Frame-Options, and more
-- **Input Validation**: Comprehensive validation on both client and server
-- **Error Handling**: Security-aware error messages without information leakage
-- **Correlation IDs**: Request tracing for security monitoring
-- **Idempotency Keys**: Prevent duplicate operations
+| Profile | Status | Best For | Providers |
+| --- | --- | --- | --- |
+| `default` | Supported now | Fastest working setup | Supabase + Gemini + optional Resend |
+| `local` | Planned | Local trials without cloud dependencies | SQLAlchemy + SQLite + filesystem storage + local auth |
+| `enterprise` | Planned | Company infrastructure | OpenAI-compatible models + Microsoft Graph + company database/storage |
 
-### Security Monitoring
-- **Health Checks**: `/health`, `/ready`, `/metrics` endpoints
-- **Audit Logging**: Security events and data access tracking
-- **Structured Logging**: JSON logs with correlation IDs and security context
+Companies do not need to replace every dependency before first launch. They can
+start with the default profile, prove the app internally, then replace one
+provider at a time.
 
-## 🛠️ Development Setup
+## Quick Start: Default Profile
 
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- Redis (for rate limiting)
-- Supabase account
+Use this path if you want the app to run the same way it works today.
 
-### Backend Setup
+### 1. Prepare Environment Variables
+
+Copy the default example:
+
 ```bash
-cd backend
-
-# Create virtual environment
-python -m venv attenly-backend
-source attenly-backend/bin/activate  # On Windows: attenly-backend\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp ../.env.example .env
-# Edit .env with your actual API keys and configuration
-
-# Run development server
-python -m app.main
+cp .env.default.example .env
 ```
 
-### Frontend Setup
+Fill in:
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_KEY=your_supabase_service_role_or_anon_key
+
+GEMINI_API_KEY=your_gemini_api_key
+
+APP_URL=http://localhost:5173
+API_URL=http://localhost:8080
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+Email ingest is optional. Add these only if you use Resend inbound email:
+
+```bash
+RESEND_API_KEY=re_your_resend_api_key
+RESEND_WEBHOOK_SECRET=your_resend_webhook_secret
+INTERNAL_CRON_SECRET=generate-a-long-random-secret
+```
+
+Redis is not required for the current app.
+
+### 2. Run the Backend Container
+
+If you are using a published image:
+
+```bash
+docker pull ghcr.io/attenly/attenly-backend:latest
+
+docker run --name attenly-backend \
+  --env-file .env \
+  -p 8080:8080 \
+  ghcr.io/attenly/attenly-backend:latest
+```
+
+If you are building from this repository:
+
+```bash
+docker build -t attenly-backend:local backend
+
+docker run --name attenly-backend \
+  --env-file .env \
+  -p 8080:8080 \
+  attenly-backend:local
+```
+
+Health check:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Readiness check:
+
+```bash
+curl http://localhost:8080/ready
+```
+
+### 3. Run the Frontend
+
 ```bash
 cd frontend
-
-# Install dependencies
-npm install
-
-# Configure environment variables
 cp .env.example .env.local
-# Edit .env.local with your configuration
-
-# Run development server
+npm install
 npm run dev
 ```
 
-### Database Setup
+Open:
+
+```text
+http://localhost:5173
+```
+
+## Provider Roadmap
+
+The current open-source cleanup keeps the default providers working and documents
+the target adapter model.
+
+### Default Providers
+
+The default profile uses the providers the app was originally built to support:
+
+- `AUTH_PROVIDER=supabase` (planned config name)
+- `DATABASE_PROVIDER=supabase` (planned config name)
+- `STORAGE_PROVIDER=supabase` (planned config name)
+- `LLM_PROVIDER=gemini` (planned config name)
+- `EMAIL_PROVIDER=resend` or `EMAIL_PROVIDER=none` (planned config name)
+
+These provider names describe the intended adapter model. The current code still
+uses the existing Supabase, Gemini, and Resend environment variables directly.
+
+### Enterprise Example
+
+For a company with on-prem models that expose an OpenAI-compatible API, Microsoft
+Graph mail, and no shared SQL service yet, the intended future configuration is
+shown in `.env.enterprise.example`.
+
+That profile is not implemented yet. It is the target for the provider-interface
+refactor.
+
+## Development Setup
+
+### Backend
+
 ```bash
-# Apply Supabase migrations
-supabase migration up
-
-# Or manually apply the SQL files:
-# - supabase/migrations/001_user_quotas.sql
-# - supabase/migrations/002_rls_policies.sql
+cd backend
+python -m venv attenly-backend
+attenly-backend\Scripts\activate
+pip install -r requirements.txt
+copy ..\.env.default.example .env
+python -m app.main
 ```
 
-## 🚀 Production Deployment
+On macOS/Linux, activate the environment with:
 
-### Environment Configuration
-
-#### Backend Environment Variables
 ```bash
-# Required Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_supabase_service_role_key
-GEMINI_API_KEY=your_gemini_api_key
-
-# Production Settings
-ENV=production
-PORT=8000
-CORS_ORIGINS=https://app.attently.ca
-REDIS_URL=redis://your-redis-instance
-
-# Optional Tuning
-LLM_MAX_CONTEXT_TOKENS_PER_QUESTION=8000
-VECTOR_SEARCH_TOP_K_PER_QUESTION=10
-MAX_FILE_SIZE_MB=50
+source attenly-backend/bin/activate
 ```
 
-#### Frontend Environment Variables
+### Frontend
+
 ```bash
-VITE_API_BASE_URL=https://api.attenly.ca
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+cd frontend
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-### Deployment Checklist
+## Supabase Setup
 
-#### Pre-Deployment Security
-- [ ] **Rotate API Keys**: Generate new production API keys
-- [ ] **Environment Variables**: Ensure all secrets are in secure environment variables
-- [ ] **Database Migrations**: Apply all SQL migrations to production database
-- [ ] **SSL Certificates**: Ensure HTTPS is properly configured
-- [ ] **Domain Configuration**: Update CORS origins and CSP policies
+The default profile requires a Supabase project.
 
-#### Infrastructure Requirements
-- [ ] **Application Server**: Docker container or cloud hosting (Koyeb, Railway, etc.)
-- [ ] **Redis Instance**: For rate limiting and caching
-- [ ] **CDN**: CloudFlare or similar for static asset delivery
-- [ ] **Monitoring**: Application monitoring (DataDog, New Relic, etc.)
-- [ ] **Error Tracking**: Error aggregation service (Sentry, etc.)
+Apply the SQL files in `supabase/migrations` and configure the storage bucket
+using `supabase/storage_setup.sql`.
 
-#### Security Hardening
-- [ ] **Rate Limiting**: Configure appropriate rate limits for production load
-- [ ] **User Quotas**: Set up proper user quotas and billing integration
-- [ ] **Monitoring**: Implement security monitoring and alerting
-- [ ] **Backup Strategy**: Automated backups for database and file storage
-- [ ] **Incident Response**: Prepare incident response procedures
+At minimum, configure:
 
-### Docker Deployment
+- Supabase Auth
+- Supabase database migrations
+- Supabase Storage bucket for report documents
+- Supabase service role key for backend system operations
 
-#### Backend Dockerfile
-```dockerfile
-FROM python:3.11-slim
+## Email Ingest
 
-WORKDIR /app
+Email ingest is optional. The core upload and report workflows can run without
+Resend.
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+To use the current Resend-based email ingest:
 
-COPY . .
-
-EXPOSE 8000
-
-CMD ["python", "-m", "app.main"]
+```bash
+RESEND_API_KEY=re_your_resend_api_key
+RESEND_WEBHOOK_SECRET=your_resend_webhook_secret
+EMAIL_INGEST_DOMAIN=mail.your-company.com
+EMAIL_FROM_DOMAIN=mail.your-company.com
+EMAIL_FROM_ADDRESS=noreply@mail.your-company.com
+INTERNAL_CRON_SECRET=generate-a-long-random-secret
 ```
 
-#### Frontend Dockerfile
-```dockerfile
-FROM node:18-alpine as build
+Point the Resend inbound webhook at:
 
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+```text
+POST /webhooks/email-inbound
 ```
 
-### Cloud Deployment Examples
+Process pending email jobs by calling:
 
-#### Koyeb (Recommended)
-```yaml
-# koyeb.yaml
-services:
-- name: attenly-backend
-  git:
-    url: https://github.com/your-username/attenly
-    branch: main
-    build_command: pip install -r backend/requirements.txt
-    run_command: cd backend && python -m app.main
-  instance_type: nano
-  env:
-    - key: ENV
-      value: production
-    - key: SUPABASE_URL
-      value: your_supabase_url
-    # Add other environment variables from secrets
-
-- name: attently-frontend
-  git:
-    url: https://github.com/your-username/attenly
-    branch: main
-    build_command: cd frontend && npm install && npm run build
-  instance_type: nano
-  static: true
-  static_path: frontend/dist
+```text
+POST /internal/process-email-jobs
+Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 ```
 
-### Monitoring and Maintenance
+## Security Notes
 
-#### Health Monitoring
-- **Health Checks**: `/health` (basic), `/ready` (comprehensive)
-- **Metrics**: `/metrics` (Prometheus format)
-- **Log Aggregation**: Structured JSON logs with correlation IDs
+- Keep secrets in environment variables or a secret manager.
+- Do not bake secrets into Docker images.
+- Use HTTPS in production.
+- Restrict `CORS_ORIGINS` to known frontend origins.
+- Rotate Supabase, Gemini, and Resend keys if they are exposed.
+- Redis is not required by the current runtime.
 
-#### Performance Monitoring
-- **Response Times**: Track API response times and database query performance
-- **Error Rates**: Monitor 4xx/5xx error rates and security violations  
-- **Resource Usage**: Monitor CPU, memory, and Redis usage
-- **Cost Tracking**: Monitor LLM API usage and processing costs
+## Contributing
 
-#### Security Monitoring
-- **Authentication Events**: Failed login attempts and suspicious activity
-- **Rate Limiting**: Track rate limit violations and potential abuse
-- **Data Access**: Monitor data access patterns and unauthorized attempts
-- **Error Patterns**: Watch for security-related errors and attack patterns
+The first open-source milestone is onboarding clarity:
 
-## 📊 Performance Optimization
+- keep the current default profile working
+- remove stale infrastructure requirements
+- document local and enterprise provider targets
+- then refactor providers behind stable interfaces in later branches
 
-### Current Performance
-- **Processing Speed**: < 2 minutes for typical insurance documents
-- **Page Load Time**: < 3 seconds for report viewing
-- **PDF Generation**: Instant downloads using cached data
-- **Cost Efficiency**: 50% LLM cost reduction through optimization
+## License
 
-### Optimization Features
-- **Batch Processing**: Single LLM API calls for multiple questions
-- **Report Caching**: In-memory caching eliminates redundant processing
-- **Vector Search**: Question-specific search reduces context noise
-- **Connection Pooling**: Efficient database connection management
-
-## 🤝 Contributing
-
-### Development Guidelines
-- **Security First**: All changes must maintain security standards
-- **Testing**: Include tests for new features and security measures
-- **Documentation**: Update documentation for any configuration changes
-- **Code Quality**: Follow TypeScript strict mode and Python type hints
-
-### Security Reporting
-Please report security vulnerabilities to security@attently.ca following our [Security Policy](SECURITY.md).
-
-## 📄 License
-
-This project is proprietary software. All rights reserved.
-
-## 🆘 Support
-
-- **Documentation**: See `/docs` folder for detailed API documentation
-- **Issues**: Create GitHub issues for bug reports and feature requests
-- **Security**: Report security issues to security@attently.ca
-- **General**: Contact support@attently.ca for general inquiries
-
----
-
-*Last updated: October 2025*
+License information will be added as part of the open-source preparation work.

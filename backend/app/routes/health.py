@@ -1,8 +1,7 @@
 """Health check endpoints for monitoring and load balancer integration."""
-from fastapi import APIRouter, status, Depends
+from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 from app.limits.slowapi import limiter, get_rate_limit
-from app.limits.redis_bucket import get_token_bucket
 from app.client import supabase_client
 import logging
 import time
@@ -40,7 +39,6 @@ async def readiness_check(request):
     
     This endpoint checks:
     - Supabase database connectivity
-    - Redis connectivity (if configured)
     - Configuration validity
     
     Returns 503 if any dependency is unavailable.
@@ -48,7 +46,6 @@ async def readiness_check(request):
     start_time = time.time()
     checks = {
         "database": {"status": "unknown", "response_time": None},
-        "redis": {"status": "unknown", "response_time": None},
         "configuration": {"status": "unknown"}
     }
     
@@ -68,22 +65,6 @@ async def readiness_check(request):
         checks["database"]["error"] = str(e)
         overall_status = "unhealthy"
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    
-    # Check Redis (optional - fail gracefully if not configured)
-    try:
-        redis_start = time.time()
-        token_bucket = get_token_bucket()
-        if token_bucket.redis_client:
-            token_bucket.redis_client.ping()
-            checks["redis"]["status"] = "healthy"
-            checks["redis"]["response_time"] = round((time.time() - redis_start) * 1000, 2)
-        else:
-            checks["redis"]["status"] = "not_configured"
-    except Exception as e:
-        logger.warning(f"Redis health check failed: {e}")
-        checks["redis"]["status"] = "unhealthy"
-        checks["redis"]["error"] = str(e)
-        # Redis failure doesn't make the service unhealthy (fail gracefully)
     
     # Check configuration
     try:

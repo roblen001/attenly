@@ -52,13 +52,14 @@ If you discover a security vulnerability in Attenly, please report it responsibl
 ## Security Architecture
 
 ### Authentication & Authorization
-- JWT-based authentication via Supabase
-- Row Level Security (RLS) policies for data isolation
+- JWT-based authentication via Supabase in the current default profile
+- Row Level Security (RLS) policies for data isolation in the default profile
 - User-specific vector store collections
 - Server-side session validation
+- Provider-neutral authentication is planned for future open-source profiles
 
 ### Data Protection
-- Encryption at rest via Supabase
+- Encryption at rest depends on the configured storage/database provider
 - TLS encryption for all API communications
 - User data isolation at database and vector store levels
 - Automatic data cleanup and session management
@@ -66,7 +67,7 @@ If you discover a security vulnerability in Attenly, please report it responsibl
 ### Infrastructure Security
 - **Security Headers**: Comprehensive Content Security Policy (CSP), HSTS, X-Frame-Options
 - **Request Size Limiting**: Application-level middleware with 50MB limits and intelligent filtering
-- **Rate Limiting**: Per IP and per user with SlowAPI and Redis token buckets
+- **Rate Limiting**: Per-IP protections use SlowAPI; Redis is not required by the current runtime
 - **Input Validation**: Multi-layer validation at request, file, and content levels
 - **File Security**: MIME validation, extension checks, content-based detection, malware scanning hooks
 - **CORS Policy**: Strict enforcement limited to trusted domains only

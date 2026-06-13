@@ -3,10 +3,88 @@ Centralized Configuration for Attenly Backend (updated for small, fast docTR def
 """
 
 import os
-from typing import List
+from typing import Dict, List, Set
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# =============================================================================
+# APPLICATION PROFILE CONFIGURATION
+# =============================================================================
+
+def _normalized_env(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        value = default
+    return value.strip().lower().replace("-", "_")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+APP_PROFILE = _normalized_env("APP_PROFILE", "default")
+
+KNOWN_APP_PROFILES: Set[str] = {"default", "local", "enterprise"}
+SUPPORTED_RUNTIME_PROFILES: Set[str] = {"default"}
+
+PROFILE_PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
+    "default": {
+        "auth": "supabase",
+        "database": "supabase",
+        "storage": "supabase",
+        "llm": "gemini",
+        "embedding": "gemini",
+    },
+    "local": {
+        "auth": "local",
+        "database": "sqlalchemy",
+        "storage": "filesystem",
+        "llm": "gemini",
+        "embedding": "gemini",
+    },
+    "enterprise": {
+        "auth": "local",
+        "database": "sqlalchemy",
+        "storage": "filesystem",
+        "llm": "openai_compatible",
+        "embedding": "openai_compatible",
+    },
+}
+
+
+ALLOWED_PROVIDER_VALUES: Dict[str, Set[str]] = {
+    "auth": {"supabase", "local", "oidc", "external_jwt"},
+    "database": {"supabase", "sqlalchemy"},
+    "storage": {"supabase", "filesystem", "s3", "azure_blob"},
+    "llm": {"gemini", "openai", "azure_openai", "openai_compatible", "none"},
+    "embedding": {"gemini", "openai", "openai_compatible", "local", "none"},
+    "outbound_email": {"none", "resend", "smtp", "microsoft_graph"},
+    "inbound_email": {"none", "resend", "generic_webhook", "microsoft_graph"},
+}
+
+
+CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
+    "auth": {"supabase"},
+    "database": {"supabase"},
+    "storage": {"supabase"},
+    "llm": {"gemini"},
+    "embedding": {"gemini"},
+    "outbound_email": {"none", "resend"},
+    "inbound_email": {"none", "resend"},
+}
+
+
+def _profile_default(provider_name: str) -> str:
+    profile_defaults = PROFILE_PROVIDER_DEFAULTS.get(
+        APP_PROFILE,
+        PROFILE_PROVIDER_DEFAULTS["default"],
+    )
+    return profile_defaults[provider_name]
+
 
 # =============================================================================
 # AUTHENTICATION & EXTERNAL SERVICES
@@ -26,6 +104,39 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Email provider (Resend)
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 RESEND_WEBHOOK_SECRET = os.getenv("RESEND_WEBHOOK_SECRET")
+
+def _outbound_email_provider_default() -> str:
+    if RESEND_API_KEY:
+        return "resend"
+    return "none"
+
+
+def _inbound_email_provider_default() -> str:
+    if RESEND_WEBHOOK_SECRET:
+        return "resend"
+    return "none"
+
+
+AUTH_PROVIDER = _normalized_env("AUTH_PROVIDER", _profile_default("auth"))
+DATABASE_PROVIDER = _normalized_env("DATABASE_PROVIDER", _profile_default("database"))
+STORAGE_PROVIDER = _normalized_env("STORAGE_PROVIDER", _profile_default("storage"))
+LLM_PROVIDER = _normalized_env("LLM_PROVIDER", _profile_default("llm"))
+EMBEDDING_PROVIDER = _normalized_env("EMBEDDING_PROVIDER", _profile_default("embedding"))
+OUTBOUND_EMAIL_PROVIDER = _normalized_env("OUTBOUND_EMAIL_PROVIDER", _outbound_email_provider_default())
+INBOUND_EMAIL_PROVIDER = _normalized_env("INBOUND_EMAIL_PROVIDER", _inbound_email_provider_default())
+
+# Planned provider-specific settings. These are exposed now so future adapter
+# branches can consume stable names without changing env examples again.
+OPENAI_COMPATIBLE_BASE_URL = os.getenv("OPENAI_COMPATIBLE_BASE_URL")
+OPENAI_COMPATIBLE_API_KEY = os.getenv("OPENAI_COMPATIBLE_API_KEY")
+OPENAI_COMPATIBLE_TIMEOUT_SECONDS = int(os.getenv("OPENAI_COMPATIBLE_TIMEOUT_SECONDS", "120"))
+
+GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID")
+GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
+GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET")
+GRAPH_MAILBOX = os.getenv("GRAPH_MAILBOX")
+
+FILESYSTEM_STORAGE_PATH = os.getenv("STORAGE_PATH", "/data/storage")
 
 # Internal authentication (for cron endpoints)
 INTERNAL_CRON_SECRET = os.getenv("INTERNAL_CRON_SECRET")
@@ -69,12 +180,12 @@ STORAGE_MAX_FILE_SIZE_MB = int(os.getenv("STORAGE_MAX_FILE_SIZE_MB", "100"))
 # LLM SERVICE CONFIGURATION
 # =============================================================================
 
-LLM_MODEL_NAME = "gemini-2.5-flash-lite"
-TEMPLATE_INGEST_MODEL_NAME = "gemini-2.5-pro"  # For template normalization (higher quality)
-LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = 4000
-LLM_TEMPERATURE = 0.0
-LLM_THINKING_BUDGET = 0
-LLM_RESPONSE_FORMAT = "application/json"
+LLM_MODEL_NAME = os.getenv("LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash-lite"))
+TEMPLATE_INGEST_MODEL_NAME = os.getenv("TEMPLATE_INGEST_MODEL_NAME", "gemini-2.5-pro")
+LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = int(os.getenv("LLM_MAX_CONTEXT_TOKENS_PER_QUESTION", "4000"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+LLM_THINKING_BUDGET = int(os.getenv("LLM_THINKING_BUDGET", "0"))
+LLM_RESPONSE_FORMAT = os.getenv("LLM_RESPONSE_FORMAT", "application/json")
 
 # =============================================================================
 # MODEL PRICING (CAD per 1M tokens) - Updated: 2025-01
@@ -106,18 +217,18 @@ CRITICAL_THRESHOLD_PERCENT = 90  # Show critical warning at 90% usage
 # VECTOR SEARCH CONFIGURATION
 # =============================================================================
 
-VECTOR_SEARCH_TOP_K_PER_QUESTION = 10
-VECTOR_SEARCH_MAX_SOURCE_QUOTES = 3
+VECTOR_SEARCH_TOP_K_PER_QUESTION = int(os.getenv("VECTOR_SEARCH_TOP_K_PER_QUESTION", "10"))
+VECTOR_SEARCH_MAX_SOURCE_QUOTES = int(os.getenv("VECTOR_SEARCH_MAX_SOURCE_QUOTES", "3"))
 
 # =============================================================================
 # EMBEDDING GENERATION CONFIGURATION
 # =============================================================================
 
-EMBEDDING_BATCH_SIZE = 100
-EMBEDDING_MAX_RETRIES = 1
-EMBEDDING_TIMEOUT_SECONDS = 30
-EMBEDDING_MODEL_NAME = "gemini-embedding-001"
-EMBEDDING_MAX_CONCURRENT_BATCHES = 1
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
+EMBEDDING_MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "1"))
+EMBEDDING_TIMEOUT_SECONDS = int(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "30"))
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-001"))
+EMBEDDING_MAX_CONCURRENT_BATCHES = int(os.getenv("EMBEDDING_MAX_CONCURRENT_BATCHES", "1"))
 
 # =============================================================================
 # INTELLIGENT QUOTE EXTRACTION CONFIGURATION (needed by llm_service)
@@ -221,24 +332,24 @@ OCR_TORCH_NUM_THREADS = int(os.getenv("OCR_TORCH_NUM_THREADS", "1"))
 # DATABASE CONFIGURATION
 # =============================================================================
 
-DATABASE_URL = "sqlite:///./app.db"
-DATABASE_ECHO = False
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+DATABASE_ECHO = _env_bool("DATABASE_ECHO", False)
 
 # =============================================================================
 # DEVELOPMENT & DEBUGGING
 # =============================================================================
 
-ENVIRONMENT = "development"
-DEBUG_MODE = False
+ENVIRONMENT = os.getenv("ENV", "development")
+DEBUG_MODE = _env_bool("DEBUG_MODE", False)
 
-LOG_LEVEL = "INFO"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # =============================================================================
 # PERFORMANCE & OPTIMIZATION
 # =============================================================================
 
-MAX_CONCURRENT_UPLOADS = 2
+MAX_CONCURRENT_UPLOADS = int(os.getenv("MAX_CONCURRENT_UPLOADS", "2"))
 MAX_CONCURRENT_LLM_REQUESTS = int(os.getenv("MAX_CONCURRENT_LLM_REQUESTS", "10"))
 MAX_CONCURRENT_QUOTE_EXTRACTIONS = int(os.getenv("MAX_CONCURRENT_QUOTE_EXTRACTIONS", "10"))
 
@@ -249,17 +360,73 @@ CACHE_TTL_SECONDS = 3600
 # VALIDATION FUNCTIONS
 # =============================================================================
 
+def _validate_profile_and_providers(errors: List[str]) -> None:
+    if APP_PROFILE not in KNOWN_APP_PROFILES:
+        errors.append(
+            f"APP_PROFILE must be one of {sorted(KNOWN_APP_PROFILES)}; got '{APP_PROFILE}'"
+        )
+        return
+
+    if APP_PROFILE not in SUPPORTED_RUNTIME_PROFILES:
+        errors.append(
+            f"APP_PROFILE='{APP_PROFILE}' is documented for future provider work but is not "
+            "runtime-supported yet. Use APP_PROFILE='default' for this release."
+        )
+
+    selected_providers = {
+        "auth": AUTH_PROVIDER,
+        "database": DATABASE_PROVIDER,
+        "storage": STORAGE_PROVIDER,
+        "llm": LLM_PROVIDER,
+        "embedding": EMBEDDING_PROVIDER,
+        "outbound_email": OUTBOUND_EMAIL_PROVIDER,
+        "inbound_email": INBOUND_EMAIL_PROVIDER,
+    }
+
+    for provider_name, selected_value in selected_providers.items():
+        allowed_values = ALLOWED_PROVIDER_VALUES[provider_name]
+        if selected_value not in allowed_values:
+            errors.append(
+                f"{provider_name.upper()}_PROVIDER must be one of {sorted(allowed_values)}; "
+                f"got '{selected_value}'"
+            )
+            continue
+
+        runtime_values = CURRENT_RUNTIME_PROVIDERS[provider_name]
+        if selected_value not in runtime_values:
+            errors.append(
+                f"{provider_name.upper()}_PROVIDER='{selected_value}' is recognized but not "
+                f"implemented in the current runtime. Supported now: {sorted(runtime_values)}."
+            )
+
+    if OUTBOUND_EMAIL_PROVIDER == "resend" and not RESEND_API_KEY:
+        errors.append("RESEND_API_KEY is required when OUTBOUND_EMAIL_PROVIDER='resend'")
+    if INBOUND_EMAIL_PROVIDER == "resend":
+        if not RESEND_API_KEY:
+            errors.append("RESEND_API_KEY is required when INBOUND_EMAIL_PROVIDER='resend'")
+        if not RESEND_WEBHOOK_SECRET:
+            errors.append("RESEND_WEBHOOK_SECRET is required when INBOUND_EMAIL_PROVIDER='resend'")
+
+
 def validate_config():
     errors = []
 
-    # Required env
-    if not SUPABASE_URL:
+    _validate_profile_and_providers(errors)
+
+    # Required env for currently implemented providers
+    uses_supabase = any(
+        provider == "supabase"
+        for provider in (AUTH_PROVIDER, DATABASE_PROVIDER, STORAGE_PROVIDER)
+    )
+    if uses_supabase and not SUPABASE_URL:
         errors.append("SUPABASE_URL is required")
-    if not SUPABASE_KEY:
+    if uses_supabase and not SUPABASE_KEY:
         errors.append("SUPABASE_KEY is required")
-    if not SUPABASE_ANON_KEY:
+    if uses_supabase and not SUPABASE_ANON_KEY:
         errors.append("SUPABASE_ANON_KEY is required for user operations")
-    if not GEMINI_API_KEY:
+
+    uses_gemini = LLM_PROVIDER == "gemini" or EMBEDDING_PROVIDER == "gemini"
+    if uses_gemini and not GEMINI_API_KEY:
         errors.append("GEMINI_API_KEY is required for LLM functionality")
 
     # LLM ranges
@@ -384,13 +551,33 @@ def validate_config():
 
 def get_config_summary() -> dict:
     return {
+        "profile": {
+            "app_profile": APP_PROFILE,
+            "runtime_supported": APP_PROFILE in SUPPORTED_RUNTIME_PROFILES,
+            "providers": {
+                "auth": AUTH_PROVIDER,
+                "database": DATABASE_PROVIDER,
+                "storage": STORAGE_PROVIDER,
+                "llm": LLM_PROVIDER,
+                "embedding": EMBEDDING_PROVIDER,
+                "outbound_email": OUTBOUND_EMAIL_PROVIDER,
+                "inbound_email": INBOUND_EMAIL_PROVIDER,
+            },
+        },
         "environment": ENVIRONMENT,
         "debug_mode": DEBUG_MODE,
         "llm": {
             "model_name": LLM_MODEL_NAME,
+            "provider": LLM_PROVIDER,
             "max_context_tokens_per_question": LLM_MAX_CONTEXT_TOKENS_PER_QUESTION,
             "temperature": LLM_TEMPERATURE,
-            "api_key_configured": bool(GEMINI_API_KEY)
+            "gemini_api_key_configured": bool(GEMINI_API_KEY),
+            "openai_compatible_base_url_configured": bool(OPENAI_COMPATIBLE_BASE_URL),
+            "openai_compatible_api_key_configured": bool(OPENAI_COMPATIBLE_API_KEY),
+        },
+        "embedding": {
+            "provider": EMBEDDING_PROVIDER,
+            "model_name": EMBEDDING_MODEL_NAME,
         },
         "vector_search": {
             "top_k_per_question": VECTOR_SEARCH_TOP_K_PER_QUESTION,
@@ -407,8 +594,31 @@ def get_config_summary() -> dict:
             "supported_types": SUPPORTED_FILE_TYPES,
             "pdf_max_pages": PDF_MAX_PAGES
         },
-        "database": {"url_configured": bool(DATABASE_URL), "echo": DATABASE_ECHO},
-        "supabase": {"url_configured": bool(SUPABASE_URL), "key_configured": bool(SUPABASE_KEY)},
+        "database": {
+            "provider": DATABASE_PROVIDER,
+            "url_configured": bool(DATABASE_URL),
+            "echo": DATABASE_ECHO,
+        },
+        "storage": {
+            "provider": STORAGE_PROVIDER,
+            "bucket_name": STORAGE_BUCKET_NAME,
+            "filesystem_path": FILESYSTEM_STORAGE_PATH,
+        },
+        "supabase": {
+            "url_configured": bool(SUPABASE_URL),
+            "key_configured": bool(SUPABASE_KEY),
+            "anon_key_configured": bool(SUPABASE_ANON_KEY),
+            "service_role_key_configured": bool(SUPABASE_SERVICE_ROLE_KEY),
+        },
+        "email": {
+            "outbound_provider": OUTBOUND_EMAIL_PROVIDER,
+            "inbound_provider": INBOUND_EMAIL_PROVIDER,
+            "resend_api_key_configured": bool(RESEND_API_KEY),
+            "resend_webhook_secret_configured": bool(RESEND_WEBHOOK_SECRET),
+            "graph_tenant_configured": bool(GRAPH_TENANT_ID),
+            "graph_client_configured": bool(GRAPH_CLIENT_ID),
+            "graph_mailbox_configured": bool(GRAPH_MAILBOX),
+        },
         "quote_extraction": {
             "context_chars": QUOTE_CONTEXT_CHARS,
             "max_quote_length": MAX_QUOTE_LENGTH,

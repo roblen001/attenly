@@ -4,27 +4,39 @@ import os
 import logging
 import base64
 from typing import List, Dict, Optional, Any
-from supabase import create_client, Client
 from datetime import datetime
 from app.services.diff_service import DiffService
+
+try:
+    from supabase import create_client, Client
+except ImportError:
+    create_client = None
+    Client = Any
 
 class SupabaseService:
     def __init__(self):
         # Use the same environment variable names as the existing app config
         from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
         
-        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-            raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required")
-        
         self.supabase_url = SUPABASE_URL
         self.supabase_anon_key = SUPABASE_ANON_KEY
         self.supabase_service_key = SUPABASE_SERVICE_ROLE_KEY
         self.diff_service = DiffService()
-        logging.info("Supabase service initialized with user JWT support and audit trail")
+        if self.supabase_url and self.supabase_anon_key:
+            logging.info("Supabase service initialized with user JWT support and audit trail")
+        else:
+            logging.info("Supabase service is not configured; Supabase data paths are disabled")
+
+    def _create_client(self, key: str) -> Client:
+        if create_client is None:
+            raise RuntimeError("Supabase SDK is not installed")
+        if not self.supabase_url or not key:
+            raise RuntimeError("Supabase URL and key are required for this operation")
+        return create_client(self.supabase_url, key)
 
     def _create_user_client(self, user_jwt: str) -> Client:
         """Create a Supabase client with user JWT context for RLS compliance"""
-        client = create_client(self.supabase_url, self.supabase_anon_key)
+        client = self._create_client(self.supabase_anon_key)
         # Set JWT for PostgREST calls (RLS will see auth.uid())
         client.postgrest.auth(user_jwt)  # Raw token, no "Bearer " prefix
         return client
@@ -96,7 +108,7 @@ class SupabaseService:
                 raise ValueError("Service role key not configured - cannot save reports from background jobs")
             
             # Create service role client (bypasses RLS)
-            service_client = create_client(self.supabase_url, self.supabase_service_key)
+            service_client = self._create_client(self.supabase_service_key)
             
             logging.info(f"Saving report for user {user_id} via service role (background job)")
             
@@ -878,7 +890,7 @@ class SupabaseService:
                 return None
             
             # Create service role client (bypasses RLS)
-            service_client = create_client(self.supabase_url, self.supabase_service_key)
+            service_client = self._create_client(self.supabase_service_key)
             
             # Query agent with user_id filter (ensures user owns the agent)
             result = service_client.table("agents")\

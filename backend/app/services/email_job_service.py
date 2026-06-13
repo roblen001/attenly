@@ -16,13 +16,15 @@ from app.services.supabase_storage_service import SupabaseStorageService
 from app.services.document_processor import DocumentProcessor
 from app.services.vector_store import vector_store_manager
 from app.services.report_service import report_service
-from app.services.email_service import EmailService
+from app.services.email_service import email_service
 
 logger = logging.getLogger(__name__)
 
-storage_service = SupabaseStorageService()
 document_processor = DocumentProcessor()
-email_service = EmailService()
+
+
+def get_storage_service() -> SupabaseStorageService:
+    return SupabaseStorageService()
 
 
 class EmailJobService:
@@ -37,7 +39,7 @@ class EmailJobService:
     """
     
     def __init__(self):
-        self.storage_service = storage_service
+        self.storage_service = get_storage_service()
         self.document_processor = document_processor
         self.email_service = email_service
 
@@ -289,7 +291,7 @@ class EmailJobService:
                     .eq("id", job_id)\
                     .execute()
                 
-                await self.email_service.send_job_failed_email(
+                self.email_service.send_job_failed_email(
                     to=job_data["from_email"],
                     job_id=job_id,
                     error=error_msg
@@ -312,7 +314,7 @@ class EmailJobService:
                     .eq("id", job_id)\
                     .execute()
                 
-                await self.email_service.send_job_failed_email(
+                self.email_service.send_job_failed_email(
                     to=job_data["from_email"],
                     job_id=job_id,
                     error=error_msg
@@ -339,7 +341,7 @@ class EmailJobService:
                     .eq("id", job_id)\
                     .execute()
                 
-                await self.email_service.send_job_failed_email(
+                self.email_service.send_job_failed_email(
                     to=job_data["from_email"],
                     job_id=job_id,
                     error=error_msg
@@ -392,7 +394,7 @@ class EmailJobService:
                     .eq("id", job_id)\
                     .execute()
                 
-                await self.email_service.send_job_failed_email(
+                self.email_service.send_job_failed_email(
                     to=job_data["from_email"],
                     job_id=job_id,
                     error=error_msg
@@ -470,7 +472,7 @@ class EmailJobService:
                     .eq("id", job_id)\
                     .execute()
                 
-                await self.email_service.send_job_failed_email(
+                self.email_service.send_job_failed_email(
                     to=job_data["from_email"],
                     job_id=job_id,
                     error=error_msg
@@ -495,13 +497,16 @@ class EmailJobService:
             report_url = build_report_url(report_id)
             
             try:
-                await self.email_service.send_report_ready_email(
+                sent = self.email_service.send_report_ready_email(
                     to=job_data["from_email"],
                     report_url=report_url,
                     report_name=report_name,
                     subject_text=job_data.get("subject", "your email")
                 )
-                logger.info(f"Sent report ready notification to {job_data['from_email']}")
+                if sent:
+                    logger.info(f"Sent report ready notification to {job_data['from_email']}")
+                else:
+                    logger.info(f"Report ready notification skipped for {job_data['from_email']}")
             except Exception as email_error:
                 # Log but don't fail the job - report was saved successfully
                 logger.error(f"Failed to send notification email (report still saved): {email_error}")

@@ -1,7 +1,7 @@
 # Attenly
 
 Attenly is an AI-powered document processing and report generation platform for
-insurance, underwriting, legal, and operations teams.
+enterprise, legal, finance, and operations teams.
 
 The current application is built around a proven default stack:
 
@@ -19,7 +19,7 @@ Attenly is being organized around three setup profiles.
 | Profile | Status | Best For | Providers |
 | --- | --- | --- | --- |
 | `default` | Supported now | Fastest working setup | Supabase + Gemini + optional Resend |
-| `local` | Backend supported now | Local backend/API trials without Supabase | Local auth + SQLAlchemy/SQLite + filesystem storage + Gemini |
+| `local` | Supported now | No-Supabase internal pilots | Local token auth + SQLAlchemy/SQLite + filesystem storage + Gemini |
 | `enterprise` | Planned | Company infrastructure | OpenAI-compatible models + Microsoft Graph + company database/storage |
 
 Companies do not need to replace every dependency before first launch. They can
@@ -123,6 +123,70 @@ Open:
 http://localhost:5173
 ```
 
+## Quick Start: Local No-Supabase Profile
+
+Use this path for an internal pilot that avoids Supabase auth, Supabase storage,
+and an external database. It still uses Gemini for AI until the
+OpenAI-compatible model adapter lands.
+
+### 1. Prepare Backend Environment Variables
+
+```bash
+cp .env.local.example .env
+```
+
+Set these values:
+
+```bash
+LOCAL_AUTH_TOKEN=generate-a-long-random-token
+GEMINI_API_KEY=your_gemini_api_key
+DATABASE_URL=sqlite:////data/attenly.db
+STORAGE_PATH=/data/storage
+OUTBOUND_EMAIL_PROVIDER=none
+INBOUND_EMAIL_PROVIDER=none
+```
+
+### 2. Run the Backend Container with a Data Volume
+
+```bash
+docker pull ghcr.io/attenly/attenly-backend:latest
+
+docker run --name attenly-backend \
+  --env-file .env \
+  -p 8080:8080 \
+  -v attenly-data:/data \
+  ghcr.io/attenly/attenly-backend:latest
+```
+
+### 3. Run the Frontend in Local Auth Mode
+
+```bash
+cd frontend
+cp .env.example .env.local
+```
+
+Set:
+
+```bash
+VITE_AUTH_PROVIDER=local
+VITE_API_BASE_URL=http://localhost:8080
+VITE_LOCAL_AUTH_USER_ID=local-admin
+VITE_LOCAL_AUTH_EMAIL=local-admin@example.com
+VITE_LOCAL_AUTH_DISPLAY_NAME=Local Admin
+```
+
+Then start the frontend:
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`, enter the same token you set as
+`LOCAL_AUTH_TOKEN`, and continue to the app. You can optionally set
+`VITE_LOCAL_AUTH_TOKEN` to prefill the login form for development, but frontend
+environment values are visible in the browser bundle and are not secrets.
+
 ## Provider Roadmap
 
 The current open-source cleanup keeps the default providers working and documents
@@ -150,14 +214,17 @@ The backend also has an initial provider-safe runtime slice:
 - `OUTBOUND_EMAIL_PROVIDER=none` disables outbound email without startup errors.
 - `OUTBOUND_EMAIL_PROVIDER=microsoft_graph` sends outbound mail through Microsoft Graph.
 - `INBOUND_EMAIL_PROVIDER=none` disables inbound email webhooks.
+- `VITE_AUTH_PROVIDER=local` lets the browser app use the same bearer token
+  flow without Supabase Auth.
 
-The `local` backend profile is now useful for API-level testing without
-Supabase. The browser frontend still uses Supabase auth, so full no-Supabase
-end-to-end app startup needs the frontend local-auth adapter.
+The `local` profile can now run the backend and browser app without Supabase.
+It is best for trusted internal pilots, demos, and API testing. Production
+enterprise deployments should still move toward SSO/OIDC instead of a shared
+bearer token.
 
 The full `enterprise` profile is still planned because OpenAI-compatible LLM
 calls, OpenAI-compatible embeddings, Microsoft Graph inbound ingest, and
-frontend enterprise auth are not complete yet.
+production enterprise auth are not complete yet.
 
 ### Enterprise Example
 
@@ -165,9 +232,11 @@ For a company with on-prem models that expose an OpenAI-compatible API, Microsof
 Graph mail, and no shared SQL service yet, the intended future configuration is
 shown in `.env.enterprise.example`.
 
-That profile is not implemented end-to-end yet. If selected today, the backend
-will fail startup with clear configuration errors for the provider pieces that
-are still planned.
+That full profile is not implemented end-to-end yet. Today, companies can use
+the local profile with SQLite, filesystem storage, local token auth, disabled
+email, or Microsoft Graph outbound email. The remaining enterprise work is the
+OpenAI-compatible model/embedding adapter, Microsoft Graph inbound ingest, and
+production-grade SSO/OIDC auth.
 
 ## Development Setup
 
@@ -247,6 +316,10 @@ Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 - Use HTTPS in production.
 - Restrict `CORS_ORIGINS` to known frontend origins.
 - Rotate Supabase, Gemini, and Resend keys if they are exposed.
+- Treat local auth as a trusted internal pilot mode. The bearer token is
+  equivalent to a password and should be rotated if exposed.
+- Do not treat `VITE_LOCAL_AUTH_TOKEN` as a secret. Frontend `VITE_` values are
+  bundled into browser code, so that setting is only a convenience prefill.
 - Redis is not required by the current runtime.
 
 ## Contributing
@@ -255,7 +328,7 @@ The first open-source milestone is onboarding clarity:
 
 - keep the current default profile working
 - remove stale infrastructure requirements
-- document local and enterprise provider targets
+- support the local no-Supabase pilot path
 - then refactor providers behind stable interfaces in later branches
 
 ## License

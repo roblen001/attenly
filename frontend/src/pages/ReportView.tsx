@@ -6,7 +6,7 @@
  * Uses custom hooks for data management and state handling.
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import DocumentViewer from '../components/report/DocumentViewer';
 import LoadingState from '../components/report/LoadingState';

@@ -374,6 +374,73 @@ class SupabaseService:
             logging.error(f"Error fetching document content: {e}")
             return None
 
+    def get_saved_report_documents(
+        self,
+        user_jwt: str,
+        user_id: str,
+        report_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Get all document metadata rows for a saved report."""
+        try:
+            user_client = self._create_user_client(user_jwt)
+
+            report_result = user_client.table("saved_reports")\
+                .select("id")\
+                .eq("id", report_id)\
+                .eq("user_id", user_id)\
+                .single()\
+                .execute()
+
+            if not report_result.data:
+                logging.warning(f"Report {report_id} not found for user {user_id}")
+                return []
+
+            docs_result = user_client.table("saved_report_documents")\
+                .select("*")\
+                .eq("report_id", report_id)\
+                .execute()
+
+            return docs_result.data or []
+
+        except Exception as e:
+            logging.error(f"Error fetching saved report documents: {e}")
+            return []
+
+    def get_saved_document_metadata(
+        self,
+        user_jwt: str,
+        user_id: str,
+        report_id: str,
+        document_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Get one saved report document metadata row."""
+        try:
+            user_client = self._create_user_client(user_jwt)
+
+            report_result = user_client.table("saved_reports")\
+                .select("id")\
+                .eq("id", report_id)\
+                .eq("user_id", user_id)\
+                .single()\
+                .execute()
+
+            if not report_result.data:
+                logging.warning(f"Report {report_id} not found for user {user_id}")
+                return None
+
+            doc_result = user_client.table("saved_report_documents")\
+                .select("*")\
+                .eq("report_id", report_id)\
+                .eq("document_id", document_id)\
+                .single()\
+                .execute()
+
+            return doc_result.data
+
+        except Exception as e:
+            logging.error(f"Error fetching saved document metadata: {e}")
+            return None
+
     def get_saved_document_pdf(self, user_jwt: str, user_id: str, report_id: str, document_id: str) -> Optional[bytes]:
         """Get PDF binary for a saved report document from Supabase Storage using user JWT"""
         try:
@@ -414,7 +481,7 @@ class SupabaseService:
                 from app.services.supabase_storage_service import get_storage_service
                 storage_service = get_storage_service()
                 
-                pdf_binary = storage_service.download_document(user_jwt, user_id, storage_path)
+                pdf_binary = storage_service.download_document(user_jwt, "", user_id, storage_path)
                 
                 # Verify content hash if available
                 content_hash = doc_result.data.get("content_hash")
@@ -432,6 +499,68 @@ class SupabaseService:
             
         except Exception as e:
             logging.error(f"Error fetching PDF from Storage: {e}")
+            return None
+
+    def download_saved_document_pdf(
+        self,
+        user_jwt: str,
+        user_id: str,
+        report_id: str,
+        document_id: str,
+        refresh_token: str = "",
+    ) -> Optional[bytes]:
+        """Download a saved report document PDF through the configured Supabase storage path."""
+        document = self.get_saved_document_metadata(user_jwt, user_id, report_id, document_id)
+        if not document or not document.get("storage_path"):
+            return None
+
+        try:
+            from app.services.supabase_storage_service import get_storage_service
+
+            storage_service = get_storage_service()
+            pdf_binary = storage_service.download_document(
+                user_jwt,
+                refresh_token,
+                user_id,
+                document["storage_path"],
+            )
+
+            content_hash = document.get("content_hash")
+            if content_hash and not storage_service.verify_content_hash(pdf_binary, content_hash):
+                raise ValueError("Content verification failed")
+
+            return pdf_binary
+        except Exception as e:
+            logging.error(f"Failed to download saved document PDF: {e}")
+            return None
+
+    def get_saved_document_signed_url(
+        self,
+        user_jwt: str,
+        user_id: str,
+        report_id: str,
+        document_id: str,
+        refresh_token: str = "",
+        expiry_seconds: int = 3600,
+    ) -> Optional[str]:
+        """Generate a signed URL for a saved report document stored in Supabase Storage."""
+        document = self.get_saved_document_metadata(user_jwt, user_id, report_id, document_id)
+        if not document or not document.get("storage_path"):
+            return None
+
+        try:
+            from app.services.supabase_storage_service import get_storage_service
+
+            storage_service = get_storage_service()
+            return storage_service.get_signed_url(
+                access_token=user_jwt,
+                refresh_token=refresh_token,
+                user_id=user_id,
+                storage_path=document["storage_path"],
+                expiry_seconds=expiry_seconds,
+            )
+        except Exception as e:
+            logging.error(f"Failed to generate saved document signed URL: {e}")
             return None
 
     def update_saved_report(self, user_jwt: str, user_id: str, report_id: str, report_data: Optional[Dict[str, Any]] = None, report_name: Optional[str] = None) -> bool:
@@ -992,5 +1121,21 @@ class SupabaseService:
             logging.error(f"Error deleting custom agent {agent_id}: {e}")
             return False
 
-# Global instance
-supabase_service = SupabaseService()
+def _build_persistence_service():
+    """Return the configured persistence service.
+
+    The exported name remains ``supabase_service`` for compatibility with the
+    existing route modules while provider wiring is being introduced.
+    """
+    from app.config import DATABASE_PROVIDER
+
+    if DATABASE_PROVIDER == "sqlalchemy":
+        from app.services.sqlalchemy_persistence_service import SqlAlchemyPersistenceService
+
+        return SqlAlchemyPersistenceService()
+
+    return SupabaseService()
+
+
+# Compatibility export used throughout the existing codebase.
+supabase_service = _build_persistence_service()

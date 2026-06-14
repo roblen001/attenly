@@ -1487,27 +1487,12 @@ async def preload_saved_report_documents(
     access_token, refresh_token = auth_tokens
     
     try:
-        # Get document IDs from the report
-        user_client = supabase_service._create_user_client(access_token)
-        
-        # Verify report ownership
-        report_result = user_client.table("saved_reports")\
-            .select("id")\
-            .eq("id", report_id)\
-            .eq("user_id", user_id)\
-            .single()\
-            .execute()
-        
-        if not report_result.data:
+        if not supabase_service.get_saved_report(access_token, user_id, report_id):
             raise HTTPException(status_code=404, detail="Report not found")
-        
-        # Get all documents for this report that have PDF storage paths
-        docs_result = user_client.table("saved_report_documents")\
-            .select("document_id, storage_path, filename, metadata")\
-            .eq("report_id", report_id)\
-            .execute()
-        
-        if not docs_result.data:
+
+        docs_data = supabase_service.get_saved_report_documents(access_token, user_id, report_id)
+
+        if not docs_data:
             return {
                 "success": True,
                 "documents_loaded": 0,
@@ -1522,15 +1507,11 @@ async def preload_saved_report_documents(
         if report_id not in preloaded_reports_cache[user_id]:
             preloaded_reports_cache[user_id][report_id] = {}
         
-        # Fetch PDFs from Storage
-        from app.services.supabase_storage_service import get_storage_service
-        storage_service = get_storage_service()
-        
         loaded_count = 0
         total_size = 0
         skipped_count = 0
         
-        for doc in docs_result.data:
+        for doc in docs_data:
             document_id = doc["document_id"]
             storage_path = doc.get("storage_path")
             
@@ -1546,12 +1527,12 @@ async def preload_saved_report_documents(
                 continue
             
             try:
-                # Download PDF from Storage
-                pdf_bytes = storage_service.download_document(
-                    access_token=access_token,
-                    refresh_token=refresh_token,
+                pdf_bytes = supabase_service.download_saved_document_pdf(
+                    access_token,
                     user_id=user_id,
-                    storage_path=storage_path
+                    report_id=report_id,
+                    document_id=document_id,
+                    refresh_token=refresh_token,
                 )
                 
                 if pdf_bytes:
@@ -1655,32 +1636,12 @@ async def get_saved_document_bboxes(
     user_id = current_user.id
     
     try:
-        # Get document metadata from saved report
-        user_client = supabase_service._create_user_client(jwt_token)
-        
-        # Verify report ownership
-        report_result = user_client.table("saved_reports")\
-            .select("id")\
-            .eq("id", report_id)\
-            .eq("user_id", user_id)\
-            .single()\
-            .execute()
-        
-        if not report_result.data:
-            raise HTTPException(status_code=404, detail="Report not found")
-        
-        # Get document metadata (which includes bounding boxes if available)
-        doc_result = user_client.table("saved_report_documents")\
-            .select("document_id, filename, metadata")\
-            .eq("report_id", report_id)\
-            .eq("document_id", document_id)\
-            .single()\
-            .execute()
-        
-        if not doc_result.data:
+        doc_data = supabase_service.get_saved_document_metadata(jwt_token, user_id, report_id, document_id)
+
+        if not doc_data:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        metadata = doc_result.data.get("metadata", {})
+        metadata = doc_data.get("metadata", {})
         
         # Check if this document has bounding boxes (stored in metadata)
         if "bounding_boxes" not in metadata:
@@ -1695,7 +1656,7 @@ async def get_saved_document_bboxes(
         
         return {
             "document_id": document_id,
-            "filename": doc_result.data.get("filename", "Unknown"),
+            "filename": doc_data.get("filename", "Unknown"),
             "bounding_boxes": bbox_data
         }
         
@@ -1761,75 +1722,94 @@ async def get_saved_document_file(
             headers={**headers, "Content-Length": str(total_size)}
         )
     
-    # FALLBACK: Not in cache, use Storage with signed URL redirect
+    # FALLBACK: Not in cache, use configured document storage
     try:
-        # Get document metadata to check for Storage path
-        user_client = supabase_service._create_user_client(jwt_token)
-        
-        # Verify report ownership
-        report_result = user_client.table("saved_reports")\
-            .select("id")\
-            .eq("id", report_id)\
-            .eq("user_id", user_id)\
-            .single()\
-            .execute()
-        
-        if not report_result.data:
-            raise HTTPException(status_code=404, detail="Report not found")
-        
-        # Get document Storage metadata
-        doc_result = user_client.table("saved_report_documents")\
-            .select("storage_path, content_hash, filename")\
-            .eq("report_id", report_id)\
-            .eq("document_id", document_id)\
-            .single()\
-            .execute()
-        
-        if not doc_result.data:
+        doc_data = supabase_service.get_saved_document_metadata(jwt_token, user_id, report_id, document_id)
+
+        if not doc_data:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        storage_path = doc_result.data.get("storage_path")
+        storage_path = doc_data.get("storage_path")
         
         # Check if document has Storage path (new documents)
         if storage_path:
-            # Generate signed URL and redirect
-            from app.services.supabase_storage_service import get_storage_service
             from app.config import STORAGE_SIGNED_URL_EXPIRY_SECONDS
-            
-            storage_service = get_storage_service()
-            
+
             try:
-                signed_url = storage_service.get_signed_url(
-                    access_token=jwt_token,
-                    refresh_token="",
+                signed_url = supabase_service.get_saved_document_signed_url(
+                    jwt_token,
                     user_id=user_id,
-                    storage_path=storage_path,
+                    report_id=report_id,
+                    document_id=document_id,
+                    refresh_token="",
                     expiry_seconds=STORAGE_SIGNED_URL_EXPIRY_SECONDS
                 )
-                
-                # Add content-hash as ETag for caching if available
-                headers = {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Expose-Headers": "ETag"
-                }
-                
-                content_hash = doc_result.data.get("content_hash")
-                if content_hash:
-                    headers["ETag"] = f'"{content_hash[:16]}"'
-                
-                # Redirect to signed URL (307 preserves method and body)
-                logging.info(f"Redirecting to signed URL for document {document_id}")
-                return RedirectResponse(
-                    url=signed_url,
-                    status_code=307,
-                    headers=headers
+
+                if signed_url:
+                    # Add content-hash as ETag for caching if available
+                    headers = {
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Expose-Headers": "ETag"
+                    }
+
+                    content_hash = doc_data.get("content_hash")
+                    if content_hash:
+                        headers["ETag"] = f'"{content_hash[:16]}"'
+
+                    # Redirect to signed URL (307 preserves method and body)
+                    logging.info(f"Redirecting to signed URL for document {document_id}")
+                    return RedirectResponse(
+                        url=signed_url,
+                        status_code=307,
+                        headers=headers
+                    )
+
+                pdf_bytes = supabase_service.download_saved_document_pdf(
+                    jwt_token,
+                    user_id=user_id,
+                    report_id=report_id,
+                    document_id=document_id,
+                    refresh_token="",
                 )
-                
+                if not pdf_bytes:
+                    raise ValueError("Document storage path exists but no PDF bytes were returned")
+
+                total_size = len(pdf_bytes)
+                headers = {
+                    "Content-Type": "application/pdf",
+                    "Accept-Ranges": "bytes",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges"
+                }
+
+                range_header = request.headers.get("Range")
+                if range_header and (match := re.match(r"bytes=(\d+)-(\d*)", range_header)):
+                    start = int(match.group(1))
+                    end = int(match.group(2)) if match.group(2) else total_size - 1
+                    end = min(end, total_size - 1)
+
+                    return Response(
+                        content=pdf_bytes[start:end+1],
+                        status_code=206,
+                        media_type="application/pdf",
+                        headers={
+                            **headers,
+                            "Content-Range": f"bytes {start}-{end}/{total_size}",
+                            "Content-Length": str(end - start + 1)
+                        }
+                    )
+
+                return Response(
+                    content=pdf_bytes,
+                    media_type="application/pdf",
+                    headers={**headers, "Content-Length": str(total_size)}
+                )
+
             except Exception as storage_error:
-                logging.error(f"Failed to get signed URL for {document_id}: {storage_error}")
+                logging.error(f"Failed to get document file for {document_id}: {storage_error}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to generate secure access URL for document"
+                    detail="Failed to retrieve document file"
                 )
         
         # No Storage path - likely OCR document

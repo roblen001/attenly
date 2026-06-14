@@ -29,7 +29,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 APP_PROFILE = _normalized_env("APP_PROFILE", "default")
 
 KNOWN_APP_PROFILES: Set[str] = {"default", "local", "enterprise"}
-SUPPORTED_RUNTIME_PROFILES: Set[str] = {"default"}
+SUPPORTED_RUNTIME_PROFILES: Set[str] = {"default", "local"}
 
 PROFILE_PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
     "default": {
@@ -69,8 +69,8 @@ ALLOWED_PROVIDER_VALUES: Dict[str, Set[str]] = {
 
 CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
     "auth": {"supabase", "local"},
-    "database": {"supabase"},
-    "storage": {"supabase"},
+    "database": {"supabase", "sqlalchemy"},
+    "storage": {"supabase", "filesystem"},
     "llm": {"gemini"},
     "embedding": {"gemini"},
     "outbound_email": {"none", "resend", "microsoft_graph"},

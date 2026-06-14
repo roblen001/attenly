@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Quote, DocumentBoundingBoxes, WordSpan } from "../../types";
 import { api } from "../../libs/https";
 import {
@@ -43,8 +43,8 @@ export default function PdfViewerWithHighlights({
   const [err, setErr] = useState<string | null>(null);
 
   // BBox support state
-  const [bboxData, setBboxData] = useState<DocumentBoundingBoxes | null>(null);
-  const [hasBboxSupport, setHasBboxSupport] = useState(false);
+  const [, setBboxData] = useState<DocumentBoundingBoxes | null>(null);
+  const [, setHasBboxSupport] = useState(false);
 
   // Per-run objects
   const runIdRef = useRef(0);
@@ -193,8 +193,7 @@ export default function PdfViewerWithHighlights({
 
   const convertHighlightToNormalizedBBox = (
     highlightEl: HTMLElement,
-    pageEl: HTMLElement,
-    canvas: HTMLCanvasElement
+    pageEl: HTMLElement
   ): number[] | null => {
     try {
       const pageRect = pageEl.getBoundingClientRect();
@@ -247,7 +246,7 @@ export default function PdfViewerWithHighlights({
       
       if (pageEl && canvas) {
         // Convert highlight to normalized bbox and use same centering as OCR
-        const bbox = convertHighlightToNormalizedBBox(highlight, pageEl, canvas);
+        const bbox = convertHighlightToNormalizedBBox(highlight, pageEl);
         if (bbox) {
           scrollContainerToBBox(viewerContainer, pageEl, canvas, bbox);
           return true;
@@ -827,7 +826,7 @@ export default function PdfViewerWithHighlights({
           const canvas = pageEl?.querySelector<HTMLCanvasElement>("canvas");
           
           if (pageEl && canvas) {
-            const bbox = convertHighlightToNormalizedBBox(highlight, pageEl, canvas);
+            const bbox = convertHighlightToNormalizedBBox(highlight, pageEl);
             if (bbox) {
               scrollContainerToBBox(container, pageEl, canvas, bbox);
             } else {

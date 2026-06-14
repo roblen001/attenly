@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "./configs";
-import { supabase } from "./supabase";
+import { authClient } from "./auth";
 
 interface ApiOptions extends RequestInit {
   nonCritical?: boolean; // If true, 401 errors won't sign out the user
@@ -16,7 +16,7 @@ export async function api(path: string, init: ApiOptions = {}) {
   const maxRetries = 3;
   
   while (retryCount < maxRetries && !session) {
-    const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+    const { data: { session: currentSession }, error } = await authClient.getSession();
     
     if (error) {
       console.warn(`Session retrieval error (attempt ${retryCount + 1}):`, error);
@@ -46,7 +46,7 @@ export async function api(path: string, init: ApiOptions = {}) {
   // Add Authorization header if user is authenticated
   if (session?.access_token) {
     (headers as Record<string, string>).Authorization = `Bearer ${session.access_token}`;
-    // Add refresh token for Storage operations (required by supabase-py set_session)
+    // Include a refresh token when the selected backend auth/storage adapter needs it.
     if (session?.refresh_token) {
       (headers as Record<string, string>)['X-Refresh-Token'] = session.refresh_token;
     }
@@ -128,7 +128,7 @@ export async function api(path: string, init: ApiOptions = {}) {
       console.log('Signing out user and redirecting to login due to 401 error');
       
       // Sign out the user and clear session
-      await supabase.auth.signOut();
+      await authClient.signOut();
       
       // Redirect to login page
       window.location.href = '/login';

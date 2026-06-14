@@ -204,12 +204,6 @@ const EditorStep: React.FC<EditorStepProps> = ({
     setIsAIModalOpen(true);
   };
 
-  const handleEditQuestion = (question: Question) => {
-    rememberCaret(); // Save cursor position before opening modal
-    setEditingQuestion(question);
-    setIsAIModalOpen(true);
-  };
-
   const escapeHtml = (text: string) => {
     return text.replace(/[&<>"']/g, (c) => ({
       '&': '&amp;',
@@ -452,7 +446,7 @@ const EditorStep: React.FC<EditorStepProps> = ({
       image_advtab: true,
       importcss_append: true,
       file_picker_types: 'image',
-      file_picker_callback: (callback: any, value: any, meta: any) => {
+      file_picker_callback: (callback: any, _value: any, meta: any) => {
         if (meta.filetype === 'image') {
           const input = document.createElement('input');
           input.setAttribute('type', 'file');
@@ -500,7 +494,7 @@ const EditorStep: React.FC<EditorStepProps> = ({
         <Editor
           apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
           id="attenly-editor"
-          onInit={(evt, editor) => {
+          onInit={(_evt, editor) => {
             editorRef.current = editor;
             // Priority: reportTemplate (existing/edited) > initialTemplateHtml (from DOCX) > empty
             const contentToLoad = reportTemplate || initialTemplateHtml || '';

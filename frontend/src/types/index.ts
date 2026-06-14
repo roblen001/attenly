@@ -59,6 +59,7 @@ export interface TemplateIngestCapabilities {
   enabled: boolean;
   provider: 'disabled' | 'basic' | 'gemini' | 'openai_compatible' | string;
   model_name?: string | null;
+  openai_mode?: 'responses_file' | 'chat_file' | 'chat_images' | 'extracted' | string | null;
   supports_pdf: boolean;
   supports_docx: boolean;
   supports_html: boolean;

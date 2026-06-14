@@ -6,6 +6,21 @@ import VerifiedSendersList from '../components/email-ingest/VerifiedSendersList'
 import UsageInstructions from '../components/email-ingest/UsageInstructions';
 import './EmailIngestSettings.css';
 
+const disabledEmailSettings = (
+  message = 'Email ingest is disabled by server configuration.',
+  provider = 'none'
+): EmailIngestSettingsType => ({
+  endpoint: null,
+  verified_senders: [],
+  usage_summary: {
+    jobs_last_24h: 0,
+    rate_limit: 0,
+  },
+  enabled_by_config: false,
+  provider,
+  message,
+});
+
 export default function EmailIngestSettings() {
   const navigate = useNavigate();
   
@@ -28,8 +43,14 @@ export default function EmailIngestSettings() {
       setLoading(true);
       setError(null);
       const response = await api('/email-ingest/settings', { method: 'GET' });
+      if (response.status === 503) {
+        const data = await response.json().catch(() => null);
+        setSettings(disabledEmailSettings(data?.detail));
+        return;
+      }
       if (!response.ok) {
-        throw new Error('Failed to fetch email ingest settings');
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.detail || 'Failed to fetch email ingest settings');
       }
       const data: EmailIngestSettingsType = await response.json();
       setSettings(data);
@@ -59,6 +80,11 @@ export default function EmailIngestSettings() {
   };
 
   const handleEnable = async () => {
+    if (settings?.enabled_by_config === false) {
+      setError(settings.message || 'Email ingest is disabled by server configuration.');
+      return;
+    }
+
     try {
       setEnabling(true);
       setError(null);
@@ -177,7 +203,9 @@ export default function EmailIngestSettings() {
   }
 
   const isEnabled = settings?.endpoint?.is_active ?? false;
-  const hasEndpoint = settings?.endpoint !== null;
+  const hasEndpoint = Boolean(settings?.endpoint);
+  const isEmailAvailable = settings?.enabled_by_config ?? true;
+  const emailDisabledMessage = settings?.message || 'Email ingest is disabled by server configuration.';
   const jobsRemaining = settings ? settings.usage_summary.rate_limit - settings.usage_summary.jobs_last_24h : 0;
 
   return (
@@ -205,7 +233,15 @@ export default function EmailIngestSettings() {
         </div>
       )}
 
-      {!hasEndpoint || !isEnabled ? (
+      {!isEmailAvailable ? (
+        <div className="disabled-state">
+          <div className="disabled-card">
+            <div className="disabled-icon">@</div>
+            <h2>Email Ingest Unavailable</h2>
+            <p>{emailDisabledMessage}</p>
+          </div>
+        </div>
+      ) : !hasEndpoint || !isEnabled ? (
         <div className="disabled-state">
           <div className="disabled-card">
             <div className="disabled-icon">📧</div>

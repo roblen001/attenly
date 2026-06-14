@@ -38,6 +38,7 @@ PROFILE_PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
         "storage": "supabase",
         "llm": "gemini",
         "embedding": "gemini",
+        "template_ingest": "gemini",
     },
     "local": {
         "auth": "local",
@@ -45,6 +46,7 @@ PROFILE_PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
         "storage": "filesystem",
         "llm": "gemini",
         "embedding": "gemini",
+        "template_ingest": "gemini",
     },
     "enterprise": {
         "auth": "local",
@@ -52,6 +54,7 @@ PROFILE_PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
         "storage": "filesystem",
         "llm": "openai_compatible",
         "embedding": "openai_compatible",
+        "template_ingest": "disabled",
     },
 }
 
@@ -62,6 +65,7 @@ ALLOWED_PROVIDER_VALUES: Dict[str, Set[str]] = {
     "storage": {"supabase", "filesystem", "s3", "azure_blob"},
     "llm": {"gemini", "openai", "azure_openai", "openai_compatible", "none"},
     "embedding": {"gemini", "openai", "openai_compatible", "local", "none"},
+    "template_ingest": {"disabled", "gemini", "basic", "openai_compatible"},
     "outbound_email": {"none", "resend", "smtp", "microsoft_graph"},
     "inbound_email": {"none", "resend", "generic_webhook", "microsoft_graph"},
 }
@@ -73,6 +77,7 @@ CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
     "storage": {"supabase", "filesystem"},
     "llm": {"gemini", "openai_compatible"},
     "embedding": {"gemini", "openai_compatible"},
+    "template_ingest": {"disabled", "gemini", "basic"},
     "outbound_email": {"none", "resend", "microsoft_graph"},
     "inbound_email": {"none", "resend"},
 }
@@ -113,6 +118,13 @@ LOCAL_AUTH_DISPLAY_NAME = os.getenv("LOCAL_AUTH_DISPLAY_NAME", "Local Admin")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 RESEND_WEBHOOK_SECRET = os.getenv("RESEND_WEBHOOK_SECRET")
 
+
+def _template_ingest_provider_default() -> str:
+    if GEMINI_API_KEY or APP_PROFILE == "default":
+        return "gemini"
+    return "disabled"
+
+
 def _outbound_email_provider_default() -> str:
     if RESEND_API_KEY:
         return "resend"
@@ -130,6 +142,10 @@ DATABASE_PROVIDER = _normalized_env("DATABASE_PROVIDER", _profile_default("datab
 STORAGE_PROVIDER = _normalized_env("STORAGE_PROVIDER", _profile_default("storage"))
 LLM_PROVIDER = _normalized_env("LLM_PROVIDER", _profile_default("llm"))
 EMBEDDING_PROVIDER = _normalized_env("EMBEDDING_PROVIDER", _profile_default("embedding"))
+TEMPLATE_INGEST_PROVIDER = _normalized_env(
+    "TEMPLATE_INGEST_PROVIDER",
+    _template_ingest_provider_default(),
+)
 OUTBOUND_EMAIL_PROVIDER = _normalized_env("OUTBOUND_EMAIL_PROVIDER", _outbound_email_provider_default())
 INBOUND_EMAIL_PROVIDER = _normalized_env("INBOUND_EMAIL_PROVIDER", _inbound_email_provider_default())
 
@@ -391,6 +407,7 @@ def _validate_profile_and_providers(errors: List[str]) -> None:
         "storage": STORAGE_PROVIDER,
         "llm": LLM_PROVIDER,
         "embedding": EMBEDDING_PROVIDER,
+        "template_ingest": TEMPLATE_INGEST_PROVIDER,
         "outbound_email": OUTBOUND_EMAIL_PROVIDER,
         "inbound_email": INBOUND_EMAIL_PROVIDER,
     }
@@ -457,9 +474,15 @@ def validate_config():
     if uses_supabase and not SUPABASE_ANON_KEY:
         errors.append("SUPABASE_ANON_KEY is required for user operations")
 
-    uses_gemini = LLM_PROVIDER == "gemini" or EMBEDDING_PROVIDER == "gemini"
+    uses_gemini = (
+        LLM_PROVIDER == "gemini"
+        or EMBEDDING_PROVIDER == "gemini"
+        or TEMPLATE_INGEST_PROVIDER == "gemini"
+    )
     if uses_gemini and not GEMINI_API_KEY:
-        errors.append("GEMINI_API_KEY is required when using Gemini LLM or embedding providers")
+        errors.append(
+            "GEMINI_API_KEY is required when using Gemini LLM, embedding, or template ingest providers"
+        )
 
     uses_openai_compatible = (
         LLM_PROVIDER == "openai_compatible"
@@ -602,6 +625,7 @@ def get_config_summary() -> dict:
                 "storage": STORAGE_PROVIDER,
                 "llm": LLM_PROVIDER,
                 "embedding": EMBEDDING_PROVIDER,
+                "template_ingest": TEMPLATE_INGEST_PROVIDER,
                 "outbound_email": OUTBOUND_EMAIL_PROVIDER,
                 "inbound_email": INBOUND_EMAIL_PROVIDER,
             },
@@ -626,6 +650,12 @@ def get_config_summary() -> dict:
             "provider": EMBEDDING_PROVIDER,
             "model_name": EMBEDDING_MODEL_NAME,
             "dimensions": EMBEDDING_DIMENSIONS,
+        },
+        "template_ingest": {
+            "provider": TEMPLATE_INGEST_PROVIDER,
+            "model_name": TEMPLATE_INGEST_MODEL_NAME if TEMPLATE_INGEST_PROVIDER == "gemini" else None,
+            "requires_multimodal_model": TEMPLATE_INGEST_PROVIDER == "gemini",
+            "runtime_enabled": TEMPLATE_INGEST_PROVIDER != "disabled",
         },
         "vector_search": {
             "top_k_per_question": VECTOR_SEARCH_TOP_K_PER_QUESTION,

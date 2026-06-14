@@ -50,7 +50,7 @@ export interface TemplateIngestResponse {
   success: boolean;
   html_body: string;
   css: string;
-  source: 'gemini' | 'mammoth_fallback' | 'error';
+  source: 'gemini' | 'mammoth' | 'html' | 'blank' | 'disabled' | 'error';
   error?: string;
   warnings: string[];
 }

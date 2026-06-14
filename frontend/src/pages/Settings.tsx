@@ -10,6 +10,21 @@ import './Settings.css';
 
 type SettingsTab = 'credits' | 'email';
 
+const disabledEmailSettings = (
+  message = 'Email ingest is disabled by server configuration.',
+  provider = 'none'
+): EmailIngestSettingsType => ({
+  endpoint: null,
+  verified_senders: [],
+  usage_summary: {
+    jobs_last_24h: 0,
+    rate_limit: 0,
+  },
+  enabled_by_config: false,
+  provider,
+  message,
+});
+
 export default function Settings() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -57,8 +72,14 @@ export default function Settings() {
       setEmailLoading(true);
       setEmailError(null);
       const response = await api('/email-ingest/settings', { method: 'GET' });
+      if (response.status === 503) {
+        const data = await response.json().catch(() => null);
+        setEmailSettings(disabledEmailSettings(data?.detail));
+        return;
+      }
       if (!response.ok) {
-        throw new Error('Failed to fetch email ingest settings');
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.detail || 'Failed to fetch email ingest settings');
       }
       const data: EmailIngestSettingsType = await response.json();
       setEmailSettings(data);
@@ -86,6 +107,11 @@ export default function Settings() {
   };
 
   const handleEnable = async () => {
+    if (emailSettings?.enabled_by_config === false) {
+      setEmailError(emailSettings.message || 'Email ingest is disabled by server configuration.');
+      return;
+    }
+
     try {
       setEnabling(true);
       setEmailError(null);
@@ -150,7 +176,9 @@ export default function Settings() {
   };
 
   const isEmailEnabled = emailSettings?.endpoint?.is_active ?? false;
-  const hasEndpoint = emailSettings?.endpoint !== null;
+  const hasEndpoint = Boolean(emailSettings?.endpoint);
+  const isEmailAvailable = emailSettings?.enabled_by_config ?? true;
+  const emailDisabledMessage = emailSettings?.message || 'Email ingest is disabled by server configuration.';
 
   return (
     <div className="settings-page">
@@ -247,6 +275,14 @@ export default function Settings() {
             <div className="loading-state">
               <div className="spinner"></div>
               <p>Loading email settings...</p>
+            </div>
+          ) : !isEmailAvailable ? (
+            <div className="disabled-state">
+              <div className="disabled-card">
+                <div className="disabled-icon">@</div>
+                <h2>Email Ingest Unavailable</h2>
+                <p>{emailDisabledMessage}</p>
+              </div>
             </div>
           ) : !hasEndpoint || !isEmailEnabled ? (
             <div className="disabled-state">

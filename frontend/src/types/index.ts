@@ -204,6 +204,9 @@ export interface EmailIngestSettings {
     jobs_last_24h: number;
     rate_limit: number;
   };
+  enabled_by_config?: boolean;
+  provider?: string;
+  message?: string | null;
 }
 
 // Credit/Usage Types

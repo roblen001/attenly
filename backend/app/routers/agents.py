@@ -1975,6 +1975,48 @@ async def download_saved_report_pdf(
 
 # Template Upload Endpoint
 
+@router.get("/template/capabilities")
+async def get_template_ingest_capabilities(current_user = Depends(get_current_user)):
+    """Return configured template-ingest capability for the current deployment."""
+    from app import config
+
+    provider = config.TEMPLATE_INGEST_PROVIDER
+    enabled = provider != "disabled"
+
+    messages = {
+        "disabled": (
+            "Template upload is disabled by this deployment. Build templates directly "
+            "in the editor or ask an administrator to enable a template-ingest provider."
+        ),
+        "basic": (
+            "Template upload is using basic DOCX/HTML conversion. Complex PDFs and "
+            "layout-heavy templates require a smart model provider."
+        ),
+        "gemini": (
+            "Template upload is using Gemini for smart multimodal template ingestion."
+        ),
+        "openai_compatible": (
+            "Template upload is using an OpenAI-compatible model from locally extracted "
+            "template structure. Use a strong model for complex layouts."
+        ),
+    }
+
+    return {
+        "enabled": enabled,
+        "provider": provider,
+        "model_name": (
+            config.TEMPLATE_INGEST_MODEL_NAME
+            if provider in {"gemini", "openai_compatible"}
+            else None
+        ),
+        "supports_pdf": provider in {"gemini", "openai_compatible"},
+        "supports_docx": provider in {"gemini", "openai_compatible", "basic"},
+        "supports_html": provider in {"gemini", "openai_compatible", "basic"},
+        "requires_smart_model": provider in {"gemini", "openai_compatible"},
+        "message": messages.get(provider, "Template upload provider is not supported by this runtime."),
+    }
+
+
 @router.post("/template/upload")
 async def upload_template(
     file: UploadFile = File(...),

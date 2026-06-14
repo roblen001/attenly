@@ -50,9 +50,20 @@ export interface TemplateIngestResponse {
   success: boolean;
   html_body: string;
   css: string;
-  source: 'gemini' | 'mammoth' | 'html' | 'blank' | 'disabled' | 'error';
+  source: 'gemini' | 'openai_compatible' | 'mammoth' | 'html' | 'blank' | 'disabled' | 'error';
   error?: string;
   warnings: string[];
+}
+
+export interface TemplateIngestCapabilities {
+  enabled: boolean;
+  provider: 'disabled' | 'basic' | 'gemini' | 'openai_compatible' | string;
+  model_name?: string | null;
+  supports_pdf: boolean;
+  supports_docx: boolean;
+  supports_html: boolean;
+  requires_smart_model: boolean;
+  message: string;
 }
 
 export interface WordSpan {

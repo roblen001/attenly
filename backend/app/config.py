@@ -77,7 +77,7 @@ CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
     "storage": {"supabase", "filesystem"},
     "llm": {"gemini", "openai_compatible"},
     "embedding": {"gemini", "openai_compatible"},
-    "template_ingest": {"disabled", "gemini", "basic"},
+    "template_ingest": {"disabled", "gemini", "basic", "openai_compatible"},
     "outbound_email": {"none", "resend", "microsoft_graph"},
     "inbound_email": {"none", "resend"},
 }
@@ -205,7 +205,10 @@ STORAGE_MAX_FILE_SIZE_MB = int(os.getenv("STORAGE_MAX_FILE_SIZE_MB", "100"))
 # =============================================================================
 
 LLM_MODEL_NAME = os.getenv("LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash-lite"))
-TEMPLATE_INGEST_MODEL_NAME = os.getenv("TEMPLATE_INGEST_MODEL_NAME", "gemini-2.5-pro")
+TEMPLATE_INGEST_MODEL_NAME = os.getenv(
+    "TEMPLATE_INGEST_MODEL",
+    os.getenv("TEMPLATE_INGEST_MODEL_NAME", "gemini-2.5-pro"),
+)
 LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = int(os.getenv("LLM_MAX_CONTEXT_TOKENS_PER_QUESTION", "4000"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 LLM_THINKING_BUDGET = int(os.getenv("LLM_THINKING_BUDGET", "0"))
@@ -487,11 +490,12 @@ def validate_config():
     uses_openai_compatible = (
         LLM_PROVIDER == "openai_compatible"
         or EMBEDDING_PROVIDER == "openai_compatible"
+        or TEMPLATE_INGEST_PROVIDER == "openai_compatible"
     )
     if uses_openai_compatible and not OPENAI_COMPATIBLE_BASE_URL:
         errors.append(
             "OPENAI_COMPATIBLE_BASE_URL is required when using OpenAI-compatible "
-            "LLM or embedding providers"
+            "LLM, embedding, or template ingest providers"
         )
 
     # LLM ranges
@@ -653,8 +657,12 @@ def get_config_summary() -> dict:
         },
         "template_ingest": {
             "provider": TEMPLATE_INGEST_PROVIDER,
-            "model_name": TEMPLATE_INGEST_MODEL_NAME if TEMPLATE_INGEST_PROVIDER == "gemini" else None,
-            "requires_multimodal_model": TEMPLATE_INGEST_PROVIDER == "gemini",
+            "model_name": (
+                TEMPLATE_INGEST_MODEL_NAME
+                if TEMPLATE_INGEST_PROVIDER in {"gemini", "openai_compatible"}
+                else None
+            ),
+            "requires_multimodal_model": TEMPLATE_INGEST_PROVIDER in {"gemini", "openai_compatible"},
             "runtime_enabled": TEMPLATE_INGEST_PROVIDER != "disabled",
         },
         "vector_search": {

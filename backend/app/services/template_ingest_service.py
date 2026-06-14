@@ -3,6 +3,8 @@ Template Ingest Service
 
 Provider-aware template normalization:
 - Gemini handles high-quality multimodal template normalization.
+- OpenAI-compatible mode sends an extracted template representation to a
+  high-capability chat model.
 - Basic mode handles simple DOCX/HTML conversion without AI.
 - Disabled mode lets local/enterprise deployments avoid a hard Gemini dependency.
 - Sanitizes HTML and CSS for security.
@@ -17,7 +19,14 @@ import re
 import tempfile
 from typing import Tuple, Optional, Set, Dict
 
-from app.config import GEMINI_API_KEY, TEMPLATE_INGEST_MODEL_NAME, TEMPLATE_INGEST_PROVIDER
+from app.config import (
+    GEMINI_API_KEY,
+    OPENAI_COMPATIBLE_API_KEY,
+    OPENAI_COMPATIBLE_BASE_URL,
+    OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
+    TEMPLATE_INGEST_MODEL_NAME,
+    TEMPLATE_INGEST_PROVIDER,
+)
 from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 from app.schemas import TemplateIngestResponse
 
@@ -26,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 class TemplateIngestService:
     """Service for provider-aware template normalization."""
+
+    MAX_TEMPLATE_REPRESENTATION_CHARS = 120_000
     
     # Prompt for high-capability multimodal template normalization.
     NORMALIZATION_PROMPT = """You are an expert document template normalizer for Attenly, a legal/enterprise document automation platform.
@@ -228,6 +239,19 @@ Finally, output only the JSON object:
 - Do NOT add any other keys.
 - Do NOT add any text before or after the JSON.
 """
+
+    OPENAI_COMPATIBLE_PROMPT_SUFFIX = """
+
+--------------------------------
+OPENAI-COMPATIBLE PROVIDER INPUT
+--------------------------------
+
+You are not receiving the original binary file directly. You are receiving a
+locally extracted representation of the uploaded template. Preserve structure,
+order, headings, lists, tables, and placeholders from this representation as
+faithfully as possible. If the representation is too weak to reconstruct a
+reasonable reusable template, return exactly {"html_body":"","css":""}.
+"""
     
     def __init__(self):
         """Initialize the configured template ingest provider."""
@@ -236,11 +260,15 @@ Finally, output only the JSON object:
 
         if self.provider == "gemini" and not GEMINI_API_KEY:
             logger.warning("GEMINI_API_KEY not configured. Gemini template ingestion will fail.")
+        if self.provider == "openai_compatible" and not OPENAI_COMPATIBLE_BASE_URL:
+            logger.warning(
+                "OPENAI_COMPATIBLE_BASE_URL not configured. OpenAI-compatible template ingestion will fail."
+            )
 
         logger.info(
             "TemplateIngestService initialized with provider=%s model=%s",
             self.provider,
-            self.model_name if self.provider == "gemini" else "n/a",
+            self.model_name if self.provider in {"gemini", "openai_compatible"} else "n/a",
         )
     
     def process_template_file(
@@ -276,6 +304,9 @@ Finally, output only the JSON object:
         if self.provider == "basic":
             return self._process_with_basic_converter(content, file_type, filename, warnings)
 
+        if self.provider == "openai_compatible":
+            return self._process_with_openai_compatible(content, file_type, filename, user_id, warnings)
+
         if self.provider != "gemini":
             return TemplateIngestResponse(
                 success=False,
@@ -284,7 +315,7 @@ Finally, output only the JSON object:
                 source="error",
                 error=(
                     f"Template ingest provider '{self.provider}' is not supported by this runtime. "
-                    "Use 'gemini', 'basic', or 'disabled'."
+                    "Use 'gemini', 'openai_compatible', 'basic', or 'disabled'."
                 ),
                 warnings=warnings,
             )
@@ -431,6 +462,278 @@ Finally, output only the JSON object:
             ),
             warnings=warnings,
         )
+
+    def _normalize_with_openai_compatible(
+        self,
+        file_content: bytes,
+        file_type: str,
+        filename: str,
+        user_id: Optional[str],
+        warnings: list[str],
+    ) -> Tuple[str, str]:
+        """Normalize an extracted template representation through /chat/completions."""
+        if not OPENAI_COMPATIBLE_BASE_URL:
+            raise ValueError("OPENAI_COMPATIBLE_BASE_URL is required for template ingestion")
+
+        representation = self._extract_template_representation(file_content, file_type, filename, warnings)
+        if not representation.strip():
+            raise ValueError("Could not extract template content for OpenAI-compatible ingestion")
+
+        if len(representation) > self.MAX_TEMPLATE_REPRESENTATION_CHARS:
+            representation = representation[: self.MAX_TEMPLATE_REPRESENTATION_CHARS]
+            warnings.append(
+                "Template content was truncated before model normalization. "
+                "Use a shorter template for better fidelity."
+            )
+
+        prompt = (
+            f"{self.NORMALIZATION_PROMPT}\n"
+            f"{self.OPENAI_COMPATIBLE_PROMPT_SUFFIX}\n\n"
+            f"Filename: {filename}\n"
+            f"Detected file type: {file_type}\n\n"
+            "Extracted TEMPLATE_FILE representation:\n"
+            "```text\n"
+            f"{representation}\n"
+            "```"
+        )
+
+        response_text, usage = self._call_openai_compatible_chat(prompt)
+        logger.info(
+            "OpenAI-compatible template ingest usage for %s: prompt=%s completion=%s",
+            filename,
+            usage.get("prompt_tokens", 0),
+            usage.get("completion_tokens", 0),
+        )
+
+        result = json.loads(self._clean_json_response(response_text))
+        html_body = result.get("html_body", "")
+        css = result.get("css", "")
+
+        if html_body and css:
+            html_body = self._sanitize_html(html_body)
+            css = self._sanitize_css(css)
+            logger.info("Successfully normalized template with OpenAI-compatible provider")
+            return html_body, css
+
+        return "", ""
+
+    def _extract_template_representation(
+        self,
+        file_content: bytes,
+        file_type: str,
+        filename: str,
+        warnings: list[str],
+    ) -> str:
+        """Extract a model-readable template representation from supported files."""
+        if file_type == "docx":
+            return self._extract_docx_representation(file_content, warnings)
+        if file_type == "html":
+            return self._extract_html_representation(file_content)
+        if file_type == "pdf":
+            warnings.append(
+                "PDF template ingestion uses locally extracted text blocks before calling the model. "
+                "Scanned PDFs or complex visual layouts may require a true multimodal provider."
+            )
+            return self._extract_pdf_representation(file_content, filename)
+        raise ValueError(f"Unsupported template file type for OpenAI-compatible ingestion: {file_type}")
+
+    def _extract_docx_representation(self, docx_content: bytes, warnings: list[str]) -> str:
+        try:
+            import mammoth
+
+            result = mammoth.convert_to_html(io.BytesIO(docx_content))
+            for message in result.messages:
+                warnings.append(f"DOCX conversion warning: {message.message}")
+
+            html = result.value.strip()
+            return (
+                "DOCX converted to HTML. Use this as the source structure, preserving "
+                "headings, paragraphs, lists, and tables as faithfully as possible.\n\n"
+                f"{html}"
+            )
+        except Exception as exc:
+            raise ValueError(f"Failed to extract DOCX template representation: {exc}") from exc
+
+    def _extract_html_representation(self, html_content: bytes) -> str:
+        try:
+            from bs4 import BeautifulSoup
+
+            html = html_content.decode("utf-8", errors="ignore")
+            soup = BeautifulSoup(html, "html.parser")
+            for element in soup(["script", "style", "iframe", "object", "embed"]):
+                element.decompose()
+
+            source = soup.body if soup.body else soup
+            body_html = "".join(str(child) for child in source.contents).strip()
+            return (
+                "HTML template body. Preserve this structure unless it is unsafe or invalid.\n\n"
+                f"{body_html}"
+            )
+        except Exception as exc:
+            raise ValueError(f"Failed to extract HTML template representation: {exc}") from exc
+
+    def _extract_pdf_representation(self, pdf_content: bytes, filename: str) -> str:
+        try:
+            import fitz
+
+            doc = fitz.open(stream=pdf_content, filetype="pdf")
+            try:
+                pages: list[str] = []
+                for page_index, page in enumerate(doc, start=1):
+                    blocks = page.get_text("blocks")
+                    sorted_blocks = sorted(blocks, key=lambda block: (block[1], block[0]))
+                    block_text = []
+                    for block in sorted_blocks:
+                        text = str(block[4]).strip()
+                        if text:
+                            block_text.append(text)
+                    pages.append(
+                        f"--- PAGE {page_index} ---\n" + "\n\n".join(block_text)
+                    )
+                return (
+                    f"PDF text-block extraction for {filename}. Page boundaries are marked. "
+                    "Use headings, order, table-like spacing, and repeated labels to infer structure.\n\n"
+                    + "\n\n<!-- pagebreak -->\n\n".join(pages)
+                )
+            finally:
+                doc.close()
+        except Exception as exc:
+            raise ValueError(f"Failed to extract PDF template representation: {exc}") from exc
+
+    def _openai_compatible_chat_url(self) -> str:
+        base_url = OPENAI_COMPATIBLE_BASE_URL.rstrip("/")
+        if base_url.endswith("/chat/completions"):
+            return base_url
+        return f"{base_url}/chat/completions"
+
+    def _openai_compatible_headers(self) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if OPENAI_COMPATIBLE_API_KEY:
+            headers["Authorization"] = f"Bearer {OPENAI_COMPATIBLE_API_KEY}"
+        return headers
+
+    def _call_openai_compatible_chat(self, prompt: str) -> Tuple[str, Dict[str, int]]:
+        import httpx
+
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+
+        with httpx.Client(timeout=OPENAI_COMPATIBLE_TIMEOUT_SECONDS) as client:
+            response = client.post(
+                self._openai_compatible_chat_url(),
+                headers=self._openai_compatible_headers(),
+                json=payload,
+            )
+
+            if response.status_code in {400, 404, 422}:
+                logger.info(
+                    "OpenAI-compatible template provider rejected response_format; retrying without it"
+                )
+                fallback_payload = dict(payload)
+                fallback_payload.pop("response_format", None)
+                response = client.post(
+                    self._openai_compatible_chat_url(),
+                    headers=self._openai_compatible_headers(),
+                    json=fallback_payload,
+                )
+
+            response.raise_for_status()
+
+        data = response.json()
+        choices = data.get("choices") or []
+        if not choices:
+            raise ValueError("OpenAI-compatible template response did not include choices")
+
+        message = choices[0].get("message", {})
+        content = message.get("content") or choices[0].get("text") or ""
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "")
+                if isinstance(part, dict)
+                else str(part)
+                for part in content
+            )
+        if not content:
+            raise ValueError("OpenAI-compatible template response did not include content")
+
+        usage = data.get("usage") or {}
+        return str(content), {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+        }
+
+    def _clean_json_response(self, response_text: str) -> str:
+        response_text = response_text.strip()
+        if response_text.startswith("```"):
+            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+            if match:
+                return match.group(1)
+            response_text = response_text.replace("```json", "").replace("```", "").strip()
+        return response_text
+
+    def _process_with_openai_compatible(
+        self,
+        content: bytes,
+        file_type: str,
+        filename: str,
+        user_id: Optional[str],
+        warnings: list[str],
+    ) -> TemplateIngestResponse:
+        try:
+            html_body, css = self._normalize_with_openai_compatible(
+                content,
+                file_type,
+                filename,
+                user_id,
+                warnings,
+            )
+
+            if html_body and css:
+                return TemplateIngestResponse(
+                    success=True,
+                    html_body=html_body,
+                    css=css,
+                    source="openai_compatible",
+                    warnings=warnings,
+                )
+
+            if file_type in {"docx", "html"}:
+                warnings.append(
+                    "OpenAI-compatible template normalization returned empty output; using basic conversion."
+                )
+                return self._process_with_basic_converter(content, file_type, filename, warnings)
+
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error=(
+                    "OpenAI-compatible template normalization returned empty output. "
+                    "Use a stronger model, simplify the template, or build it in the editor."
+                ),
+                warnings=warnings,
+            )
+        except Exception as exc:
+            logger.error("OpenAI-compatible template ingestion failed: %s", exc, exc_info=True)
+            if file_type in {"docx", "html"}:
+                warnings.append(
+                    f"OpenAI-compatible template normalization failed: {exc}. Using basic conversion."
+                )
+                return self._process_with_basic_converter(content, file_type, filename, warnings)
+
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error=f"OpenAI-compatible template ingestion failed: {exc}",
+                warnings=warnings,
+            )
     
     def _normalize_with_gemini(
         self,

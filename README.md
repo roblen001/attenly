@@ -196,6 +196,21 @@ TEMPLATE_INGEST_PROVIDER=gemini
 TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
 ```
 
+For OpenAI or an OpenAI-compatible gateway, use the same base URL and API key
+settings as the core model adapter:
+
+```bash
+TEMPLATE_INGEST_PROVIDER=openai_compatible
+TEMPLATE_INGEST_MODEL=gpt-4.1
+OPENAI_COMPATIBLE_BASE_URL=https://api.openai.com/v1
+OPENAI_COMPATIBLE_API_KEY=your_openai_or_gateway_key
+```
+
+OpenAI-compatible template ingestion first extracts a local representation from
+DOCX/HTML/PDF, then sends that structure to `/chat/completions`. It works best
+with a strong model. Scanned PDFs and highly visual layouts may still need a
+true multimodal model/provider.
+
 ### 2. Run the Backend Container with a Data Volume
 
 ```bash
@@ -277,17 +292,20 @@ The backend also has an initial provider-safe runtime slice:
   AI and does not support PDF/layout reasoning.
 - `TEMPLATE_INGEST_PROVIDER=gemini` enables the current smart template upload
   path and should use a strong multimodal model.
+- `TEMPLATE_INGEST_PROVIDER=openai_compatible` enables smart template upload
+  through an OpenAI-compatible `/chat/completions` endpoint after local
+  DOCX/HTML/PDF structure extraction.
 
 The `local` profile can now run the backend and browser app without Supabase.
 It is best for trusted internal pilots, demos, and API testing. Production
 enterprise deployments should still move toward SSO/OIDC instead of a shared
 bearer token.
 
-The remaining enterprise adapter work is Microsoft Graph inbound ingest,
-production SSO/OIDC auth, and a non-Gemini smart multimodal template-ingest
-adapter. OpenAI-compatible template ingestion is recognized as a target provider
-name, but not enabled yet because file upload and multimodal layout handling are
-not standardized across OpenAI-compatible gateways.
+The remaining enterprise adapter work is Microsoft Graph inbound ingest and
+production SSO/OIDC auth. OpenAI-compatible template ingestion is implemented
+using local structure extraction plus `/chat/completions`; provider-native file
+upload or vision APIs can be added later for teams that want deeper multimodal
+layout handling.
 
 ### Enterprise Example
 
@@ -298,8 +316,9 @@ filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
 email disabled or Microsoft Graph outbound email.
 Set `TEMPLATE_INGEST_PROVIDER=disabled` if users will build templates in the
 editor, or `TEMPLATE_INGEST_PROVIDER=basic` for simple DOCX/HTML conversion.
-Use the Gemini template-ingest provider only when you can supply a smart
-multimodal model for uploaded templates.
+Use `TEMPLATE_INGEST_PROVIDER=openai_compatible` for OpenAI or an internal
+OpenAI-compatible gateway. Use Gemini when you prefer the default smart
+multimodal template provider.
 
 ## Development Setup
 

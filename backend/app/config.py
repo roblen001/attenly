@@ -661,6 +661,7 @@ def get_config_summary() -> dict:
         "email": {
             "outbound_provider": OUTBOUND_EMAIL_PROVIDER,
             "inbound_provider": INBOUND_EMAIL_PROVIDER,
+            "inbound_runtime_enabled": INBOUND_EMAIL_PROVIDER == "resend",
             "resend_api_key_configured": bool(RESEND_API_KEY),
             "resend_webhook_secret_configured": bool(RESEND_WEBHOOK_SECRET),
             "graph_tenant_configured": bool(GRAPH_TENANT_ID),

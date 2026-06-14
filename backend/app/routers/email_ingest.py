@@ -9,12 +9,44 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Query
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
+from app import config
 from app.core.deps import get_current_user
 from app.services.email_ingest_service import email_ingest_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/email-ingest", tags=["email-ingest"])
+
+EMAIL_INGEST_DISABLED_MESSAGE = (
+    "Email ingest is disabled by server configuration. Set "
+    "INBOUND_EMAIL_PROVIDER=resend and configure Resend to enable it."
+)
+
+
+def is_email_ingest_enabled() -> bool:
+    return config.INBOUND_EMAIL_PROVIDER == "resend"
+
+
+def disabled_email_ingest_settings() -> dict:
+    return {
+        "endpoint": None,
+        "verified_senders": [],
+        "usage_summary": {
+            "jobs_last_24h": 0,
+            "rate_limit": 0,
+        },
+        "enabled_by_config": False,
+        "provider": config.INBOUND_EMAIL_PROVIDER,
+        "message": EMAIL_INGEST_DISABLED_MESSAGE,
+    }
+
+
+def require_email_ingest_enabled() -> None:
+    if not is_email_ingest_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=EMAIL_INGEST_DISABLED_MESSAGE,
+        )
 
 
 def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authorization")) -> str:
@@ -59,6 +91,9 @@ class EmailIngestSettings(BaseModel):
     endpoint: Optional[EmailIngestEndpoint] = None
     verified_senders: List[VerifiedSenderResponse]
     usage_summary: UsageSummary
+    enabled_by_config: bool = True
+    provider: str = "resend"
+    message: Optional[str] = None
 
 
 class VerifiedSender(BaseModel):
@@ -99,6 +134,9 @@ async def get_settings(current_user = Depends(get_current_user), jwt_token: str 
         EmailIngestSettings with endpoint, verified senders, and usage summary
     """
     try:
+        if not is_email_ingest_enabled():
+            return disabled_email_ingest_settings()
+
         user_id = current_user.id
         
         # Service now returns the complete structure matching our schema
@@ -108,6 +146,7 @@ async def get_settings(current_user = Depends(get_current_user), jwt_token: str 
         return settings
         
     except Exception as e:
+        user_id = getattr(current_user, "id", "unknown")
         logger.error(f"Failed to get email settings for user {user_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -126,6 +165,7 @@ async def enable_email_ingest(current_user = Depends(get_current_user), jwt_toke
         EmailIngestSettings with the generated or reactivated alias
     """
     try:
+        require_email_ingest_enabled()
         user_id = current_user.id
         
         # Enable the endpoint
@@ -136,12 +176,15 @@ async def enable_email_ingest(current_user = Depends(get_current_user), jwt_toke
         
         return settings
         
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
+        user_id = getattr(current_user, "id", "unknown")
         logger.error(f"Failed to enable email ingest for user {user_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -160,6 +203,7 @@ async def disable_email_ingest(current_user = Depends(get_current_user), jwt_tok
         Success message
     """
     try:
+        require_email_ingest_enabled()
         user_id = current_user.id
         
         success = email_ingest_service.disable_email_ingest(jwt_token, user_id)
@@ -194,6 +238,7 @@ async def get_verified_senders(current_user = Depends(get_current_user), jwt_tok
         List of verified senders with their status
     """
     try:
+        require_email_ingest_enabled()
         user_id = current_user.id
         
         senders = email_ingest_service.get_verified_senders(jwt_token, user_id)
@@ -209,7 +254,10 @@ async def get_verified_senders(current_user = Depends(get_current_user), jwt_tok
             for sender in senders
         ]
         
+    except HTTPException:
+        raise
     except Exception as e:
+        user_id = getattr(current_user, "id", "unknown")
         logger.error(f"Failed to get verified senders for user {user_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -236,6 +284,7 @@ async def add_verified_sender(
         VerifiedSender with pending status
     """
     try:
+        require_email_ingest_enabled()
         user_id = current_user.id
         
         result = email_ingest_service.add_verified_sender(
@@ -252,12 +301,15 @@ async def add_verified_sender(
             verified_at=None
         )
         
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
+        user_id = getattr(current_user, "id", "unknown")
         logger.error(f"Failed to add verified sender for user {user_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -283,6 +335,7 @@ async def resend_verification(
         Success message
     """
     try:
+        require_email_ingest_enabled()
         user_id = current_user.id
         
         # Get the sender to verify it belongs to this user and get email
@@ -338,6 +391,7 @@ async def remove_verified_sender(
         Success message
     """
     try:
+        require_email_ingest_enabled()
         user_id = current_user.id
         
         success = email_ingest_service.remove_verified_sender(jwt_token, user_id, sender_id)
@@ -382,6 +436,7 @@ async def update_default_agent(
         Success message
     """
     try:
+        require_email_ingest_enabled()
         user_id = current_user.id
         
         success = email_ingest_service.update_default_agent(
@@ -426,6 +481,13 @@ async def verify_sender(token: str = Query(...)):
         Success/error message as JSON
     """
     try:
+        if not is_email_ingest_enabled():
+            return {
+                "status": "disabled",
+                "reason": "email_ingest_disabled",
+                "message": EMAIL_INGEST_DISABLED_MESSAGE,
+            }
+
         success, message = email_ingest_service.verify_sender(token)
         
         if success:

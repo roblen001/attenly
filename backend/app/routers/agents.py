@@ -1996,8 +1996,8 @@ async def get_template_ingest_capabilities(current_user = Depends(get_current_us
             "Template upload is using Gemini for smart multimodal template ingestion."
         ),
         "openai_compatible": (
-            "Template upload is using an OpenAI-compatible model from locally extracted "
-            "template structure. Use a strong model for complex layouts."
+            "Template upload is using OpenAI-compatible multimodal file input. "
+            "Use a strong model for complex layouts."
         ),
     }
 
@@ -2007,6 +2007,11 @@ async def get_template_ingest_capabilities(current_user = Depends(get_current_us
         "model_name": (
             config.TEMPLATE_INGEST_MODEL_NAME
             if provider in {"gemini", "openai_compatible"}
+            else None
+        ),
+        "openai_mode": (
+            config.TEMPLATE_INGEST_OPENAI_MODE
+            if provider == "openai_compatible"
             else None
         ),
         "supports_pdf": provider in {"gemini", "openai_compatible"},

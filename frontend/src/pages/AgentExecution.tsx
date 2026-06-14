@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Agent, UploadedFile } from '../types';
 import FileUpload from '../components/AgentExecution/FileUpload';

@@ -1,7 +1,7 @@
 # Attenly
 
 Attenly is an AI-powered document processing and report generation platform for
-insurance, underwriting, legal, and operations teams.
+enterprise, legal, finance, and operations teams.
 
 The current application is built around a proven default stack:
 

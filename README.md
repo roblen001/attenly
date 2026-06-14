@@ -145,6 +145,10 @@ OUTBOUND_EMAIL_PROVIDER=none
 INBOUND_EMAIL_PROVIDER=none
 ```
 
+With inbound email set to `none`, the backend does not mount inbound webhook or
+email job-processing routes, and the Settings page shows email ingest as
+unavailable instead of prompting users to configure Resend.
+
 For Gemini, set:
 
 ```bash
@@ -234,7 +238,8 @@ The backend also has an initial provider-safe runtime slice:
 - `STORAGE_PROVIDER=filesystem` stores report documents under `STORAGE_PATH`.
 - `OUTBOUND_EMAIL_PROVIDER=none` disables outbound email without startup errors.
 - `OUTBOUND_EMAIL_PROVIDER=microsoft_graph` sends outbound mail through Microsoft Graph.
-- `INBOUND_EMAIL_PROVIDER=none` disables inbound email webhooks.
+- `INBOUND_EMAIL_PROVIDER=none` disables inbound email webhooks and email job
+  processing routes.
 - `VITE_AUTH_PROVIDER=local` lets the browser app use the same bearer token
   flow without Supabase Auth.
 - `LLM_PROVIDER=openai_compatible` sends extraction and quote prompts to an
@@ -305,6 +310,10 @@ At minimum, configure:
 
 Email ingest is optional. The core upload and report workflows can run without
 Resend.
+
+When `INBOUND_EMAIL_PROVIDER=none`, the backend leaves the Resend webhook and
+email job processor unmounted. Authenticated users can still open Settings; the
+email ingest panel reports that the feature is unavailable by configuration.
 
 To use the current Resend-based email ingest:
 

@@ -1,4 +1,3 @@
-import React from 'react';
 import type { CreditStatus } from '../../types';
 import { formatCredits, getProgressColor } from '../../hooks/useCredits';
 import './CreditOverview.css';

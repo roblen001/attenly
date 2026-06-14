@@ -26,20 +26,6 @@ interface CreateCustomAgentRequest {
   questions: QuestionOut[];
 }
 
-interface CustomAgent {
-  id: string;
-  name: string;
-  description: string;
-  reportTemplate: string;
-  questions: QuestionOut[];
-  user_id: string;
-  is_custom: boolean;
-  created_by_name?: string;
-  createdAt: string;
-  updatedAt: string;
-  can_delete: boolean;
-}
-
 interface AgentCreationStep {
   step: 'upload' | 'template-selection' | 'editor' | 'naming';
   data: {

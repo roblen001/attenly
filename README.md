@@ -20,7 +20,7 @@ Attenly is being organized around three setup profiles.
 | --- | --- | --- | --- |
 | `default` | Supported now | Fastest working setup | Supabase + Gemini + optional Resend |
 | `local` | Supported now | No-Supabase internal pilots | Local token auth + SQLAlchemy/SQLite + filesystem storage + Gemini |
-| `enterprise` | Planned | Company infrastructure | OpenAI-compatible models + Microsoft Graph + company database/storage |
+| `enterprise` | Supported for core upload/report flow | Company infrastructure | OpenAI-compatible models + Microsoft Graph outbound + company database/storage |
 
 Companies do not need to replace every dependency before first launch. They can
 start with the default profile, prove the app internally, then replace one
@@ -126,8 +126,8 @@ http://localhost:5173
 ## Quick Start: Local No-Supabase Profile
 
 Use this path for an internal pilot that avoids Supabase auth, Supabase storage,
-and an external database. It still uses Gemini for AI until the
-OpenAI-compatible model adapter lands.
+and an external database. It uses Gemini by default, or you can switch the AI
+settings to an OpenAI-compatible internal endpoint.
 
 ### 1. Prepare Backend Environment Variables
 
@@ -139,12 +139,33 @@ Set these values:
 
 ```bash
 LOCAL_AUTH_TOKEN=generate-a-long-random-token
-GEMINI_API_KEY=your_gemini_api_key
 DATABASE_URL=sqlite:////data/attenly.db
 STORAGE_PATH=/data/storage
 OUTBOUND_EMAIL_PROVIDER=none
 INBOUND_EMAIL_PROVIDER=none
 ```
+
+For Gemini, set:
+
+```bash
+LLM_PROVIDER=gemini
+EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+For an OpenAI-compatible internal model endpoint, set:
+
+```bash
+LLM_PROVIDER=openai_compatible
+EMBEDDING_PROVIDER=openai_compatible
+OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
+OPENAI_COMPATIBLE_API_KEY=replace-with-internal-model-token
+LLM_MODEL=company-document-model
+EMBEDDING_MODEL=company-embedding-model
+```
+
+Leave `OPENAI_COMPATIBLE_API_KEY` blank only if your internal gateway does not
+require authentication.
 
 ### 2. Run the Backend Container with a Data Volume
 
@@ -216,27 +237,27 @@ The backend also has an initial provider-safe runtime slice:
 - `INBOUND_EMAIL_PROVIDER=none` disables inbound email webhooks.
 - `VITE_AUTH_PROVIDER=local` lets the browser app use the same bearer token
   flow without Supabase Auth.
+- `LLM_PROVIDER=openai_compatible` sends extraction and quote prompts to an
+  OpenAI-compatible `/chat/completions` endpoint.
+- `EMBEDDING_PROVIDER=openai_compatible` sends vector embeddings to an
+  OpenAI-compatible `/embeddings` endpoint.
 
 The `local` profile can now run the backend and browser app without Supabase.
 It is best for trusted internal pilots, demos, and API testing. Production
 enterprise deployments should still move toward SSO/OIDC instead of a shared
 bearer token.
 
-The full `enterprise` profile is still planned because OpenAI-compatible LLM
-calls, OpenAI-compatible embeddings, Microsoft Graph inbound ingest, and
-production enterprise auth are not complete yet.
+The remaining enterprise adapter work is Microsoft Graph inbound ingest and
+production SSO/OIDC auth. Template ingestion for uploaded DOCX templates still
+uses the current Gemini path unless you build templates directly in the editor.
 
 ### Enterprise Example
 
-For a company with on-prem models that expose an OpenAI-compatible API, Microsoft
-Graph mail, and no shared SQL service yet, the intended future configuration is
-shown in `.env.enterprise.example`.
-
-That full profile is not implemented end-to-end yet. Today, companies can use
-the local profile with SQLite, filesystem storage, local token auth, disabled
-email, or Microsoft Graph outbound email. The remaining enterprise work is the
-OpenAI-compatible model/embedding adapter, Microsoft Graph inbound ingest, and
-production-grade SSO/OIDC auth.
+For a company with internal models that expose an OpenAI-compatible API,
+Microsoft Graph mail, and no shared SQL service yet, use
+`.env.enterprise.example`. The core upload/report flow can run with SQLite,
+filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
+email disabled or Microsoft Graph outbound email.
 
 ## Development Setup
 
@@ -315,7 +336,7 @@ Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 - Do not bake secrets into Docker images.
 - Use HTTPS in production.
 - Restrict `CORS_ORIGINS` to known frontend origins.
-- Rotate Supabase, Gemini, and Resend keys if they are exposed.
+- Rotate Supabase, Gemini, OpenAI-compatible, Graph, and Resend keys if they are exposed.
 - Treat local auth as a trusted internal pilot mode. The bearer token is
   equivalent to a password and should be rotated if exposed.
 - Do not treat `VITE_LOCAL_AUTH_TOKEN` as a secret. Frontend `VITE_` values are

@@ -29,7 +29,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 APP_PROFILE = _normalized_env("APP_PROFILE", "default")
 
 KNOWN_APP_PROFILES: Set[str] = {"default", "local", "enterprise"}
-SUPPORTED_RUNTIME_PROFILES: Set[str] = {"default", "local"}
+SUPPORTED_RUNTIME_PROFILES: Set[str] = {"default", "local", "enterprise"}
 
 PROFILE_PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
     "default": {
@@ -71,8 +71,8 @@ CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
     "auth": {"supabase", "local"},
     "database": {"supabase", "sqlalchemy"},
     "storage": {"supabase", "filesystem"},
-    "llm": {"gemini"},
-    "embedding": {"gemini"},
+    "llm": {"gemini", "openai_compatible"},
+    "embedding": {"gemini", "openai_compatible"},
     "outbound_email": {"none", "resend", "microsoft_graph"},
     "inbound_email": {"none", "resend"},
 }
@@ -237,6 +237,10 @@ EMBEDDING_MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "1"))
 EMBEDDING_TIMEOUT_SECONDS = int(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "30"))
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-001"))
 EMBEDDING_MAX_CONCURRENT_BATCHES = int(os.getenv("EMBEDDING_MAX_CONCURRENT_BATCHES", "1"))
+EMBEDDING_DIMENSIONS = int(os.getenv(
+    "EMBEDDING_DIMENSIONS",
+    "1536" if EMBEDDING_PROVIDER == "openai_compatible" else "768",
+))
 
 # =============================================================================
 # INTELLIGENT QUOTE EXTRACTION CONFIGURATION (needed by llm_service)
@@ -455,7 +459,17 @@ def validate_config():
 
     uses_gemini = LLM_PROVIDER == "gemini" or EMBEDDING_PROVIDER == "gemini"
     if uses_gemini and not GEMINI_API_KEY:
-        errors.append("GEMINI_API_KEY is required for LLM functionality")
+        errors.append("GEMINI_API_KEY is required when using Gemini LLM or embedding providers")
+
+    uses_openai_compatible = (
+        LLM_PROVIDER == "openai_compatible"
+        or EMBEDDING_PROVIDER == "openai_compatible"
+    )
+    if uses_openai_compatible and not OPENAI_COMPATIBLE_BASE_URL:
+        errors.append(
+            "OPENAI_COMPATIBLE_BASE_URL is required when using OpenAI-compatible "
+            "LLM or embedding providers"
+        )
 
     # LLM ranges
     if LLM_MAX_CONTEXT_TOKENS_PER_QUESTION < 1000:
@@ -611,6 +625,7 @@ def get_config_summary() -> dict:
         "embedding": {
             "provider": EMBEDDING_PROVIDER,
             "model_name": EMBEDDING_MODEL_NAME,
+            "dimensions": EMBEDDING_DIMENSIONS,
         },
         "vector_search": {
             "top_k_per_question": VECTOR_SEARCH_TOP_K_PER_QUESTION,

@@ -9,18 +9,17 @@ Enhanced with batch embedding generation for optimal performance.
 import uuid
 from typing import List, Dict, Any, Optional
 import logging
-import os
 import asyncio
 from .embedding_batch_service import get_embedding_service
 from .performance_monitor import time_operation
 from .credit_service import get_credit_service
-from app.config import EMBEDDING_MODEL_NAME
+from app.config import EMBEDDING_MODEL_NAME, EMBEDDING_PROVIDER
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStore:
-    """User-based vector store for document chunks using ChromaDB with Google embeddings"""
+    """User-based vector store for document chunks using ChromaDB embeddings."""
 
     def __init__(self, user_id: str):
         self.user_id = user_id
@@ -63,12 +62,6 @@ class VectorStore:
             import chromadb
             from chromadb.config import Settings
 
-            # Validate Google API key
-            gemini_api_key = os.getenv("GEMINI_API_KEY")
-            if not gemini_api_key:
-                logger.error("GEMINI_API_KEY not found in environment variables")
-                raise ValueError("GEMINI_API_KEY is required for batch embedding generation")
-
             # Initialize ChromaDB client with in-memory storage for users
             self.client = chromadb.EphemeralClient()
 
@@ -76,21 +69,31 @@ class VectorStore:
             # We'll use manual embedding generation for better performance
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"user_id": self.user_id, "embedding_model": "gemini-embedding-001", "batch_mode": True}
+                metadata={
+                    "user_id": self.user_id,
+                    "embedding_provider": EMBEDDING_PROVIDER,
+                    "embedding_model": EMBEDDING_MODEL_NAME,
+                    "batch_mode": True,
+                }
             )
 
             # Get batch embedding service
             self.embedding_service = get_embedding_service()
 
             self.available = True
-            logger.info(f"Initialized vector store for user {self.user_id} with batch embedding generation")
+            logger.info(
+                "Initialized vector store for user %s with %s/%s batch embeddings",
+                self.user_id,
+                EMBEDDING_PROVIDER,
+                EMBEDDING_MODEL_NAME,
+            )
 
         except ImportError as e:
             logger.warning(f"ChromaDB or required dependencies not available: {e}")
             self.client = None
             self.collection = None
             self.available = False
-            raise ImportError("ChromaDB and google-generativeai are required for vector store functionality")
+            raise ImportError("ChromaDB and embedding provider dependencies are required for vector store functionality")
         except ValueError as e:
             logger.error(f"Configuration error: {e}")
             self.client = None
@@ -98,7 +101,7 @@ class VectorStore:
             self.available = False
             raise e
         except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB with Google embeddings: {e}")
+            logger.error(f"Failed to initialize ChromaDB with embeddings: {e}")
             self.client = None
             self.collection = None
             self.available = False

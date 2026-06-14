@@ -1,8 +1,8 @@
 """
 Batch Embedding Service for Optimized Vector Generation
 
-This service handles batch embedding generation using Google's Generative AI API,
-significantly improving performance over individual embedding calls.
+This service handles batch embedding generation using the configured embedding
+provider, significantly improving performance over individual embedding calls.
 
 Performance improvements:
 - Batch processing: 50 texts per API call instead of 1
@@ -20,12 +20,16 @@ from contextlib import asynccontextmanager
 import google.generativeai as genai
 import httpx
 from app.config import (
-    GEMINI_API_KEY, 
+    GEMINI_API_KEY,
+    EMBEDDING_PROVIDER,
     EMBEDDING_BATCH_SIZE, 
     EMBEDDING_MAX_RETRIES,
     EMBEDDING_TIMEOUT_SECONDS,
     EMBEDDING_MODEL_NAME,
-    EMBEDDING_MAX_CONCURRENT_BATCHES
+    EMBEDDING_MAX_CONCURRENT_BATCHES,
+    EMBEDDING_DIMENSIONS,
+    OPENAI_COMPATIBLE_BASE_URL,
+    OPENAI_COMPATIBLE_API_KEY,
 )
 
 # Global HTTP client for connection reuse (HTTP/2 enabled)
@@ -59,7 +63,7 @@ class BatchResult:
 
 class EmbeddingBatchService:
     """
-    Batch embedding service using Google's Generative AI API
+    Batch embedding service using the configured embedding provider.
     
     Features:
     - Batch processing of up to 50 texts per API call
@@ -69,18 +73,30 @@ class EmbeddingBatchService:
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or GEMINI_API_KEY
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY is required for batch embedding service")
-        
-        # Configure Google AI
-        genai.configure(api_key=self.api_key)
+        self.provider = EMBEDDING_PROVIDER
+        self.api_key = api_key or (
+            GEMINI_API_KEY if self.provider == "gemini" else OPENAI_COMPATIBLE_API_KEY
+        )
+        self.base_url = OPENAI_COMPATIBLE_BASE_URL
+
+        if self.provider == "gemini":
+            if not self.api_key:
+                raise ValueError("GEMINI_API_KEY is required for batch embedding service")
+            genai.configure(api_key=self.api_key)
+        elif self.provider == "openai_compatible":
+            if not self.base_url:
+                raise ValueError(
+                    "OPENAI_COMPATIBLE_BASE_URL is required for OpenAI-compatible embeddings"
+                )
+        else:
+            raise ValueError(f"Unsupported embedding provider: {self.provider}")
         
         # Configuration
         self.batch_size = EMBEDDING_BATCH_SIZE
         self.max_retries = EMBEDDING_MAX_RETRIES
         self.timeout = EMBEDDING_TIMEOUT_SECONDS
         self.model_name = EMBEDDING_MODEL_NAME
+        self.embedding_dimensions = EMBEDDING_DIMENSIONS
         self.max_concurrent_batches = EMBEDDING_MAX_CONCURRENT_BATCHES
         
         # Performance tracking
@@ -94,8 +110,14 @@ class EmbeddingBatchService:
         self._last_request_time = 0.0
         self._min_request_interval = 0.1  # 100ms between requests
         
-        logger.info(f"Initialized EmbeddingBatchService with batch_size={self.batch_size}, "
-                   f"max_concurrent={self.max_concurrent_batches}")
+        logger.info(
+            "Initialized EmbeddingBatchService provider=%s model=%s batch_size=%s "
+            "max_concurrent=%s",
+            self.provider,
+            self.model_name,
+            self.batch_size,
+            self.max_concurrent_batches,
+        )
     
     def _split_into_batches(self, texts: List[str]) -> List[List[str]]:
         """Split texts into batches of appropriate size"""
@@ -123,6 +145,12 @@ class EmbeddingBatchService:
         retry_count: int = 0
     ) -> BatchResult:
         """Generate embeddings for a single batch using the real batch API with retry logic"""
+        if self.provider == "openai_compatible":
+            return await self._generate_openai_compatible_embeddings(
+                texts,
+                batch_index,
+                retry_count,
+            )
         
         start_time = time.time()
         await self._rate_limit_delay()
@@ -216,6 +244,152 @@ class EmbeddingBatchService:
             error="Maximum retries exceeded",
             success=False,
         )
+
+    def _openai_compatible_url(self, path: str) -> str:
+        base_url = (self.base_url or "").rstrip("/")
+        if base_url.endswith("/embeddings") and path == "/embeddings":
+            return base_url
+        return f"{base_url}{path}"
+
+    def _openai_compatible_headers(self) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _parse_openai_embedding_response(
+        self,
+        data: Dict[str, Any],
+        expected_count: int,
+    ) -> List[List[float]]:
+        if isinstance(data.get("data"), list):
+            items = sorted(
+                data["data"],
+                key=lambda item: item.get("index", 0) if isinstance(item, dict) else 0,
+            )
+            embeddings = [
+                item["embedding"]
+                for item in items
+                if isinstance(item, dict) and "embedding" in item
+            ]
+        elif isinstance(data.get("embeddings"), list):
+            raw_embeddings = data["embeddings"]
+            embeddings = [
+                item.get("values") if isinstance(item, dict) else item
+                for item in raw_embeddings
+            ]
+        else:
+            raise ValueError(f"Bad embedding response: keys={list(data.keys())}")
+
+        if len(embeddings) != expected_count:
+            raise ValueError(
+                f"Embedding count mismatch ({len(embeddings)} != {expected_count})"
+            )
+
+        if embeddings:
+            self.embedding_dimensions = len(embeddings[0])
+        return embeddings
+
+    async def _generate_openai_compatible_embeddings(
+        self,
+        texts: List[str],
+        batch_index: int,
+        retry_count: int = 0,
+    ) -> BatchResult:
+        start_time = time.time()
+        await self._rate_limit_delay()
+
+        url = self._openai_compatible_url("/embeddings")
+        payload = {"model": self.model_name, "input": texts}
+        client = _get_client()
+        backoff = 0.5
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                logger.debug(
+                    "Making OpenAI-compatible embedding call for %s texts "
+                    "(batch %s, attempt %s)",
+                    len(texts),
+                    batch_index,
+                    attempt + 1,
+                )
+
+                response = await client.post(
+                    url,
+                    headers=self._openai_compatible_headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                )
+
+                if response.status_code >= 500:
+                    raise httpx.HTTPStatusError(
+                        "Server error",
+                        request=response.request,
+                        response=response,
+                    )
+
+                response.raise_for_status()
+                embeddings = self._parse_openai_embedding_response(
+                    response.json(),
+                    expected_count=len(texts),
+                )
+
+                processing_time = time.time() - start_time
+                self.total_api_calls += 1
+                self.total_embeddings_generated += len(embeddings)
+                self.total_processing_time += processing_time
+
+                logger.debug(
+                    "Generated %s OpenAI-compatible embeddings in batch %s "
+                    "(%.2fs, attempt %s)",
+                    len(embeddings),
+                    batch_index,
+                    processing_time,
+                    attempt + 1,
+                )
+
+                return BatchResult(
+                    embeddings=embeddings,
+                    batch_index=batch_index,
+                    processing_time=processing_time,
+                    retry_count=attempt,
+                    success=True,
+                )
+
+            except (httpx.HTTPError, ValueError) as e:
+                error_msg = f"Batch {batch_index} failed (attempt {attempt + 1}): {str(e)}"
+                logger.warning(error_msg)
+
+                if attempt < self.max_retries:
+                    logger.info("Retrying batch %s after %ss delay", batch_index, backoff)
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+                    continue
+
+                self.error_count += 1
+                logger.error(
+                    "Batch %s failed after %s attempts: %s",
+                    batch_index,
+                    self.max_retries + 1,
+                    e,
+                )
+                return BatchResult(
+                    embeddings=[],
+                    batch_index=batch_index,
+                    processing_time=time.time() - start_time,
+                    retry_count=attempt,
+                    error=str(e),
+                    success=False,
+                )
+
+        return BatchResult(
+            embeddings=[],
+            batch_index=batch_index,
+            processing_time=time.time() - start_time,
+            retry_count=retry_count,
+            error="Maximum retries exceeded",
+            success=False,
+        )
     
     
     async def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
@@ -293,7 +467,7 @@ class EmbeddingBatchService:
             else:
                 # For failed batches, add zero vectors to maintain index alignment
                 batch_size = len(batches[batch_result.batch_index])
-                zero_embeddings = [[0.0] * 768 for _ in range(batch_size)]  # gemini-embedding-001 has 768 dimensions
+                zero_embeddings = [[0.0] * self.embedding_dimensions for _ in range(batch_size)]
                 all_embeddings.extend(zero_embeddings)
                 logger.error(f"Using zero vectors for failed batch {batch_result.batch_index}")
         
@@ -335,6 +509,9 @@ class EmbeddingBatchService:
             "avg_embeddings_per_call": avg_embeddings_per_call,
             "error_count": self.error_count,
             "error_rate_percent": error_rate,
+            "provider": self.provider,
+            "model_name": self.model_name,
+            "embedding_dimensions": self.embedding_dimensions,
             "batch_size": self.batch_size,
             "max_concurrent_batches": self.max_concurrent_batches
         }

@@ -1,6 +1,6 @@
 """Database tables. How the data will be stored in the database."""
 # models.py
-from sqlalchemy import Column, String, DateTime, Text, UniqueConstraint, ForeignKey, Boolean
+from sqlalchemy import Column, String, DateTime, Text, UniqueConstraint, ForeignKey, Boolean, Integer, JSON
 from datetime import datetime, timezone
 from uuid import uuid4
 from .db import Base
@@ -53,3 +53,66 @@ class AgentQuestion(Base):
         # Each placeholder should be unique per agent
         UniqueConstraint("agent_id", "placeholder", name="uq_agent_placeholder_per_agent"),
     )
+
+
+class SavedReport(Base):
+    __tablename__ = "saved_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    agent_id = Column(String, nullable=False)
+    agent_name = Column(Text, nullable=False)
+    report_name = Column(Text, nullable=False)
+    report_data = Column(JSON, nullable=False)
+    ai_baseline_answers = Column(JSON, nullable=True)
+    generated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    saved_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    documents = relationship(
+        "SavedReportDocument",
+        back_populates="report",
+        cascade="all, delete-orphan",
+    )
+    changes = relationship(
+        "ReportChange",
+        back_populates="report",
+        cascade="all, delete-orphan",
+    )
+
+
+class SavedReportDocument(Base):
+    __tablename__ = "saved_report_documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    report_id = Column(UUID(as_uuid=True), ForeignKey("saved_reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(String, nullable=False)
+    filename = Column(Text, nullable=False)
+    document_metadata = Column("metadata", JSON, nullable=False, default=dict)
+    storage_path = Column(Text, nullable=True)
+    content_hash = Column(String, nullable=True)
+    storage_bucket = Column(String, nullable=True)
+    stored_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    report = relationship("SavedReport", back_populates="documents")
+
+    __table_args__ = (
+        UniqueConstraint("report_id", "document_id", name="uq_saved_report_document_per_report"),
+    )
+
+
+class ReportChange(Base):
+    __tablename__ = "report_changes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    report_id = Column(UUID(as_uuid=True), ForeignKey("saved_reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    answer_placeholder = Column(String(255), nullable=False, index=True)
+    change_type = Column(String(10), nullable=False)
+    text_content = Column(Text, nullable=False)
+    start_offset = Column(Integer, nullable=False)
+    end_offset = Column(Integer, nullable=False)
+    user_id = Column(String, nullable=False, index=True)
+    user_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    report = relationship("SavedReport", back_populates="changes")

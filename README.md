@@ -19,7 +19,7 @@ Attenly is being organized around three setup profiles.
 | Profile | Status | Best For | Providers |
 | --- | --- | --- | --- |
 | `default` | Supported now | Fastest working setup | Supabase + Gemini + optional Resend |
-| `local` | Planned | Local trials without cloud dependencies | SQLAlchemy + SQLite + filesystem storage + local auth |
+| `local` | Backend supported now | Local backend/API trials without Supabase | Local auth + SQLAlchemy/SQLite + filesystem storage + Gemini |
 | `enterprise` | Planned | Company infrastructure | OpenAI-compatible models + Microsoft Graph + company database/storage |
 
 Companies do not need to replace every dependency before first launch. They can
@@ -144,14 +144,20 @@ The default profile uses the providers the app was originally built to support:
 The backend also has an initial provider-safe runtime slice:
 
 - `AUTH_PROVIDER=local` accepts a configured internal bearer token.
+- `DATABASE_PROVIDER=sqlalchemy` stores app data through SQLAlchemy.
+- `DATABASE_URL=sqlite:////data/attenly.db` uses a local SQLite file.
+- `STORAGE_PROVIDER=filesystem` stores report documents under `STORAGE_PATH`.
 - `OUTBOUND_EMAIL_PROVIDER=none` disables outbound email without startup errors.
 - `OUTBOUND_EMAIL_PROVIDER=microsoft_graph` sends outbound mail through Microsoft Graph.
 - `INBOUND_EMAIL_PROVIDER=none` disables inbound email webhooks.
 
-The full `local` and `enterprise` profiles are still planned because SQLAlchemy
-persistence for app data, filesystem storage, OpenAI-compatible LLM calls,
-OpenAI-compatible embeddings, Microsoft Graph inbound ingest, and frontend local
-auth are not complete yet.
+The `local` backend profile is now useful for API-level testing without
+Supabase. The browser frontend still uses Supabase auth, so full no-Supabase
+end-to-end app startup needs the frontend local-auth adapter.
+
+The full `enterprise` profile is still planned because OpenAI-compatible LLM
+calls, OpenAI-compatible embeddings, Microsoft Graph inbound ingest, and
+frontend enterprise auth are not complete yet.
 
 ### Enterprise Example
 
@@ -159,9 +165,9 @@ For a company with on-prem models that expose an OpenAI-compatible API, Microsof
 Graph mail, and no shared SQL service yet, the intended future configuration is
 shown in `.env.enterprise.example`.
 
-That profile is not implemented end-to-end yet. It is the target for the
-provider-interface refactor. If selected today, the backend will fail startup
-with clear configuration errors for the provider pieces that are still planned.
+That profile is not implemented end-to-end yet. If selected today, the backend
+will fail startup with clear configuration errors for the provider pieces that
+are still planned.
 
 ## Development Setup
 

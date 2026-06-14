@@ -1,12 +1,12 @@
 """
 Template Ingest Service
 
-AI-powered template normalization using Gemini 2.5 Pro:
-- Converts uploaded templates (DOCX/PDF/HTML) into clean, structured HTML + CSS
-- Uses Gemini 2.5 Pro for high-quality normalization
-- Falls back to Mammoth for DOCX if Gemini fails
-- Sanitizes HTML and CSS for security
-- Returns blank template with default CSS as fallback
+Provider-aware template normalization:
+- Gemini handles high-quality multimodal template normalization.
+- Basic mode handles simple DOCX/HTML conversion without AI.
+- Disabled mode lets local/enterprise deployments avoid a hard Gemini dependency.
+- Sanitizes HTML and CSS for security.
+- Returns blank template with default CSS as fallback when AI cannot normalize.
 """
 
 import io
@@ -16,25 +16,19 @@ import os
 import re
 import tempfile
 from typing import Tuple, Optional, Set, Dict
-import google.generativeai as genai
-import mammoth
-import nh3
-import tinycss2
-from bs4 import BeautifulSoup
 
-from app.config import GEMINI_API_KEY, TEMPLATE_INGEST_MODEL_NAME
+from app.config import GEMINI_API_KEY, TEMPLATE_INGEST_MODEL_NAME, TEMPLATE_INGEST_PROVIDER
 from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 from app.schemas import TemplateIngestResponse
-from app.services.credit_service import get_credit_service
 
 logger = logging.getLogger(__name__)
 
 
 class TemplateIngestService:
-    """Service for AI-powered template normalization"""
+    """Service for provider-aware template normalization."""
     
-    # Gemini prompt for template normalization (from user specification)
-    GEMINI_PROMPT = """You are an expert document template normalizer for Attenly, a legal/enterprise document automation platform.
+    # Prompt for high-capability multimodal template normalization.
+    NORMALIZATION_PROMPT = """You are an expert document template normalizer for Attenly, a legal/enterprise document automation platform.
 
 You are given a single attached file TEMPLATE_FILE (DOCX, PDF, or HTML) that represents a report/template. Your job is to:
 
@@ -236,13 +230,18 @@ Finally, output only the JSON object:
 """
     
     def __init__(self):
-        """Initialize with Gemini 2.5 Pro client"""
-        if not GEMINI_API_KEY:
-            logger.warning("GEMINI_API_KEY not configured. Template ingestion will fail.")
-        
-        genai.configure(api_key=GEMINI_API_KEY)
+        """Initialize the configured template ingest provider."""
+        self.provider = TEMPLATE_INGEST_PROVIDER
         self.model_name = TEMPLATE_INGEST_MODEL_NAME
-        logger.info(f"TemplateIngestService initialized with model: {self.model_name}")
+
+        if self.provider == "gemini" and not GEMINI_API_KEY:
+            logger.warning("GEMINI_API_KEY not configured. Gemini template ingestion will fail.")
+
+        logger.info(
+            "TemplateIngestService initialized with provider=%s model=%s",
+            self.provider,
+            self.model_name if self.provider == "gemini" else "n/a",
+        )
     
     def process_template_file(
         self,
@@ -264,7 +263,31 @@ Finally, output only the JSON object:
         warnings = []
         file_type = self._detect_file_type(filename)
 
-        logger.info(f"Processing template: {filename} (type: {file_type})")
+        logger.info(
+            "Processing template: %s (type=%s provider=%s)",
+            filename,
+            file_type,
+            self.provider,
+        )
+
+        if self.provider == "disabled":
+            return self._disabled_response()
+
+        if self.provider == "basic":
+            return self._process_with_basic_converter(content, file_type, filename, warnings)
+
+        if self.provider != "gemini":
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error=(
+                    f"Template ingest provider '{self.provider}' is not supported by this runtime. "
+                    "Use 'gemini', 'basic', or 'disabled'."
+                ),
+                warnings=warnings,
+            )
 
         try:
             # Try Gemini normalization first
@@ -285,16 +308,7 @@ Finally, output only the JSON object:
                 if file_type == 'docx':
                     logger.warning(f"Gemini returned empty for {filename}, trying Mammoth fallback")
                     warnings.append("AI normalization returned empty, using basic DOCX conversion")
-                    html_body = self._fallback_to_mammoth(content)
-                    
-                    if html_body:
-                        return TemplateIngestResponse(
-                            success=True,
-                            html_body=html_body,
-                            css=DEFAULT_TEMPLATE_CSS,
-                            source="mammoth",
-                            warnings=warnings
-                        )
+                    return self._process_with_basic_converter(content, file_type, filename, warnings)
                 
                 # No valid output - return blank template
                 logger.warning(f"Could not process template {filename}, returning blank template")
@@ -316,16 +330,7 @@ Finally, output only the JSON object:
                 try:
                     logger.info(f"Attempting Mammoth fallback after error for {filename}")
                     warnings.append(f"AI normalization failed: {str(e)}. Using basic DOCX conversion.")
-                    html_body = self._fallback_to_mammoth(content)
-                    
-                    if html_body:
-                        return TemplateIngestResponse(
-                            success=True,
-                            html_body=html_body,
-                            css=DEFAULT_TEMPLATE_CSS,
-                            source="mammoth",
-                            warnings=warnings
-                        )
+                    return self._process_with_basic_converter(content, file_type, filename, warnings)
                 except Exception as fallback_error:
                     logger.error(f"Mammoth fallback also failed: {str(fallback_error)}")
             
@@ -350,6 +355,82 @@ Finally, output only the JSON object:
             return 'html'
         else:
             return 'unknown'
+
+    def _disabled_response(self) -> TemplateIngestResponse:
+        return TemplateIngestResponse(
+            success=False,
+            html_body="",
+            css="",
+            source="disabled",
+            error=(
+                "Template upload ingestion is disabled by server configuration. "
+                "Build templates directly in the editor, set TEMPLATE_INGEST_PROVIDER=basic "
+                "for simple DOCX/HTML conversion, or configure a high-capability multimodal "
+                "template ingest provider."
+            ),
+            warnings=[],
+        )
+
+    def _process_with_basic_converter(
+        self,
+        content: bytes,
+        file_type: str,
+        filename: str,
+        warnings: list[str],
+    ) -> TemplateIngestResponse:
+        """Process simple templates without AI."""
+        if file_type == "docx":
+            html_body = self._fallback_to_mammoth(content)
+            if html_body:
+                return TemplateIngestResponse(
+                    success=True,
+                    html_body=html_body,
+                    css=DEFAULT_TEMPLATE_CSS,
+                    source="mammoth",
+                    warnings=warnings,
+                )
+
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error="Basic DOCX template conversion failed.",
+                warnings=warnings,
+            )
+
+        if file_type == "html":
+            html_body = self._fallback_to_html(content)
+            if html_body:
+                return TemplateIngestResponse(
+                    success=True,
+                    html_body=html_body,
+                    css=DEFAULT_TEMPLATE_CSS,
+                    source="html",
+                    warnings=warnings,
+                )
+
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error="Basic HTML template conversion failed.",
+                warnings=warnings,
+            )
+
+        return TemplateIngestResponse(
+            success=False,
+            html_body="",
+            css="",
+            source="error",
+            error=(
+                f"Basic template ingestion cannot process '{filename}'. "
+                "PDF and layout-heavy template ingestion requires a high-capability "
+                "multimodal model provider."
+            ),
+            warnings=warnings,
+        )
     
     def _normalize_with_gemini(
         self,
@@ -372,6 +453,9 @@ Finally, output only the JSON object:
         """
         temp_file_path = None
         try:
+            import google.generativeai as genai
+
+            genai.configure(api_key=GEMINI_API_KEY)
             model = genai.GenerativeModel(self.model_name)
             
             # Gemini's upload_file() requires a file path, not BytesIO
@@ -410,11 +494,13 @@ Finally, output only the JSON object:
             
             # Generate content with prompt
             logger.info(f"Calling Gemini {self.model_name} for template normalization")
-            response = model.generate_content([self.GEMINI_PROMPT, uploaded_file])
+            response = model.generate_content([self.NORMALIZATION_PROMPT, uploaded_file])
 
             # Track credit usage if user_id provided
             if user_id and hasattr(response, 'usage_metadata') and response.usage_metadata:
                 try:
+                    from app.services.credit_service import get_credit_service
+
                     credit_service = get_credit_service()
                     input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
                     output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
@@ -493,6 +579,8 @@ Finally, output only the JSON object:
             HTML string (empty if failed)
         """
         try:
+            import mammoth
+
             logger.info("Using Mammoth for DOCX conversion")
             result = mammoth.convert_to_html(io.BytesIO(docx_content))
             html = result.value
@@ -508,6 +596,43 @@ Finally, output only the JSON object:
             
         except Exception as e:
             logger.error(f"Mammoth conversion failed: {str(e)}")
+            return ''
+
+    def _fallback_to_html(self, html_content: bytes) -> str:
+        """
+        Basic HTML fallback processing, returns sanitized HTML only.
+
+        Args:
+            html_content: Raw HTML file content
+
+        Returns:
+            Sanitized HTML fragment wrapped in the standard template container
+        """
+        try:
+            from bs4 import BeautifulSoup
+
+            logger.info("Using basic HTML template conversion")
+            html = html_content.decode("utf-8", errors="ignore")
+            soup = BeautifulSoup(html, "html.parser")
+
+            for element in soup(["script", "style", "iframe", "object", "embed"]):
+                element.decompose()
+
+            source = soup.body if soup.body else soup
+            body_html = "".join(str(child) for child in source.contents).strip()
+
+            if not body_html:
+                return ""
+
+            if "attenly-template" not in body_html:
+                body_html = f'<div class="attenly-template report-wrapper">{body_html}</div>'
+
+            sanitized = self._sanitize_html(body_html)
+            logger.info("Successfully converted HTML with basic sanitizer")
+            return sanitized
+
+        except Exception as e:
+            logger.error(f"Basic HTML conversion failed: {str(e)}")
             return ''
     
     def _create_blank_template(self) -> Tuple[str, str]:
@@ -641,6 +766,8 @@ Finally, output only the JSON object:
             return ""
 
         try:
+            import nh3
+
             # Preserve pagebreak comments before sanitization (nh3 strips comments)
             # Use case-insensitive replacement for variations
             preserved = re.sub(
@@ -751,12 +878,14 @@ Finally, output only the JSON object:
             return ""
 
         try:
+            import tinycss2
+
             # Parse CSS using tinycss2
             rules = tinycss2.parse_stylesheet(css, skip_comments=True, skip_whitespace=True)
 
             safe_rules = []
             for rule in rules:
-                sanitized_rule = self._sanitize_css_rule(rule)
+                sanitized_rule = self._sanitize_css_rule(rule, tinycss2)
                 if sanitized_rule:
                     safe_rules.append(sanitized_rule)
 
@@ -767,7 +896,7 @@ Finally, output only the JSON object:
             # Fail closed - return empty string, not original CSS
             return ""
 
-    def _sanitize_css_rule(self, rule) -> Optional[str]:
+    def _sanitize_css_rule(self, rule, tinycss2_module) -> Optional[str]:
         """
         Sanitize an individual CSS rule.
 
@@ -791,7 +920,7 @@ Finally, output only the JSON object:
 
             # Allow safe at-rules
             if at_keyword in self.ALLOWED_CSS_AT_RULES:
-                return tinycss2.serialize([rule])
+                return tinycss2_module.serialize([rule])
 
             # Block unknown at-rules for safety
             logger.warning(f"Blocked unknown CSS at-rule: @{at_keyword}")
@@ -799,11 +928,11 @@ Finally, output only the JSON object:
 
         elif rule.type == 'qualified-rule':
             # This is a regular CSS rule (selector { declarations })
-            return self._sanitize_css_qualified_rule(rule)
+            return self._sanitize_css_qualified_rule(rule, tinycss2_module)
 
         return None
 
-    def _sanitize_css_qualified_rule(self, rule) -> Optional[str]:
+    def _sanitize_css_qualified_rule(self, rule, tinycss2_module) -> Optional[str]:
         """
         Sanitize a qualified CSS rule (selector { properties }).
 
@@ -815,10 +944,10 @@ Finally, output only the JSON object:
         """
         try:
             # Serialize selector
-            selector = tinycss2.serialize(rule.prelude).strip()
+            selector = tinycss2_module.serialize(rule.prelude).strip()
 
             # Parse and filter declarations
-            declarations = tinycss2.parse_declaration_list(rule.content)
+            declarations = tinycss2_module.parse_declaration_list(rule.content)
             safe_declarations = []
 
             for decl in declarations:
@@ -831,7 +960,7 @@ Finally, output only the JSON object:
                         continue
 
                     # Serialize and check value
-                    value = tinycss2.serialize(decl.value).strip()
+                    value = tinycss2_module.serialize(decl.value).strip()
 
                     # Check for dangerous patterns in value
                     if self._css_value_is_safe(value):

@@ -207,10 +207,10 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
           <p>
             {isProcessing
               ? 'Normalizing your template...'
-              : 'Upload DOCX, PDF, or HTML template (max 5 pages) to get started quickly.'}
+              : 'Upload DOCX, PDF, or HTML template (max 5 pages). Complex layouts require a configured smart multimodal template provider.'}
           </p>
           <div className="option-features">
-            <span className="feature-tag">AI-Powered</span>
+            <span className="feature-tag">Provider-Based</span>
             <span className="feature-tag">Multi-Format</span>
             <span className="feature-tag">5-Page Limit</span>
           </div>

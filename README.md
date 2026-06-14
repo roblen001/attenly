@@ -47,6 +47,7 @@ DATABASE_PROVIDER=supabase
 STORAGE_PROVIDER=supabase
 LLM_PROVIDER=gemini
 EMBEDDING_PROVIDER=gemini
+TEMPLATE_INGEST_PROVIDER=gemini
 
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -54,6 +55,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 SUPABASE_KEY=your_supabase_service_role_or_anon_key
 
 GEMINI_API_KEY=your_gemini_api_key
+TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
 
 APP_URL=http://localhost:5173
 API_URL=http://localhost:8080
@@ -171,6 +173,29 @@ EMBEDDING_MODEL=company-embedding-model
 Leave `OPENAI_COMPATIBLE_API_KEY` blank only if your internal gateway does not
 require authentication.
 
+Uploaded template ingestion is separate from normal report extraction. It asks
+AI to understand layout, formatting, tables, headings, placeholders, and
+document intent, so complex DOCX/PDF templates need a high-capability
+multimodal model. If users will build templates directly in the editor, keep it
+disabled:
+
+```bash
+TEMPLATE_INGEST_PROVIDER=disabled
+```
+
+For simple DOCX/HTML conversion without AI layout reasoning:
+
+```bash
+TEMPLATE_INGEST_PROVIDER=basic
+```
+
+For the current supported smart template ingestion path:
+
+```bash
+TEMPLATE_INGEST_PROVIDER=gemini
+TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+```
+
 ### 2. Run the Backend Container with a Data Volume
 
 ```bash
@@ -227,6 +252,7 @@ The default profile uses the providers the app was originally built to support:
 - `STORAGE_PROVIDER=supabase`
 - `LLM_PROVIDER=gemini`
 - `EMBEDDING_PROVIDER=gemini`
+- `TEMPLATE_INGEST_PROVIDER=gemini`
 - `OUTBOUND_EMAIL_PROVIDER=resend` or omitted when email is disabled
 - `INBOUND_EMAIL_PROVIDER=resend` or omitted when email is disabled
 
@@ -246,15 +272,22 @@ The backend also has an initial provider-safe runtime slice:
   OpenAI-compatible `/chat/completions` endpoint.
 - `EMBEDDING_PROVIDER=openai_compatible` sends vector embeddings to an
   OpenAI-compatible `/embeddings` endpoint.
+- `TEMPLATE_INGEST_PROVIDER=disabled` leaves uploaded template conversion off.
+- `TEMPLATE_INGEST_PROVIDER=basic` enables simple DOCX/HTML conversion without
+  AI and does not support PDF/layout reasoning.
+- `TEMPLATE_INGEST_PROVIDER=gemini` enables the current smart template upload
+  path and should use a strong multimodal model.
 
 The `local` profile can now run the backend and browser app without Supabase.
 It is best for trusted internal pilots, demos, and API testing. Production
 enterprise deployments should still move toward SSO/OIDC instead of a shared
 bearer token.
 
-The remaining enterprise adapter work is Microsoft Graph inbound ingest and
-production SSO/OIDC auth. Template ingestion for uploaded DOCX templates still
-uses the current Gemini path unless you build templates directly in the editor.
+The remaining enterprise adapter work is Microsoft Graph inbound ingest,
+production SSO/OIDC auth, and a non-Gemini smart multimodal template-ingest
+adapter. OpenAI-compatible template ingestion is recognized as a target provider
+name, but not enabled yet because file upload and multimodal layout handling are
+not standardized across OpenAI-compatible gateways.
 
 ### Enterprise Example
 
@@ -263,6 +296,10 @@ Microsoft Graph mail, and no shared SQL service yet, use
 `.env.enterprise.example`. The core upload/report flow can run with SQLite,
 filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
 email disabled or Microsoft Graph outbound email.
+Set `TEMPLATE_INGEST_PROVIDER=disabled` if users will build templates in the
+editor, or `TEMPLATE_INGEST_PROVIDER=basic` for simple DOCX/HTML conversion.
+Use the Gemini template-ingest provider only when you can supply a smart
+multimodal model for uploaded templates.
 
 ## Development Setup
 

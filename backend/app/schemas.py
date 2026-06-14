@@ -99,7 +99,7 @@ class TemplateIngestResponse(BaseModel):
     success: bool
     html_body: str
     css: str
-    source: str  # "gemini", "mammoth", "blank"
+    source: str  # "gemini", "mammoth", "html", "blank", "disabled", "error"
     error: Optional[str] = None
     warnings: List[str] = []
 

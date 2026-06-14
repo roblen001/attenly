@@ -51,7 +51,10 @@ class ReportService:
         
         # Check LLM service availability before processing
         if not self.llm_service.available:
-            raise ValueError("LLM service is not available. Please ensure GEMINI_API_KEY is configured and the service is properly initialized.")
+            raise ValueError(
+                "LLM service is not available. Please check the selected "
+                "LLM_PROVIDER configuration."
+            )
         
         try:
             # Get question-specific chunks for each question individually

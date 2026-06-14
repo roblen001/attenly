@@ -38,7 +38,7 @@ async def readiness_check(request):
     Comprehensive readiness check that validates all external dependencies.
     
     This endpoint checks:
-    - Supabase database connectivity
+    - Selected database provider connectivity
     - Configuration validity
     
     Returns 503 if any dependency is unavailable.
@@ -52,11 +52,24 @@ async def readiness_check(request):
     overall_status = "healthy"
     status_code = status.HTTP_200_OK
     
-    # Check Supabase database
+    # Check selected database
     try:
+        from app import config
+
         db_start = time.time()
-        # Simple query to test database connectivity
-        result = supabase_client.table("agents").select("id").limit(1).execute()
+        if config.DATABASE_PROVIDER == "supabase":
+            if supabase_client is None:
+                raise RuntimeError("Supabase client is not configured")
+            supabase_client.table("agents").select("id").limit(1).execute()
+        elif config.DATABASE_PROVIDER == "sqlalchemy":
+            from sqlalchemy import text
+            from app.db import engine
+
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        else:
+            raise RuntimeError(f"Unsupported database provider: {config.DATABASE_PROVIDER}")
+
         checks["database"]["status"] = "healthy"
         checks["database"]["response_time"] = round((time.time() - db_start) * 1000, 2)
     except Exception as e:

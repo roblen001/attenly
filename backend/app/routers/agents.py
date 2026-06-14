@@ -2034,6 +2034,19 @@ async def upload_template(
         ingest_service = TemplateIngestService()
 
         result = ingest_service.process_template_file(content, file.filename, user_id=str(user_id))
+
+        if result.source == "disabled":
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": result.success,
+                    "html_body": result.html_body,
+                    "css": result.css,
+                    "source": result.source,
+                    "error": result.error,
+                    "warnings": result.warnings,
+                },
+            )
         
         # Return result
         return {

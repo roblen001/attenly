@@ -393,10 +393,16 @@ user without changing application code. Unknown or internal models use
 `DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD` and
 `DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD` for accounting.
 
-The remaining enterprise adapter work is Microsoft Graph inbound ingest and
-production SSO/OIDC auth. OpenAI-compatible template ingestion now supports
-multimodal request shapes internally; individual gateways still need a model
-endpoint that accepts uploaded file or image input.
+SQLAlchemy profiles also include the email ingest data model:
+`email_ingest_endpoints`, `verified_senders`, `email_jobs`, and
+`email_poll_state`. The user-facing email settings service can now manage those
+records without Supabase. The remaining enterprise email work is the
+storage-neutral job processor and Microsoft Graph inbound poller.
+
+The remaining non-email enterprise adapter work is production SSO/OIDC auth.
+OpenAI-compatible template ingestion now supports multimodal request shapes
+internally; individual gateways still need a model endpoint that accepts
+uploaded file or image input.
 
 ### Enterprise Example
 
@@ -512,6 +518,11 @@ Process pending email jobs by calling:
 POST /internal/process-email-jobs
 Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 ```
+
+SQLAlchemy profiles now have local tables for email aliases, verified senders,
+email jobs, and poll state. Full local/enterprise inbound email still needs the
+next adapter branch: provider-neutral job processing plus Microsoft Graph
+polling.
 
 ## Security Notes
 

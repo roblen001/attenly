@@ -2,14 +2,18 @@
 Email Ingest Service - Business Logic for Email to Attenly Feature
 
 Handles email endpoint management, sender verification, and rate limiting.
-All database operations use supabase_service for RLS compliance.
+Supabase profiles keep using user-scoped Supabase clients for RLS, while
+SQLAlchemy profiles use local sessions for open-source and enterprise installs.
 """
 
 import uuid
 import logging
-from datetime import datetime, timedelta
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from app import config
+from app.db import SessionLocal
+from app.models import EmailIngestEndpoint, EmailJob, VerifiedSender
 from app.services.supabase_service import supabase_service
 from app.services.email_service import email_service
 
@@ -20,13 +24,284 @@ class EmailIngestService:
     """
     Service for managing email ingest endpoints and verified senders.
     
-    This service coordinates between the email service and database operations,
-    ensuring proper user isolation through RLS policies.
+    This service coordinates between the email service and database operations.
+    Supabase installs rely on RLS policies; SQLAlchemy installs scope every
+    query by the authenticated user id.
     """
     
     def __init__(self):
         """Initialize the email ingest service."""
-        logger.info("Email ingest service initialized")
+        logger.info("Email ingest service initialized with %s database", config.DATABASE_PROVIDER)
+
+    def _uses_sqlalchemy(self) -> bool:
+        return config.DATABASE_PROVIDER == "sqlalchemy"
+
+    @contextmanager
+    def _session(self):
+        session = SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _now(self) -> datetime:
+        return datetime.now(timezone.utc)
+
+    def _to_iso(self, value: datetime | None) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    def _to_uuid(self, value: str | uuid.UUID) -> uuid.UUID:
+        return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+
+    def _sender_to_dict(self, sender: VerifiedSender) -> Dict:
+        return {
+            "id": str(sender.id),
+            "email": sender.email,
+            "status": sender.status,
+            "created_at": self._to_iso(sender.created_at),
+            "verified_at": self._to_iso(sender.verified_at),
+        }
+
+    def _settings_sender_dict(self, sender: VerifiedSender) -> Dict:
+        return {
+            "id": str(sender.id),
+            "email": sender.email,
+            "is_verified": sender.status == "verified",
+            "created_at": self._to_iso(sender.created_at),
+        }
+
+    def _endpoint_settings_dict(self, endpoint: EmailIngestEndpoint) -> Dict:
+        return {
+            "id": str(endpoint.id),
+            "full_address": endpoint.full_address,
+            "is_active": endpoint.is_active,
+            "default_agent_id": endpoint.default_agent_id,
+        }
+
+    def _sqlalchemy_enable_email_ingest(self, user_id: str) -> Dict:
+        with self._session() as session:
+            endpoint = (
+                session.query(EmailIngestEndpoint)
+                .filter(EmailIngestEndpoint.user_id == str(user_id))
+                .first()
+            )
+
+            if endpoint:
+                if not endpoint.is_active:
+                    endpoint.is_active = True
+                    endpoint.updated_at = self._now()
+                    logger.info("Reactivated email endpoint for user %s", user_id)
+
+                return {
+                    "enabled": True,
+                    "email_alias": endpoint.full_address,
+                    "default_agent_id": endpoint.default_agent_id,
+                    "created_at": self._to_iso(endpoint.created_at),
+                }
+
+            for _ in range(5):
+                local_part = f"u_{uuid.uuid4().hex[:13]}"
+                full_address = f"{local_part}@{config.EMAIL_INGEST_DOMAIN}"
+                existing = (
+                    session.query(EmailIngestEndpoint)
+                    .filter(EmailIngestEndpoint.full_address == full_address)
+                    .first()
+                )
+                if existing:
+                    continue
+
+                endpoint = EmailIngestEndpoint(
+                    user_id=str(user_id),
+                    local_part=local_part,
+                    domain=config.EMAIL_INGEST_DOMAIN,
+                    full_address=full_address,
+                    is_active=True,
+                )
+                session.add(endpoint)
+                session.flush()
+                logger.info("Created email endpoint for user %s: %s", user_id, full_address)
+                return {
+                    "enabled": True,
+                    "email_alias": endpoint.full_address,
+                    "default_agent_id": None,
+                    "created_at": self._to_iso(endpoint.created_at),
+                }
+
+            raise ValueError("Failed to generate unique email endpoint")
+
+    def _sqlalchemy_disable_email_ingest(self, user_id: str) -> bool:
+        with self._session() as session:
+            endpoint = (
+                session.query(EmailIngestEndpoint)
+                .filter(EmailIngestEndpoint.user_id == str(user_id))
+                .first()
+            )
+            if not endpoint:
+                return False
+            endpoint.is_active = False
+            endpoint.updated_at = self._now()
+            logger.info("Disabled email endpoint for user %s", user_id)
+            return True
+
+    def _sqlalchemy_add_verified_sender(self, user_id: str, email: str) -> Dict:
+        email_lower = email.lower().strip()
+        if "@" not in email_lower or "." not in email_lower.split("@")[1]:
+            raise ValueError("Invalid email format")
+
+        with self._session() as session:
+            duplicate = (
+                session.query(VerifiedSender)
+                .filter(
+                    VerifiedSender.user_id == str(user_id),
+                    VerifiedSender.email == email_lower,
+                )
+                .first()
+            )
+            if duplicate:
+                raise ValueError("Email address already added")
+
+            token = str(uuid.uuid4())
+            sender = VerifiedSender(
+                user_id=str(user_id),
+                email=email_lower,
+                status="pending",
+                verification_token=token,
+                token_expires_at=self._now() + timedelta(hours=config.EMAIL_VERIFICATION_EXPIRY_HOURS),
+            )
+            session.add(sender)
+
+            endpoint = (
+                session.query(EmailIngestEndpoint)
+                .filter(EmailIngestEndpoint.user_id == str(user_id))
+                .first()
+            )
+            user_alias = endpoint.full_address if endpoint else "your alias"
+            session.flush()
+
+            sender_data = self._sender_to_dict(sender)
+
+        email_sent = email_service.send_verification_email(
+            to=email_lower,
+            token=token,
+            user_alias=user_alias,
+        )
+        if not email_sent:
+            logger.warning("Verification email failed to send to %s", email_lower)
+
+        logger.info("Added sender %s for user %s, status: pending", email_lower, user_id)
+        return sender_data
+
+    def _sqlalchemy_verify_sender(self, token: str) -> Tuple[bool, str]:
+        with self._session() as session:
+            sender = (
+                session.query(VerifiedSender)
+                .filter(VerifiedSender.verification_token == token)
+                .first()
+            )
+            if not sender:
+                logger.warning("Verification failed: token not found - %s...", token[:8])
+                return (False, "Invalid or expired verification link")
+
+            if sender.status == "verified":
+                return (True, "Email address already verified")
+
+            if not sender.token_expires_at:
+                return (False, "Invalid verification link")
+
+            expires_at = sender.token_expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+            now_utc = self._now()
+            if now_utc > expires_at:
+                logger.warning("Verification failed: token expired for %s", sender.email)
+                return (False, "Verification link has expired. Please request a new one.")
+
+            sender.status = "verified"
+            sender.verification_token = None
+            sender.token_expires_at = None
+            sender.verified_at = now_utc
+            sender.updated_at = now_utc
+            logger.info("Successfully verified sender %s for user %s", sender.email, sender.user_id)
+            return (True, "Email address verified successfully!")
+
+    def _sqlalchemy_get_user_settings(self, user_id: str) -> Dict:
+        with self._session() as session:
+            endpoint = (
+                session.query(EmailIngestEndpoint)
+                .filter(EmailIngestEndpoint.user_id == str(user_id))
+                .first()
+            )
+            senders = (
+                session.query(VerifiedSender)
+                .filter(VerifiedSender.user_id == str(user_id))
+                .order_by(VerifiedSender.created_at.desc())
+                .all()
+            )
+            cutoff_time = self._now() - timedelta(hours=24)
+            jobs_count = (
+                session.query(EmailJob)
+                .filter(
+                    EmailJob.user_id == str(user_id),
+                    EmailJob.created_at >= cutoff_time,
+                    EmailJob.status != "discarded",
+                )
+                .count()
+            )
+
+            return {
+                "endpoint": self._endpoint_settings_dict(endpoint) if endpoint else None,
+                "verified_senders": [self._settings_sender_dict(sender) for sender in senders],
+                "usage_summary": {
+                    "jobs_last_24h": jobs_count,
+                    "rate_limit": 0,
+                },
+            }
+
+    def _sqlalchemy_get_verified_senders(self, user_id: str) -> List[Dict]:
+        with self._session() as session:
+            senders = (
+                session.query(VerifiedSender)
+                .filter(VerifiedSender.user_id == str(user_id))
+                .order_by(VerifiedSender.created_at.desc())
+                .all()
+            )
+            return [self._sender_to_dict(sender) for sender in senders]
+
+    def _sqlalchemy_remove_verified_sender(self, user_id: str, sender_id: str) -> bool:
+        with self._session() as session:
+            sender = (
+                session.query(VerifiedSender)
+                .filter(
+                    VerifiedSender.id == self._to_uuid(sender_id),
+                    VerifiedSender.user_id == str(user_id),
+                )
+                .first()
+            )
+            if not sender:
+                logger.warning("No sender found to delete: %s for user %s", sender_id, user_id)
+                return False
+            session.delete(sender)
+            logger.info("Removed sender %s for user %s", sender_id, user_id)
+            return True
+
+    def _sqlalchemy_update_default_agent(self, user_id: str, agent_id: Optional[str]) -> bool:
+        with self._session() as session:
+            endpoint = (
+                session.query(EmailIngestEndpoint)
+                .filter(EmailIngestEndpoint.user_id == str(user_id))
+                .first()
+            )
+            if not endpoint:
+                return False
+            endpoint.default_agent_id = agent_id
+            endpoint.updated_at = self._now()
+            logger.info("Updated default agent to %s for user %s", agent_id, user_id)
+            return True
     
     def enable_email_ingest(self, user_jwt: str, user_id: str) -> Dict:
         """
@@ -42,6 +317,9 @@ class EmailIngestService:
         Raises:
             ValueError: If alias generation fails or user already has endpoint
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_enable_email_ingest(user_id)
+
         try:
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
@@ -117,6 +395,9 @@ class EmailIngestService:
         Returns:
             True if successful
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_disable_email_ingest(user_id)
+
         try:
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
@@ -153,6 +434,9 @@ class EmailIngestService:
         Raises:
             ValueError: If email is invalid or already exists
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_add_verified_sender(user_id, email)
+
         try:
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
@@ -251,6 +535,9 @@ class EmailIngestService:
             - Tokens expire after 24 hours
             - Tokens are single-use (cleared after verification)
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_verify_sender(token)
+
         try:
             # Use SERVICE ROLE key to bypass RLS (this is a system-level operation)
             from supabase import create_client
@@ -336,6 +623,9 @@ class EmailIngestService:
         Returns:
             Dictionary with all email settings matching frontend EmailIngestSettings type
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_get_user_settings(user_id)
+
         try:
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
@@ -424,6 +714,9 @@ class EmailIngestService:
         Returns:
             List of sender dictionaries
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_get_verified_senders(user_id)
+
         try:
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
@@ -452,6 +745,9 @@ class EmailIngestService:
         Returns:
             True if successful, False if sender not found or already removed
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_remove_verified_sender(user_id, sender_id)
+
         try:
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
@@ -491,6 +787,9 @@ class EmailIngestService:
         Returns:
             True if successful
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_update_default_agent(user_id, agent_id)
+
         try:
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)

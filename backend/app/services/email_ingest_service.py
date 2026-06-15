@@ -14,7 +14,6 @@ from typing import Dict, List, Optional, Tuple
 from app import config
 from app.db import SessionLocal
 from app.models import EmailIngestEndpoint, EmailJob, VerifiedSender
-from app.services.supabase_service import supabase_service
 from app.services.email_service import email_service
 
 logger = logging.getLogger(__name__)
@@ -35,6 +34,11 @@ class EmailIngestService:
 
     def _uses_sqlalchemy(self) -> bool:
         return config.DATABASE_PROVIDER == "sqlalchemy"
+
+    def _supabase_service(self):
+        from app.services.supabase_service import supabase_service
+
+        return supabase_service
 
     @contextmanager
     def _session(self):
@@ -321,6 +325,7 @@ class EmailIngestService:
             return self._sqlalchemy_enable_email_ingest(user_id)
 
         try:
+            supabase_service = self._supabase_service()
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
             
@@ -399,6 +404,7 @@ class EmailIngestService:
             return self._sqlalchemy_disable_email_ingest(user_id)
 
         try:
+            supabase_service = self._supabase_service()
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
             
@@ -438,6 +444,7 @@ class EmailIngestService:
             return self._sqlalchemy_add_verified_sender(user_id, email)
 
         try:
+            supabase_service = self._supabase_service()
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
             
@@ -541,6 +548,7 @@ class EmailIngestService:
         try:
             # Use SERVICE ROLE key to bypass RLS (this is a system-level operation)
             from supabase import create_client
+            supabase_service = self._supabase_service()
             client = create_client(
                 supabase_service.supabase_url,
                 supabase_service.supabase_service_key  # Service role key, not anon key
@@ -627,6 +635,7 @@ class EmailIngestService:
             return self._sqlalchemy_get_user_settings(user_id)
 
         try:
+            supabase_service = self._supabase_service()
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
             
@@ -718,6 +727,7 @@ class EmailIngestService:
             return self._sqlalchemy_get_verified_senders(user_id)
 
         try:
+            supabase_service = self._supabase_service()
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
             
@@ -749,6 +759,7 @@ class EmailIngestService:
             return self._sqlalchemy_remove_verified_sender(user_id, sender_id)
 
         try:
+            supabase_service = self._supabase_service()
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
             
@@ -791,6 +802,7 @@ class EmailIngestService:
             return self._sqlalchemy_update_default_agent(user_id, agent_id)
 
         try:
+            supabase_service = self._supabase_service()
             # Create user-scoped client
             user_client = supabase_service._create_user_client(user_jwt)
             

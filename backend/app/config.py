@@ -79,7 +79,7 @@ CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
     "embedding": {"gemini", "openai_compatible"},
     "template_ingest": {"disabled", "gemini", "basic", "openai_compatible"},
     "outbound_email": {"none", "resend", "microsoft_graph"},
-    "inbound_email": {"none", "resend"},
+    "inbound_email": {"none", "resend", "microsoft_graph"},
 }
 
 
@@ -159,6 +159,9 @@ GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID")
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
 GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET")
 GRAPH_MAILBOX = os.getenv("GRAPH_MAILBOX")
+GRAPH_POLL_BATCH_SIZE = int(os.getenv("GRAPH_POLL_BATCH_SIZE", "10"))
+GRAPH_POLL_LOOKBACK_SECONDS = int(os.getenv("GRAPH_POLL_LOOKBACK_SECONDS", "300"))
+GRAPH_INITIAL_LOOKBACK_HOURS = int(os.getenv("GRAPH_INITIAL_LOOKBACK_HOURS", "24"))
 
 FILESYSTEM_STORAGE_PATH = os.getenv("STORAGE_PATH", "/data/storage")
 
@@ -452,7 +455,7 @@ def _validate_profile_and_providers(errors: List[str]) -> None:
     if AUTH_PROVIDER == "local" and not LOCAL_AUTH_TOKEN:
         errors.append("LOCAL_AUTH_TOKEN is required when AUTH_PROVIDER='local'")
 
-    if OUTBOUND_EMAIL_PROVIDER == "microsoft_graph":
+    if OUTBOUND_EMAIL_PROVIDER == "microsoft_graph" or INBOUND_EMAIL_PROVIDER == "microsoft_graph":
         missing_graph = [
             name
             for name, value in {
@@ -465,7 +468,7 @@ def _validate_profile_and_providers(errors: List[str]) -> None:
         ]
         if missing_graph:
             errors.append(
-                "Microsoft Graph outbound email requires: "
+                "Microsoft Graph email requires: "
                 + ", ".join(missing_graph)
             )
 
@@ -628,6 +631,14 @@ def validate_config():
         errors.append("EMAIL_VERIFICATION_EXPIRY_HOURS must be at least 1")
     if EMAIL_VERIFICATION_EXPIRY_HOURS > 168:  # 7 days
         errors.append("EMAIL_VERIFICATION_EXPIRY_HOURS should not exceed 168 (7 days)")
+    if GRAPH_POLL_BATCH_SIZE < 1:
+        errors.append("GRAPH_POLL_BATCH_SIZE must be at least 1")
+    if GRAPH_POLL_BATCH_SIZE > 100:
+        errors.append("GRAPH_POLL_BATCH_SIZE should not exceed 100")
+    if GRAPH_POLL_LOOKBACK_SECONDS < 0:
+        errors.append("GRAPH_POLL_LOOKBACK_SECONDS cannot be negative")
+    if GRAPH_INITIAL_LOOKBACK_HOURS < 1:
+        errors.append("GRAPH_INITIAL_LOOKBACK_HOURS must be at least 1")
 
     if errors:
         raise ValueError("Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
@@ -726,12 +737,14 @@ def get_config_summary() -> dict:
         "email": {
             "outbound_provider": OUTBOUND_EMAIL_PROVIDER,
             "inbound_provider": INBOUND_EMAIL_PROVIDER,
-            "inbound_runtime_enabled": INBOUND_EMAIL_PROVIDER == "resend",
+            "inbound_runtime_enabled": INBOUND_EMAIL_PROVIDER in {"resend", "microsoft_graph"},
             "resend_api_key_configured": bool(RESEND_API_KEY),
             "resend_webhook_secret_configured": bool(RESEND_WEBHOOK_SECRET),
             "graph_tenant_configured": bool(GRAPH_TENANT_ID),
             "graph_client_configured": bool(GRAPH_CLIENT_ID),
             "graph_mailbox_configured": bool(GRAPH_MAILBOX),
+            "graph_poll_batch_size": GRAPH_POLL_BATCH_SIZE,
+            "graph_poll_lookback_seconds": GRAPH_POLL_LOOKBACK_SECONDS,
         },
         "quote_extraction": {
             "context_chars": QUOTE_CONTEXT_CHARS,

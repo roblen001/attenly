@@ -364,6 +364,8 @@ The backend also has an initial provider-safe runtime slice:
 - `OUTBOUND_EMAIL_PROVIDER=microsoft_graph` sends outbound mail through Microsoft Graph.
 - `INBOUND_EMAIL_PROVIDER=none` disables inbound email webhooks and email job
   processing routes.
+- `INBOUND_EMAIL_PROVIDER=microsoft_graph` polls a Microsoft 365 mailbox through
+  Microsoft Graph and creates email jobs without Resend.
 - `VITE_AUTH_PROVIDER=local` lets the browser app use the same bearer token
   flow without Supabase Auth.
 - `VITE_TINYMCE_MODE=self_hosted` loads TinyMCE from the frontend container
@@ -398,8 +400,8 @@ SQLAlchemy profiles also include the email ingest data model:
 `email_poll_state`. The user-facing email settings service can now manage those
 records without Supabase. The email job processor now uses provider-specific
 job stores plus configured storage/report persistence, so SQLAlchemy and
-filesystem installs can process jobs once an inbound adapter creates them. The
-remaining enterprise email work is the Microsoft Graph inbound poller.
+filesystem installs can process jobs. Microsoft Graph inbound polling can now
+create jobs from a company mailbox.
 
 The remaining non-email enterprise adapter work is production SSO/OIDC auth.
 OpenAI-compatible template ingestion now supports multimodal request shapes
@@ -412,7 +414,7 @@ For a company with internal models that expose an OpenAI-compatible API,
 Microsoft Graph mail, and no shared SQL service yet, use
 `.env.enterprise.example`. The core upload/report flow can run with SQLite,
 filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
-email disabled or Microsoft Graph outbound email. The Docker frontend can
+email disabled or Microsoft Graph email. The Docker frontend can
 self-host TinyMCE, so this path does not require a Tiny Cloud API key.
 SQLite profiles auto-create SQLAlchemy tables by default with
 `DATABASE_AUTO_CREATE_TABLES=true`.
@@ -493,9 +495,9 @@ At minimum, configure:
 Email ingest is optional. The core upload and report workflows can run without
 Resend.
 
-When `INBOUND_EMAIL_PROVIDER=none`, the backend leaves the Resend webhook and
-email job processor unmounted. Authenticated users can still open Settings; the
-email ingest panel reports that the feature is unavailable by configuration.
+When `INBOUND_EMAIL_PROVIDER=none`, the backend leaves inbound email routes
+unmounted. Authenticated users can still open Settings; the email ingest panel
+reports that the feature is unavailable by configuration.
 
 To use the current Resend-based email ingest:
 
@@ -523,9 +525,31 @@ Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 
 SQLAlchemy profiles now have local tables for email aliases, verified senders,
 email jobs, and poll state. The background processor can claim and complete
-jobs through SQLAlchemy and filesystem-backed report persistence. Full
-local/enterprise inbound email still needs the next adapter branch: Microsoft
-Graph polling that creates those jobs from a company mailbox.
+jobs through SQLAlchemy and filesystem-backed report persistence.
+
+To use Microsoft Graph inbound polling, configure:
+
+```bash
+INBOUND_EMAIL_PROVIDER=microsoft_graph
+GRAPH_TENANT_ID=your-tenant-id
+GRAPH_CLIENT_ID=your-client-id
+GRAPH_CLIENT_SECRET=your-client-secret
+GRAPH_MAILBOX=attenly@company.com
+INTERNAL_CRON_SECRET=generate-a-long-random-secret
+```
+
+The Graph app registration needs Microsoft Graph application mail read
+permission for the mailbox. Call the same cron endpoint:
+
+```text
+POST /internal/process-email-jobs
+Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
+```
+
+When Graph inbound is enabled, that endpoint first polls the configured mailbox,
+stores valid attachments through the configured storage provider, creates email
+jobs, and then processes pending jobs. Use `POST /internal/poll-inbound-email`
+with the same header to poll without processing queued jobs.
 
 ## Security Notes
 

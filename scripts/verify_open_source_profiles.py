@@ -251,6 +251,35 @@ def cases() -> list[ProfileCase]:
                 "email.graph_mailbox_configured": True,
             },
         ),
+        ProfileCase(
+            name="enterprise_openai_graph_inbound",
+            env={
+                "APP_PROFILE": "enterprise",
+                "AUTH_PROVIDER": "local",
+                "LOCAL_AUTH_TOKEN": "fake-local-token",
+                "DATABASE_PROVIDER": "sqlalchemy",
+                "DATABASE_URL": "sqlite:////data/attenly.db",
+                "STORAGE_PROVIDER": "filesystem",
+                "LLM_PROVIDER": "openai_compatible",
+                "EMBEDDING_PROVIDER": "openai_compatible",
+                "OPENAI_COMPATIBLE_BASE_URL": "https://models.company.internal/v1",
+                "TEMPLATE_INGEST_PROVIDER": "disabled",
+                "OUTBOUND_EMAIL_PROVIDER": "none",
+                "INBOUND_EMAIL_PROVIDER": "microsoft_graph",
+                "GRAPH_TENANT_ID": "fake-tenant",
+                "GRAPH_CLIENT_ID": "fake-client",
+                "GRAPH_CLIENT_SECRET": "fake-secret",
+                "GRAPH_MAILBOX": "attenly@example.com",
+            },
+            expected={
+                "profile.app_profile": "enterprise",
+                "profile.providers.inbound_email": "microsoft_graph",
+                "email.inbound_runtime_enabled": True,
+                "email.graph_tenant_configured": True,
+                "email.graph_client_configured": True,
+                "email.graph_mailbox_configured": True,
+            },
+        ),
     ]
 
 

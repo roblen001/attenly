@@ -202,19 +202,14 @@ settings as the core model adapter:
 ```bash
 TEMPLATE_INGEST_PROVIDER=openai_compatible
 TEMPLATE_INGEST_MODEL=gpt-4.1
-TEMPLATE_INGEST_OPENAI_MODE=responses_file
 OPENAI_COMPATIBLE_BASE_URL=https://api.openai.com/v1
 OPENAI_COMPATIBLE_API_KEY=your_openai_or_gateway_key
 ```
 
-OpenAI-compatible template ingestion uses the original uploaded file, not a
-pre-extracted HTML/text approximation, when `TEMPLATE_INGEST_OPENAI_MODE` is
-`responses_file` or `chat_file`. This is a hard multimodal task, so use a
-strong model that can reason over PDFs/DOCX/HTML and preserve layout. Use
-`responses_file` for OpenAI's Responses file-input API. Use `chat_file` only
-for gateways that support Chat Completions file parts. Use `chat_images` for
-image-based OpenAI-format vision endpoints. Use `extracted` only as a
-lower-fidelity fallback for text-only gateways.
+OpenAI-compatible template ingestion is a hard multimodal task, so use a strong
+model endpoint that can reason over uploaded PDFs/DOCX/HTML and preserve
+layout. The app keeps endpoint-shape details inside the adapter instead of
+requiring extra setup flags.
 
 ### 2. Run the Backend Container with a Data Volume
 
@@ -298,17 +293,7 @@ The backend also has an initial provider-safe runtime slice:
 - `TEMPLATE_INGEST_PROVIDER=gemini` enables the current smart template upload
   path and should use a strong multimodal model.
 - `TEMPLATE_INGEST_PROVIDER=openai_compatible` enables smart template upload
-  through OpenAI-compatible multimodal file input.
-- `TEMPLATE_INGEST_OPENAI_MODE=responses_file` sends the original file to a
-  `/responses` endpoint using `input_file` file data.
-- `TEMPLATE_INGEST_OPENAI_MODE=chat_file` sends the original file to a
-  `/chat/completions` endpoint using file content parts.
-- `TEMPLATE_INGEST_OPENAI_MODE=chat_images` renders pages to images and sends
-  them to a `/chat/completions` endpoint using image content parts. This is the
-  best fit for local vision models that use the OpenAI chat format but do not
-  accept PDF/DOCX file parts.
-- `TEMPLATE_INGEST_OPENAI_MODE=extracted` sends a local text/HTML/PDF-block
-  representation and should be treated as a lower-fidelity fallback.
+  through an OpenAI-compatible multimodal model endpoint.
 
 The `local` profile can now run the backend and browser app without Supabase.
 It is best for trusted internal pilots, demos, and API testing. Production
@@ -317,8 +302,8 @@ bearer token.
 
 The remaining enterprise adapter work is Microsoft Graph inbound ingest and
 production SSO/OIDC auth. OpenAI-compatible template ingestion now supports
-provider-native file-input request shapes; individual gateways still need a
-multimodal model that accepts the chosen file-input mode.
+multimodal request shapes internally; individual gateways still need a model
+endpoint that accepts uploaded file or image input.
 
 ### Enterprise Example
 
@@ -330,10 +315,8 @@ email disabled or Microsoft Graph outbound email.
 Set `TEMPLATE_INGEST_PROVIDER=disabled` if users will build templates in the
 editor, or `TEMPLATE_INGEST_PROVIDER=basic` for simple DOCX/HTML conversion.
 Use `TEMPLATE_INGEST_PROVIDER=openai_compatible` for OpenAI or an internal
-OpenAI-compatible gateway. Set `TEMPLATE_INGEST_OPENAI_MODE=responses_file`
-for OpenAI, or `chat_file` for gateways that expose multimodal file parts on
-Chat Completions. Use `chat_images` for local image-based vision models. Use
-Gemini when you prefer the default smart multimodal template provider.
+OpenAI-compatible gateway backed by a multimodal model. Use Gemini when you
+prefer the default smart multimodal template provider.
 
 ## Development Setup
 

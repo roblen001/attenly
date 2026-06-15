@@ -6,7 +6,11 @@ type RuntimeConfigKey =
   | 'VITE_LOCAL_AUTH_USER_ID'
   | 'VITE_LOCAL_AUTH_EMAIL'
   | 'VITE_LOCAL_AUTH_DISPLAY_NAME'
-  | 'VITE_LOCAL_AUTH_TOKEN';
+  | 'VITE_LOCAL_AUTH_TOKEN'
+  | 'VITE_TINYMCE_MODE'
+  | 'VITE_TINYMCE_SCRIPT_SRC'
+  | 'VITE_TINYMCE_LICENSE_KEY'
+  | 'VITE_TINYMCE_API_KEY';
 
 type RuntimeConfig = Partial<Record<RuntimeConfigKey, string>>;
 
@@ -41,6 +45,10 @@ export const LOCAL_AUTH_USER_ID = configValue('VITE_LOCAL_AUTH_USER_ID', 'local-
 export const LOCAL_AUTH_EMAIL = configValue('VITE_LOCAL_AUTH_EMAIL', 'local-admin@example.com')
 export const LOCAL_AUTH_DISPLAY_NAME = configValue('VITE_LOCAL_AUTH_DISPLAY_NAME', 'Local Admin')
 export const LOCAL_AUTH_TOKEN_PREFILL = configValue('VITE_LOCAL_AUTH_TOKEN')
+export const TINYMCE_MODE = configValue('VITE_TINYMCE_MODE', 'cloud').toLowerCase()
+export const TINYMCE_SCRIPT_SRC = configValue('VITE_TINYMCE_SCRIPT_SRC', '/tinymce/tinymce.min.js')
+export const TINYMCE_LICENSE_KEY = configValue('VITE_TINYMCE_LICENSE_KEY')
+export const TINYMCE_API_KEY = configValue('VITE_TINYMCE_API_KEY')
 
 // Production safety check
 if (import.meta.env.PROD && !isAllowedProductionApiUrl(API_BASE_URL)) {
@@ -54,4 +62,12 @@ if (AUTH_PROVIDER === 'supabase' && (!SUPABASE_URL || !SUPABASE_ANON_KEY)) {
 
 if (!['supabase', 'local'].includes(AUTH_PROVIDER)) {
   throw new Error("VITE_AUTH_PROVIDER must be either 'supabase' or 'local'")
+}
+
+if (!['cloud', 'self_hosted'].includes(TINYMCE_MODE)) {
+  throw new Error("VITE_TINYMCE_MODE must be either 'cloud' or 'self_hosted'")
+}
+
+if (TINYMCE_MODE === 'self_hosted' && !TINYMCE_SCRIPT_SRC) {
+  throw new Error('VITE_TINYMCE_SCRIPT_SRC is required when VITE_TINYMCE_MODE=self_hosted')
 }

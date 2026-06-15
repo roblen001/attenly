@@ -17,6 +17,10 @@ json_string() {
   printf '  VITE_LOCAL_AUTH_USER_ID: %s,\n' "$(json_string "${VITE_LOCAL_AUTH_USER_ID:-local-admin}")"
   printf '  VITE_LOCAL_AUTH_EMAIL: %s,\n' "$(json_string "${VITE_LOCAL_AUTH_EMAIL:-local-admin@example.com}")"
   printf '  VITE_LOCAL_AUTH_DISPLAY_NAME: %s,\n' "$(json_string "${VITE_LOCAL_AUTH_DISPLAY_NAME:-Local Admin}")"
-  printf '  VITE_LOCAL_AUTH_TOKEN: %s\n' "$(json_string "${VITE_LOCAL_AUTH_TOKEN:-}")"
+  printf '  VITE_LOCAL_AUTH_TOKEN: %s,\n' "$(json_string "${VITE_LOCAL_AUTH_TOKEN:-}")"
+  printf '  VITE_TINYMCE_MODE: %s,\n' "$(json_string "${VITE_TINYMCE_MODE:-self_hosted}")"
+  printf '  VITE_TINYMCE_SCRIPT_SRC: %s,\n' "$(json_string "${VITE_TINYMCE_SCRIPT_SRC:-/tinymce/tinymce.min.js}")"
+  printf '  VITE_TINYMCE_LICENSE_KEY: %s,\n' "$(json_string "${VITE_TINYMCE_LICENSE_KEY:-gpl}")"
+  printf '  VITE_TINYMCE_API_KEY: %s\n' "$(json_string "${VITE_TINYMCE_API_KEY:-}")"
   printf '};\n'
 } > "$CONFIG_PATH"

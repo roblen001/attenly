@@ -26,6 +26,12 @@ Companies do not need to replace every dependency before first launch. They can
 start with the default profile, prove the app internally, then replace one
 provider at a time.
 
+The original hosted deployment can keep using a static frontend host such as
+Cloudflare Pages, a managed backend host such as Koyeb, and Tiny Cloud for the
+rich text editor. The open-source Docker path is portable: the backend and
+frontend containers can run anywhere, and the frontend image can self-host
+TinyMCE without a Tiny Cloud API key.
+
 ## Quick Start: Docker Compose Local Profile
 
 Use this path when you want the backend and frontend running together with
@@ -63,7 +69,9 @@ Open `http://localhost:5173` and enter the same value you set for
 
 The compose file stores SQLite data and uploaded files in the `attenly-data`
 Docker volume. The frontend container uses a same-origin `/api` proxy to the
-backend, so browser users only need the frontend URL.
+backend, so browser users only need the frontend URL. The open-source frontend
+container also self-hosts TinyMCE at `/tinymce/tinymce.min.js`; no Tiny Cloud
+API key is required for this Docker path.
 
 When published images are available, use the same compose file without
 `--build`:
@@ -135,6 +143,14 @@ INBOUND_EMAIL_PROVIDER=resend
 ```
 
 Redis is not required for the current app.
+
+The open-source Docker frontend self-hosts TinyMCE by default. Existing hosted
+frontend deployments, such as Cloudflare Pages, can keep Tiny Cloud by setting:
+
+```bash
+VITE_TINYMCE_MODE=cloud
+VITE_TINYMCE_API_KEY=your_tinymce_cloud_api_key
+```
 
 ### 2. Run the Backend Container
 
@@ -350,6 +366,8 @@ The backend also has an initial provider-safe runtime slice:
   processing routes.
 - `VITE_AUTH_PROVIDER=local` lets the browser app use the same bearer token
   flow without Supabase Auth.
+- `VITE_TINYMCE_MODE=self_hosted` loads TinyMCE from the frontend container
+  instead of Tiny Cloud.
 - `LLM_PROVIDER=openai_compatible` sends extraction and quote prompts to an
   OpenAI-compatible `/chat/completions` endpoint.
 - `EMBEDDING_PROVIDER=openai_compatible` sends vector embeddings to an
@@ -378,7 +396,8 @@ For a company with internal models that expose an OpenAI-compatible API,
 Microsoft Graph mail, and no shared SQL service yet, use
 `.env.enterprise.example`. The core upload/report flow can run with SQLite,
 filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
-email disabled or Microsoft Graph outbound email.
+email disabled or Microsoft Graph outbound email. The Docker frontend can
+self-host TinyMCE, so this path does not require a Tiny Cloud API key.
 Set `TEMPLATE_INGEST_PROVIDER=disabled` if users will build templates in the
 editor, or `TEMPLATE_INGEST_PROVIDER=basic` for simple DOCX/HTML conversion.
 Use `TEMPLATE_INGEST_PROVIDER=openai_compatible` for OpenAI or an internal

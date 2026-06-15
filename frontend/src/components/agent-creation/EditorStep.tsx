@@ -2,6 +2,12 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { Editor } from '@tinymce/tinymce-react';
 import type { Question, Quote } from '../../types';
+import {
+  TINYMCE_API_KEY,
+  TINYMCE_LICENSE_KEY,
+  TINYMCE_MODE,
+  TINYMCE_SCRIPT_SRC
+} from '../../libs/configs';
 import AITestingModal from './AITestingModal';
 import './EditorStep.css';
 
@@ -39,6 +45,11 @@ const TINYMCE_TOOLBAR = [
 
 const EXTENDED_VALID_ELEMENTS =
   "a[class|data-question-id|href|role|tabindex|aria-label|contenteditable],sup[class|data-quote-index],div[class|data-mce-type]";
+
+const TINYMCE_LOAD_PROPS =
+  TINYMCE_MODE === 'self_hosted'
+    ? { tinymceScriptSrc: TINYMCE_SCRIPT_SRC }
+    : { apiKey: TINYMCE_API_KEY };
 
 /**
  * Convert <!-- pagebreak --> HTML comments to visible div elements for TinyMCE editing.
@@ -465,7 +476,8 @@ const EditorStep: React.FC<EditorStepProps> = ({
           input.click();
         }
       },
-      templates: [DEFAULT_TEMPLATE]
+      templates: [DEFAULT_TEMPLATE],
+      ...(TINYMCE_LICENSE_KEY ? { license_key: TINYMCE_LICENSE_KEY } : {})
     }),
     [reportTemplateCss, onQuestionsChange, onTemplateChange]
   );
@@ -492,7 +504,7 @@ const EditorStep: React.FC<EditorStepProps> = ({
 
       <div className="editor-container">
         <Editor
-          apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
+          {...TINYMCE_LOAD_PROPS}
           id="attenly-editor"
           onInit={(_evt, editor) => {
             editorRef.current = editor;

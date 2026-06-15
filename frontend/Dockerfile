@@ -14,6 +14,7 @@ FROM nginx:1.27-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker-entrypoint.sh /docker-entrypoint.d/40-attenly-runtime-config.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/node_modules/tinymce /usr/share/nginx/html/tinymce
 
 RUN chmod +x /docker-entrypoint.d/40-attenly-runtime-config.sh
 

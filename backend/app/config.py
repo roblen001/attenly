@@ -209,14 +209,6 @@ TEMPLATE_INGEST_MODEL_NAME = os.getenv(
     "TEMPLATE_INGEST_MODEL",
     os.getenv("TEMPLATE_INGEST_MODEL_NAME", "gemini-2.5-pro"),
 )
-TEMPLATE_INGEST_OPENAI_MODE = _normalized_env(
-    "TEMPLATE_INGEST_OPENAI_MODE",
-    "responses_file",
-)
-TEMPLATE_INGEST_OPENAI_FILE_DETAIL = _normalized_env(
-    "TEMPLATE_INGEST_OPENAI_FILE_DETAIL",
-    "high",
-)
 LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = int(os.getenv("LLM_MAX_CONTEXT_TOKENS_PER_QUESTION", "4000"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 LLM_THINKING_BUDGET = int(os.getenv("LLM_THINKING_BUDGET", "0"))
@@ -505,14 +497,6 @@ def validate_config():
             "OPENAI_COMPATIBLE_BASE_URL is required when using OpenAI-compatible "
             "LLM, embedding, or template ingest providers"
         )
-    if TEMPLATE_INGEST_PROVIDER == "openai_compatible":
-        if TEMPLATE_INGEST_OPENAI_MODE not in {"responses_file", "chat_file", "chat_images", "extracted"}:
-            errors.append(
-                "TEMPLATE_INGEST_OPENAI_MODE must be one of: "
-                "responses_file, chat_file, chat_images, extracted"
-            )
-        if TEMPLATE_INGEST_OPENAI_FILE_DETAIL not in {"low", "high"}:
-            errors.append("TEMPLATE_INGEST_OPENAI_FILE_DETAIL must be 'low' or 'high'")
 
     # LLM ranges
     if LLM_MAX_CONTEXT_TOKENS_PER_QUESTION < 1000:
@@ -676,16 +660,6 @@ def get_config_summary() -> dict:
             "model_name": (
                 TEMPLATE_INGEST_MODEL_NAME
                 if TEMPLATE_INGEST_PROVIDER in {"gemini", "openai_compatible"}
-                else None
-            ),
-            "openai_mode": (
-                TEMPLATE_INGEST_OPENAI_MODE
-                if TEMPLATE_INGEST_PROVIDER == "openai_compatible"
-                else None
-            ),
-            "openai_file_detail": (
-                TEMPLATE_INGEST_OPENAI_FILE_DETAIL
-                if TEMPLATE_INGEST_PROVIDER == "openai_compatible"
                 else None
             ),
             "requires_multimodal_model": TEMPLATE_INGEST_PROVIDER in {"gemini", "openai_compatible"},

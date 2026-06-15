@@ -2009,11 +2009,6 @@ async def get_template_ingest_capabilities(current_user = Depends(get_current_us
             if provider in {"gemini", "openai_compatible"}
             else None
         ),
-        "openai_mode": (
-            config.TEMPLATE_INGEST_OPENAI_MODE
-            if provider == "openai_compatible"
-            else None
-        ),
         "supports_pdf": provider in {"gemini", "openai_compatible"},
         "supports_docx": provider in {"gemini", "openai_compatible", "basic"},
         "supports_html": provider in {"gemini", "openai_compatible", "basic"},

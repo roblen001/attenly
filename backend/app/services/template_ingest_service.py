@@ -26,8 +26,6 @@ from app.config import (
     OPENAI_COMPATIBLE_BASE_URL,
     OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
     TEMPLATE_INGEST_MODEL_NAME,
-    TEMPLATE_INGEST_OPENAI_FILE_DETAIL,
-    TEMPLATE_INGEST_OPENAI_MODE,
     TEMPLATE_INGEST_PROVIDER,
 )
 from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
@@ -38,8 +36,6 @@ logger = logging.getLogger(__name__)
 
 class TemplateIngestService:
     """Service for provider-aware template normalization."""
-
-    MAX_TEMPLATE_REPRESENTATION_CHARS = 120_000
     
     # Prompt for high-capability multimodal template normalization.
     NORMALIZATION_PROMPT = """You are an expert document template normalizer for Attenly, a legal/enterprise document automation platform.
@@ -243,19 +239,6 @@ Finally, output only the JSON object:
 - Do NOT add any text before or after the JSON.
 """
 
-    EXTRACTED_REPRESENTATION_PROMPT_SUFFIX = """
-
---------------------------------
-EXTRACTED TEMPLATE REPRESENTATION
---------------------------------
-
-You are not receiving the original binary file directly. You are receiving a
-locally extracted representation of the uploaded template. Preserve structure,
-order, headings, lists, tables, and placeholders from this representation as
-faithfully as possible. If the representation is too weak to reconstruct a
-reasonable reusable template, return exactly {"html_body":"","css":""}.
-"""
-
     RENDERED_IMAGE_PROMPT_SUFFIX = """
 
 --------------------------------
@@ -272,7 +255,6 @@ breaks, and placeholders as faithfully as possible.
         """Initialize the configured template ingest provider."""
         self.provider = TEMPLATE_INGEST_PROVIDER
         self.model_name = TEMPLATE_INGEST_MODEL_NAME
-        self.openai_mode = TEMPLATE_INGEST_OPENAI_MODE
 
         if self.provider == "gemini" and not GEMINI_API_KEY:
             logger.warning("GEMINI_API_KEY not configured. Gemini template ingestion will fail.")
@@ -282,10 +264,9 @@ breaks, and placeholders as faithfully as possible.
             )
 
         logger.info(
-            "TemplateIngestService initialized with provider=%s model=%s openai_mode=%s",
+            "TemplateIngestService initialized with provider=%s model=%s",
             self.provider,
             self.model_name if self.provider in {"gemini", "openai_compatible"} else "n/a",
-            self.openai_mode if self.provider == "openai_compatible" else "n/a",
         )
     
     def process_template_file(
@@ -488,25 +469,40 @@ breaks, and placeholders as faithfully as possible.
         user_id: Optional[str],
         warnings: list[str],
     ) -> Tuple[str, str]:
-        """Normalize the uploaded file through the configured OpenAI-compatible mode."""
+        """Normalize the uploaded file through OpenAI-compatible multimodal inputs."""
         if not OPENAI_COMPATIBLE_BASE_URL:
             raise ValueError("OPENAI_COMPATIBLE_BASE_URL is required for template ingestion")
 
-        if self.openai_mode == "responses_file":
-            return self._normalize_with_openai_responses_file(file_content, file_type, filename)
-        if self.openai_mode == "chat_file":
-            return self._normalize_with_openai_chat_file(file_content, file_type, filename)
-        if self.openai_mode == "chat_images":
-            return self._normalize_with_openai_chat_images(file_content, file_type, filename, warnings)
-        if self.openai_mode == "extracted":
-            warnings.append(
-                "Template ingest is using extracted representation mode. This is a "
-                "compatibility fallback and may be less accurate than multimodal file input."
-            )
-            return self._normalize_with_openai_extracted(file_content, file_type, filename, warnings)
+        attempts = [
+            (
+                "Responses file input",
+                lambda: self._normalize_with_openai_responses_file(file_content, file_type, filename),
+            ),
+            (
+                "Chat Completions file input",
+                lambda: self._normalize_with_openai_chat_file(file_content, file_type, filename),
+            ),
+            (
+                "Chat Completions image input",
+                lambda: self._normalize_with_openai_chat_images(file_content, file_type, filename, warnings),
+            ),
+        ]
+
+        rejected_shapes = []
+        for name, attempt in attempts:
+            try:
+                return attempt()
+            except Exception as exc:
+                if not self._is_openai_request_shape_rejection(exc):
+                    raise
+                rejected_shapes.append(f"{name}: {exc}")
+                logger.info("OpenAI-compatible template input shape rejected: %s", name)
 
         raise ValueError(
-            "Unsupported TEMPLATE_INGEST_OPENAI_MODE. Use responses_file, chat_file, chat_images, or extracted."
+            "The configured OpenAI-compatible template ingest endpoint rejected all "
+            "supported multimodal request shapes. Tried original file input through "
+            "Responses, original file input through Chat Completions, and rendered "
+            f"page images through Chat Completions. Details: {'; '.join(rejected_shapes)}"
         )
 
     def _normalize_with_openai_responses_file(
@@ -526,7 +522,6 @@ breaks, and placeholders as faithfully as possible.
                             "type": "input_file",
                             "filename": filename,
                             "file_data": self._file_data_url(file_content, file_type),
-                            "detail": TEMPLATE_INGEST_OPENAI_FILE_DETAIL,
                         },
                         {
                             "type": "input_text",
@@ -566,7 +561,7 @@ breaks, and placeholders as faithfully as possible.
                 "type": "image_url",
                 "image_url": {
                     "url": image_url,
-                    "detail": TEMPLATE_INGEST_OPENAI_FILE_DETAIL,
+                    "detail": "high",
                 },
             }
             for image_url in image_urls
@@ -628,46 +623,6 @@ breaks, and placeholders as faithfully as possible.
         )
         return self._parse_template_json(response_text)
 
-    def _normalize_with_openai_extracted(
-        self,
-        file_content: bytes,
-        file_type: str,
-        filename: str,
-        warnings: list[str],
-    ) -> Tuple[str, str]:
-        """Normalize an extracted template representation through /chat/completions."""
-        representation = self._extract_template_representation(file_content, file_type, filename, warnings)
-        if not representation.strip():
-            raise ValueError("Could not extract template content for OpenAI-compatible ingestion")
-
-        if len(representation) > self.MAX_TEMPLATE_REPRESENTATION_CHARS:
-            representation = representation[: self.MAX_TEMPLATE_REPRESENTATION_CHARS]
-            warnings.append(
-                "Template content was truncated before model normalization. "
-                "Use a shorter template for better fidelity."
-            )
-
-        prompt = (
-            f"{self.NORMALIZATION_PROMPT}\n"
-            f"{self.EXTRACTED_REPRESENTATION_PROMPT_SUFFIX}\n\n"
-            f"Filename: {filename}\n"
-            f"Detected file type: {file_type}\n\n"
-            "Extracted TEMPLATE_FILE representation:\n"
-            "```text\n"
-            f"{representation}\n"
-            "```"
-        )
-
-        response_text, usage = self._call_openai_compatible_chat_text(prompt)
-        logger.info(
-            "OpenAI-compatible extracted template ingest usage for %s: prompt=%s completion=%s",
-            filename,
-            usage.get("prompt_tokens", 0),
-            usage.get("completion_tokens", 0),
-        )
-
-        return self._parse_template_json(response_text)
-
     def _parse_template_json(self, response_text: str) -> Tuple[str, str]:
         result = json.loads(self._clean_json_response(response_text))
         html_body = result.get("html_body", "")
@@ -680,89 +635,6 @@ breaks, and placeholders as faithfully as possible.
             return html_body, css
 
         return "", ""
-
-    def _extract_template_representation(
-        self,
-        file_content: bytes,
-        file_type: str,
-        filename: str,
-        warnings: list[str],
-    ) -> str:
-        """Extract a model-readable template representation from supported files."""
-        if file_type == "docx":
-            return self._extract_docx_representation(file_content, warnings)
-        if file_type == "html":
-            return self._extract_html_representation(file_content)
-        if file_type == "pdf":
-            warnings.append(
-                "PDF template ingestion uses locally extracted text blocks before calling the model. "
-                "Scanned PDFs or complex visual layouts may require a true multimodal provider."
-            )
-            return self._extract_pdf_representation(file_content, filename)
-        raise ValueError(f"Unsupported template file type for OpenAI-compatible ingestion: {file_type}")
-
-    def _extract_docx_representation(self, docx_content: bytes, warnings: list[str]) -> str:
-        try:
-            import mammoth
-
-            result = mammoth.convert_to_html(io.BytesIO(docx_content))
-            for message in result.messages:
-                warnings.append(f"DOCX conversion warning: {message.message}")
-
-            html = result.value.strip()
-            return (
-                "DOCX converted to HTML. Use this as the source structure, preserving "
-                "headings, paragraphs, lists, and tables as faithfully as possible.\n\n"
-                f"{html}"
-            )
-        except Exception as exc:
-            raise ValueError(f"Failed to extract DOCX template representation: {exc}") from exc
-
-    def _extract_html_representation(self, html_content: bytes) -> str:
-        try:
-            from bs4 import BeautifulSoup
-
-            html = html_content.decode("utf-8", errors="ignore")
-            soup = BeautifulSoup(html, "html.parser")
-            for element in soup(["script", "style", "iframe", "object", "embed"]):
-                element.decompose()
-
-            source = soup.body if soup.body else soup
-            body_html = "".join(str(child) for child in source.contents).strip()
-            return (
-                "HTML template body. Preserve this structure unless it is unsafe or invalid.\n\n"
-                f"{body_html}"
-            )
-        except Exception as exc:
-            raise ValueError(f"Failed to extract HTML template representation: {exc}") from exc
-
-    def _extract_pdf_representation(self, pdf_content: bytes, filename: str) -> str:
-        try:
-            import fitz
-
-            doc = fitz.open(stream=pdf_content, filetype="pdf")
-            try:
-                pages: list[str] = []
-                for page_index, page in enumerate(doc, start=1):
-                    blocks = page.get_text("blocks")
-                    sorted_blocks = sorted(blocks, key=lambda block: (block[1], block[0]))
-                    block_text = []
-                    for block in sorted_blocks:
-                        text = str(block[4]).strip()
-                        if text:
-                            block_text.append(text)
-                    pages.append(
-                        f"--- PAGE {page_index} ---\n" + "\n\n".join(block_text)
-                    )
-                return (
-                    f"PDF text-block extraction for {filename}. Page boundaries are marked. "
-                    "Use headings, order, table-like spacing, and repeated labels to infer structure.\n\n"
-                    + "\n\n<!-- pagebreak -->\n\n".join(pages)
-                )
-            finally:
-                doc.close()
-        except Exception as exc:
-            raise ValueError(f"Failed to extract PDF template representation: {exc}") from exc
 
     def _render_file_to_image_data_urls(
         self,
@@ -793,7 +665,7 @@ breaks, and placeholders as faithfully as possible.
             pdf_content = self._html_to_pdf(html)
             return self._render_pdf_to_image_data_urls(pdf_content, filename)
 
-        raise ValueError(f"Unsupported template file type for chat_images mode: {file_type}")
+        raise ValueError(f"Unsupported template file type for OpenAI-compatible image input: {file_type}")
 
     def _docx_to_html(self, docx_content: bytes) -> str:
         try:
@@ -876,15 +748,6 @@ breaks, and placeholders as faithfully as possible.
 
         return response.json()
 
-    def _call_openai_compatible_chat_text(self, prompt: str) -> Tuple[str, Dict[str, int]]:
-        payload = {
-            "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-        }
-        return self._call_openai_compatible_chat(payload)
-
     def _call_openai_compatible_chat(self, payload: dict) -> Tuple[str, Dict[str, int]]:
         import httpx
 
@@ -895,7 +758,7 @@ breaks, and placeholders as faithfully as possible.
                 json=payload,
             )
 
-            if response.status_code in {400, 404, 422}:
+            if response.status_code in {400, 422}:
                 logger.info(
                     "OpenAI-compatible template provider rejected response_format; retrying without it"
                 )
@@ -960,6 +823,12 @@ breaks, and placeholders as faithfully as possible.
 
         raise ValueError("OpenAI-compatible Responses result did not include output text")
 
+    def _is_openai_request_shape_rejection(self, exc: Exception) -> bool:
+        """Return true when an endpoint rejects one multimodal request shape."""
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        return status_code in {400, 404, 405, 415, 422}
+
     def _clean_json_response(self, response_text: str) -> str:
         response_text = response_text.strip()
         if response_text.startswith("```"):
@@ -995,12 +864,6 @@ breaks, and placeholders as faithfully as possible.
                     warnings=warnings,
                 )
 
-            if self.openai_mode == "extracted" and file_type in {"docx", "html"}:
-                warnings.append(
-                    "OpenAI-compatible template normalization returned empty output; using basic conversion."
-                )
-                return self._process_with_basic_converter(content, file_type, filename, warnings)
-
             return TemplateIngestResponse(
                 success=False,
                 html_body="",
@@ -1008,19 +871,12 @@ breaks, and placeholders as faithfully as possible.
                 source="error",
                 error=(
                     "OpenAI-compatible template normalization returned empty output. "
-                    "Use a stronger multimodal model, simplify the template, or configure "
-                    "TEMPLATE_INGEST_OPENAI_MODE=extracted only if a lower-fidelity fallback is acceptable."
+                    "Use a stronger multimodal template-ingest model or simplify the template."
                 ),
                 warnings=warnings,
             )
         except Exception as exc:
             logger.error("OpenAI-compatible template ingestion failed: %s", exc, exc_info=True)
-            if self.openai_mode == "extracted" and file_type in {"docx", "html"}:
-                warnings.append(
-                    f"OpenAI-compatible template normalization failed: {exc}. Using basic conversion."
-                )
-                return self._process_with_basic_converter(content, file_type, filename, warnings)
-
             return TemplateIngestResponse(
                 success=False,
                 html_body="",
@@ -1028,10 +884,8 @@ breaks, and placeholders as faithfully as possible.
                 source="error",
                 error=(
                     f"OpenAI-compatible template ingestion failed: {exc}. "
-                    "This provider expects a multimodal model endpoint that accepts original file input. "
-                    "Try TEMPLATE_INGEST_OPENAI_MODE=chat_file for Chat Completions file parts, "
-                    "TEMPLATE_INGEST_OPENAI_MODE=chat_images for image-based vision endpoints, "
-                    "or TEMPLATE_INGEST_OPENAI_MODE=extracted only as a lower-fidelity fallback."
+                    "Configure a multimodal OpenAI-compatible model endpoint for smart template ingestion, "
+                    "or set TEMPLATE_INGEST_PROVIDER=basic for simple DOCX/HTML conversion."
                 ),
                 warnings=warnings,
             )

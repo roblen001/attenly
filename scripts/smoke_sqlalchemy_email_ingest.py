@@ -69,6 +69,7 @@ def main() -> int:
         import app.models  # noqa: F401 - registers SQLAlchemy models with Base
         from app.services import email_ingest_service as email_ingest_module
         from app.services.email_ingest_service import EmailIngestService
+        from app.services.email_job_store import get_email_job_store
 
         email_ingest_module.email_service = FakeEmailService()
 
@@ -92,6 +93,8 @@ def main() -> int:
         assert_equal("sender normalized", sender["email"], "sender@example.com")
         assert_equal("sender pending", sender["status"], "pending")
 
+        job_id = uuid.uuid4()
+
         with SessionLocal() as session:
             sender_row = (
                 session.query(VerifiedSender)
@@ -103,6 +106,7 @@ def main() -> int:
 
             session.add(
                 EmailJob(
+                    id=job_id,
                     user_id=user_id,
                     ingest_endpoint_id=endpoint_id,
                     from_email="sender@example.com",
@@ -122,6 +126,16 @@ def main() -> int:
             )
             session.commit()
 
+        job_store = get_email_job_store()
+        pending_jobs = job_store.list_pending_jobs(10)
+        if str(job_id) not in {job["id"] for job in pending_jobs}:
+            raise AssertionError("pending email job not returned by SQLAlchemy job store")
+        assert_equal("claim job", job_store.claim_job(str(job_id)), True)
+        assert_equal("claim job twice", job_store.claim_job(str(job_id)), False)
+        claimed_job = job_store.get_job(str(job_id))
+        assert claimed_job is not None
+        assert_equal("claimed job status", claimed_job["status"], "processing")
+
         success, message = service.verify_sender(token)
         assert_equal("verify success", success, True)
         assert "verified" in message.lower()
@@ -138,6 +152,17 @@ def main() -> int:
         )
         settings = service.get_user_settings("", user_id)
         assert_equal("default agent", settings["endpoint"]["default_agent_id"], "agent-123")
+        assert_equal(
+            "job store default agent",
+            job_store.get_endpoint_default_agent(settings["endpoint"]["id"]),
+            "agent-123",
+        )
+
+        job_store.mark_completed(str(job_id), "report-123")
+        completed_job = job_store.get_job(str(job_id))
+        assert completed_job is not None
+        assert_equal("completed job status", completed_job["status"], "completed")
+        assert_equal("completed job report", completed_job["report_id"], "report-123")
 
         assert_equal("remove sender", service.remove_verified_sender("", user_id, sender["id"]), True)
         assert_equal("disable email ingest", service.disable_email_ingest("", user_id), True)

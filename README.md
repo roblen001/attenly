@@ -396,8 +396,10 @@ user without changing application code. Unknown or internal models use
 SQLAlchemy profiles also include the email ingest data model:
 `email_ingest_endpoints`, `verified_senders`, `email_jobs`, and
 `email_poll_state`. The user-facing email settings service can now manage those
-records without Supabase. The remaining enterprise email work is the
-storage-neutral job processor and Microsoft Graph inbound poller.
+records without Supabase. The email job processor now uses provider-specific
+job stores plus configured storage/report persistence, so SQLAlchemy and
+filesystem installs can process jobs once an inbound adapter creates them. The
+remaining enterprise email work is the Microsoft Graph inbound poller.
 
 The remaining non-email enterprise adapter work is production SSO/OIDC auth.
 OpenAI-compatible template ingestion now supports multimodal request shapes
@@ -520,9 +522,10 @@ Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 ```
 
 SQLAlchemy profiles now have local tables for email aliases, verified senders,
-email jobs, and poll state. Full local/enterprise inbound email still needs the
-next adapter branch: provider-neutral job processing plus Microsoft Graph
-polling.
+email jobs, and poll state. The background processor can claim and complete
+jobs through SQLAlchemy and filesystem-backed report persistence. Full
+local/enterprise inbound email still needs the next adapter branch: Microsoft
+Graph polling that creates those jobs from a company mailbox.
 
 ## Security Notes
 

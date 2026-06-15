@@ -385,6 +385,14 @@ It is best for trusted internal pilots, demos, and API testing. Production
 enterprise deployments should still move toward SSO/OIDC instead of a shared
 bearer token.
 
+Usage limits now work with either Supabase RPCs or SQLAlchemy. The app
+hard-blocks smart AI work once a user reaches their monthly limit. SQLAlchemy
+profiles store limits in `user_quotas` and detailed operation history in
+`usage_logs`; admins can raise or lower `user_quotas.monthly_limit_cad` for a
+user without changing application code. Unknown or internal models use
+`DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD` and
+`DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD` for accounting.
+
 The remaining enterprise adapter work is Microsoft Graph inbound ingest and
 production SSO/OIDC auth. OpenAI-compatible template ingestion now supports
 multimodal request shapes internally; individual gateways still need a model
@@ -398,6 +406,8 @@ Microsoft Graph mail, and no shared SQL service yet, use
 filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
 email disabled or Microsoft Graph outbound email. The Docker frontend can
 self-host TinyMCE, so this path does not require a Tiny Cloud API key.
+SQLite profiles auto-create SQLAlchemy tables by default with
+`DATABASE_AUTO_CREATE_TABLES=true`.
 Set `TEMPLATE_INGEST_PROVIDER=disabled` if users will build templates in the
 editor, or `TEMPLATE_INGEST_PROVIDER=basic` for simple DOCX/HTML conversion.
 Use `TEMPLATE_INGEST_PROVIDER=openai_compatible` for OpenAI or an internal

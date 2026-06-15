@@ -18,6 +18,7 @@ from app.services.document_processor import DocumentProcessor
 from app.services.vector_store import vector_store_manager # In user-based storage, we use a global manager for vector store operations
 from app.services.report_service import report_service
 from app.services.pdf_generator import pdf_generator
+from app.services.credit_service import CreditLimitExceeded
 
 # Import performance monitoring
 from app.services.performance_monitor import get_performance_monitor, time_operation, timed_operation
@@ -915,6 +916,8 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
             "message": "Document processing completed successfully with real LLM inference and cached for preview"
         }
         
+    except CreditLimitExceeded as e:
+        raise HTTPException(status_code=402, detail=e.message)
     except ValueError as e:
         # Handle service-level errors (including LLM unavailability)
         raise HTTPException(status_code=400, detail=str(e))
@@ -1110,6 +1113,8 @@ async def test_single_question(
             }
         }
         
+    except CreditLimitExceeded as e:
+        raise HTTPException(status_code=402, detail=e.message)
     except ValueError as e:
         # Handle LLM service errors
         raise HTTPException(status_code=400, detail=str(e))
@@ -2100,6 +2105,18 @@ async def upload_template(
             "warnings": result.warnings
         }
         
+    except CreditLimitExceeded as e:
+        return JSONResponse(
+            status_code=402,
+            content={
+                "success": False,
+                "html_body": "",
+                "css": "",
+                "source": "error",
+                "error": e.message,
+                "warnings": [],
+            },
+        )
     except Exception as e:
         logging.error(f"Template upload failed: {str(e)}", exc_info=True)
         return JSONResponse(

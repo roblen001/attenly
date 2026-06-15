@@ -73,6 +73,21 @@ docker compose -f compose.open-source.yml --env-file .env pull
 docker compose -f compose.open-source.yml --env-file .env up -d
 ```
 
+The compose file defaults to `ghcr.io/attenly/*:latest`. Forks, company mirrors,
+or private registries can override the images without editing the file:
+
+```bash
+ATTENLY_IMAGE_NAMESPACE=your-ghcr-owner
+ATTENLY_IMAGE_TAG=open-sourcing
+```
+
+or:
+
+```bash
+ATTENLY_BACKEND_IMAGE=registry.company.com/attenly-backend:2026.06
+ATTENLY_FRONTEND_IMAGE=registry.company.com/attenly-frontend:2026.06
+```
+
 ## Quick Start: Default Profile
 
 Use this path if you want the app to run the same way it works today.
@@ -382,6 +397,12 @@ python scripts/verify_open_source_profiles.py
 CI runs this provider profile verifier on pull requests and pushes to `main`
 or `open-sourcing`. It also runs the frontend production build, validates the
 open-source compose config, and builds the frontend Docker image.
+
+Docker image publishing is handled separately by the `Publish Docker Images`
+workflow. It publishes backend and frontend images to GHCR on `main`,
+`open-sourcing`, version tags, or manual dispatch. By default it publishes under
+the GitHub repository owner; set a `GHCR_NAMESPACE` repository variable to use a
+different package namespace such as an official organization.
 
 After installing backend dependencies, smoke test the local-auth SQLite runtime
 routes:

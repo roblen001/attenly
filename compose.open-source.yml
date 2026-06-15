@@ -2,7 +2,7 @@ name: attenly
 
 services:
   backend:
-    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/attenly/attenly-backend:latest}
+    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-attenly}/attenly-backend:${ATTENLY_IMAGE_TAG:-latest}}
     pull_policy: missing
     build:
       context: ./backend
@@ -21,7 +21,7 @@ services:
       start_period: 10s
 
   frontend:
-    image: ${ATTENLY_FRONTEND_IMAGE:-ghcr.io/attenly/attenly-frontend:latest}
+    image: ${ATTENLY_FRONTEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-attenly}/attenly-frontend:${ATTENLY_IMAGE_TAG:-latest}}
     pull_policy: missing
     build:
       context: ./frontend

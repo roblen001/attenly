@@ -39,3 +39,17 @@ VITE_LOCAL_AUTH_DISPLAY_NAME=Local Admin
 
 `VITE_LOCAL_AUTH_TOKEN` can prefill the login form for local development, but it
 is bundled into browser code and is not a secret.
+
+## Docker Runtime Config
+
+The frontend Docker image reads runtime settings from environment variables and
+writes them to `/config.js` when the container starts. Use the same `VITE_`
+names as local development.
+
+For the open-source compose file, the default API URL is:
+
+```bash
+VITE_API_BASE_URL=/api
+```
+
+That path is served by nginx and proxied to the backend container.

@@ -57,3 +57,19 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  docker-onboarding:
+    name: Docker onboarding
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate open-source compose config
+        env:
+          ATTENLY_ENV_FILE: .env.local.example
+        run: docker compose -f compose.open-source.yml --env-file .env.local.example config
+
+      - name: Build frontend Docker image
+        run: docker build -t attenly-frontend:test frontend

@@ -320,6 +320,13 @@ prefer the default smart multimodal template provider.
 
 ## Development Setup
 
+From the repository root, verify the documented open-source profile combinations
+without contacting any external provider:
+
+```bash
+python scripts/verify_open_source_profiles.py
+```
+
 ### Backend
 
 ```bash

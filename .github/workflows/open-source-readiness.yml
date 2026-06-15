@@ -1,0 +1,59 @@
+name: Open Source Readiness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - open-sourcing
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provider-profile-config:
+    name: Provider profile config
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install lightweight config dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install python-dotenv==1.1.1
+
+      - name: Verify documented provider profiles
+        run: python scripts/verify_open_source_profiles.py
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build

@@ -327,6 +327,9 @@ without contacting any external provider:
 python scripts/verify_open_source_profiles.py
 ```
 
+CI runs this provider profile verifier on pull requests and pushes to `main`
+or `open-sourcing`. It also runs the frontend production build.
+
 After installing backend dependencies, smoke test the local-auth SQLite runtime
 routes:
 

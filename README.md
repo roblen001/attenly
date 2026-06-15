@@ -327,6 +327,13 @@ without contacting any external provider:
 python scripts/verify_open_source_profiles.py
 ```
 
+After installing backend dependencies, smoke test the local-auth SQLite runtime
+routes:
+
+```bash
+python scripts/smoke_backend_runtime.py
+```
+
 ### Backend
 
 ```bash

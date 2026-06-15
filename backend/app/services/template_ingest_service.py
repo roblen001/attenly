@@ -302,6 +302,9 @@ breaks, and placeholders as faithfully as possible.
         if self.provider == "basic":
             return self._process_with_basic_converter(content, file_type, filename, warnings)
 
+        if user_id and self.provider in {"gemini", "openai_compatible"}:
+            self._ensure_template_credits_available(user_id)
+
         if self.provider == "openai_compatible":
             return self._process_with_openai_compatible(content, file_type, filename, user_id, warnings)
 
@@ -476,15 +479,15 @@ breaks, and placeholders as faithfully as possible.
         attempts = [
             (
                 "Responses file input",
-                lambda: self._normalize_with_openai_responses_file(file_content, file_type, filename),
+                lambda: self._normalize_with_openai_responses_file(file_content, file_type, filename, user_id),
             ),
             (
                 "Chat Completions file input",
-                lambda: self._normalize_with_openai_chat_file(file_content, file_type, filename),
+                lambda: self._normalize_with_openai_chat_file(file_content, file_type, filename, user_id),
             ),
             (
                 "Chat Completions image input",
-                lambda: self._normalize_with_openai_chat_images(file_content, file_type, filename, warnings),
+                lambda: self._normalize_with_openai_chat_images(file_content, file_type, filename, user_id, warnings),
             ),
         ]
 
@@ -510,6 +513,7 @@ breaks, and placeholders as faithfully as possible.
         file_content: bytes,
         file_type: str,
         filename: str,
+        user_id: Optional[str],
     ) -> Tuple[str, str]:
         """Send the original uploaded file through the OpenAI Responses file-input shape."""
         payload = {
@@ -535,6 +539,12 @@ breaks, and placeholders as faithfully as possible.
 
         data = self._post_openai_compatible_json("/responses", payload)
         response_text = self._extract_responses_text(data)
+        self._track_template_credit_usage(
+            user_id=user_id,
+            filename=filename,
+            file_type=file_type,
+            usage=self._extract_openai_usage(data),
+        )
         return self._parse_template_json(response_text)
 
     def _normalize_with_openai_chat_images(
@@ -542,6 +552,7 @@ breaks, and placeholders as faithfully as possible.
         file_content: bytes,
         file_type: str,
         filename: str,
+        user_id: Optional[str],
         warnings: list[str],
     ) -> Tuple[str, str]:
         """Render pages to images for OpenAI-compatible vision chat endpoints."""
@@ -581,6 +592,12 @@ breaks, and placeholders as faithfully as possible.
             usage.get("prompt_tokens", 0),
             usage.get("completion_tokens", 0),
         )
+        self._track_template_credit_usage(
+            user_id=user_id,
+            filename=filename,
+            file_type=file_type,
+            usage=usage,
+        )
         return self._parse_template_json(response_text)
 
     def _normalize_with_openai_chat_file(
@@ -588,6 +605,7 @@ breaks, and placeholders as faithfully as possible.
         file_content: bytes,
         file_type: str,
         filename: str,
+        user_id: Optional[str],
     ) -> Tuple[str, str]:
         """Send the original uploaded file through Chat Completions file content parts."""
         payload = {
@@ -620,6 +638,12 @@ breaks, and placeholders as faithfully as possible.
             filename,
             usage.get("prompt_tokens", 0),
             usage.get("completion_tokens", 0),
+        )
+        self._track_template_credit_usage(
+            user_id=user_id,
+            filename=filename,
+            file_type=file_type,
+            usage=usage,
         )
         return self._parse_template_json(response_text)
 
@@ -837,6 +861,76 @@ breaks, and placeholders as faithfully as possible.
                 return match.group(1)
             response_text = response_text.replace("```json", "").replace("```", "").strip()
         return response_text
+
+    def _extract_openai_usage(self, data: dict) -> Dict[str, int]:
+        usage = data.get("usage") or {}
+        input_tokens = (
+            usage.get("prompt_tokens")
+            or usage.get("input_tokens")
+            or usage.get("total_input_tokens")
+            or 0
+        )
+        output_tokens = (
+            usage.get("completion_tokens")
+            or usage.get("output_tokens")
+            or usage.get("total_output_tokens")
+            or 0
+        )
+        return {
+            "prompt_tokens": int(input_tokens or 0),
+            "completion_tokens": int(output_tokens or 0),
+        }
+
+    def _ensure_template_credits_available(self, user_id: str) -> None:
+        from app.services.credit_service import CreditLimitExceeded, get_credit_service
+
+        credit_service = get_credit_service()
+        credit_status = credit_service.check_credits_sync(user_id)
+        if credit_status.warning_level == "blocked":
+            raise CreditLimitExceeded(credit_status)
+
+    def _track_template_credit_usage(
+        self,
+        user_id: Optional[str],
+        filename: str,
+        file_type: str,
+        usage: Dict[str, int],
+    ) -> None:
+        if not user_id:
+            return
+
+        try:
+            from app.services.credit_service import get_credit_service
+
+            credit_service = get_credit_service()
+            input_tokens = int(usage.get("prompt_tokens") or 0)
+            output_tokens = int(usage.get("completion_tokens") or 0)
+            cost_cad = credit_service.calculate_cost(self.model_name, input_tokens, output_tokens)
+
+            consume_result = credit_service.consume_credits_sync(
+                user_id=user_id,
+                cost_cad=cost_cad,
+                operation_type="llm_template",
+                model=self.model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                metadata={
+                    "filename": filename,
+                    "file_type": file_type,
+                    "provider": self.provider,
+                },
+            )
+
+            if not consume_result.allowed:
+                logger.warning("Template credit limit reached after processing for user %s", user_id)
+            logger.info(
+                "Template credit usage: %.6f CAD (%s in, %s out)",
+                cost_cad,
+                input_tokens,
+                output_tokens,
+            )
+        except Exception as exc:
+            logger.warning("Failed to track template credits: %s", exc)
 
     def _process_with_openai_compatible(
         self,

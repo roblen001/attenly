@@ -237,6 +237,12 @@ MODEL_PRICING = {
 # Credit display settings
 CREDITS_PER_CAD = 100  # 1 CAD = 100 credits (so $50 CAD = 5000 credits)
 DEFAULT_MONTHLY_LIMIT_CAD = float(os.getenv("DEFAULT_MONTHLY_LIMIT_CAD", "15.00"))
+DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD = float(
+    os.getenv("DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD", "0.10")
+)
+DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD = float(
+    os.getenv("DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD", "0.40")
+)
 WARNING_THRESHOLD_PERCENT = 70  # Show warning at 70% usage
 CRITICAL_THRESHOLD_PERCENT = 90  # Show critical warning at 90% usage
 
@@ -365,6 +371,10 @@ OCR_TORCH_NUM_THREADS = int(os.getenv("OCR_TORCH_NUM_THREADS", "1"))
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 DATABASE_ECHO = _env_bool("DATABASE_ECHO", False)
+DATABASE_AUTO_CREATE_TABLES = _env_bool(
+    "DATABASE_AUTO_CREATE_TABLES",
+    DATABASE_PROVIDER == "sqlalchemy" and DATABASE_URL.startswith("sqlite"),
+)
 
 # =============================================================================
 # DEVELOPMENT & DEBUGGING
@@ -532,6 +542,14 @@ def validate_config():
     if MAX_FILE_SIZE_MB < 1:
         errors.append("MAX_FILE_SIZE_MB must be at least 1")
 
+    # Usage limits
+    if DEFAULT_MONTHLY_LIMIT_CAD < 0:
+        errors.append("DEFAULT_MONTHLY_LIMIT_CAD must be non-negative")
+    if DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD < 0:
+        errors.append("DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD must be non-negative")
+    if DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD < 0:
+        errors.append("DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD must be non-negative")
+
     # OCR
     if OCR_MAX_PAGES_PER_REQUEST < 1:
         errors.append("OCR_MAX_PAGES_PER_REQUEST must be at least 1")
@@ -684,6 +702,15 @@ def get_config_summary() -> dict:
             "provider": DATABASE_PROVIDER,
             "url_configured": bool(DATABASE_URL),
             "echo": DATABASE_ECHO,
+            "auto_create_tables": DATABASE_AUTO_CREATE_TABLES,
+        },
+        "usage_limits": {
+            "default_monthly_limit_cad": DEFAULT_MONTHLY_LIMIT_CAD,
+            "credits_per_cad": CREDITS_PER_CAD,
+            "warning_threshold_percent": WARNING_THRESHOLD_PERCENT,
+            "critical_threshold_percent": CRITICAL_THRESHOLD_PERCENT,
+            "default_model_input_cost_per_million_cad": DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD,
+            "default_model_output_cost_per_million_cad": DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD,
         },
         "storage": {
             "provider": STORAGE_PROVIDER,

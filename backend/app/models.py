@@ -1,6 +1,19 @@
 """Database tables. How the data will be stored in the database."""
 # models.py
-from sqlalchemy import Column, String, DateTime, Text, UniqueConstraint, ForeignKey, Boolean, Integer, JSON
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from datetime import datetime, timezone
 from uuid import uuid4
 from .db import Base
@@ -116,3 +129,39 @@ class ReportChange(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     report = relationship("SavedReport", back_populates="changes")
+
+
+class UserQuota(Base):
+    __tablename__ = "user_quotas"
+
+    user_id = Column(String, primary_key=True)
+    monthly_limit_cad = Column(Numeric(10, 4), nullable=False)
+    cost_used_cad = Column(Numeric(10, 6), nullable=False, default=0)
+    billing_period_start = Column(Date, nullable=False)
+    plan = Column(String(50), nullable=False, default="free")
+    last_warning_level = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+
+class UsageLog(Base):
+    __tablename__ = "usage_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    operation_type = Column(String(80), nullable=False, index=True)
+    model_name = Column(String(255), nullable=False)
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    cost_cad = Column(Numeric(10, 6), nullable=False)
+    usage_metadata = Column("metadata", JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+    __table_args__ = (
+        Index("idx_usage_logs_user_created", "user_id", "created_at"),
+    )

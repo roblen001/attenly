@@ -8,7 +8,13 @@ from slowapi.errors import RateLimitExceeded
 from app.db import Base, engine
 from app.routers import auth, agents, email_ingest, credits
 from app.routes import health
-from app.config import INBOUND_EMAIL_PROVIDER, validate_config, get_config_summary
+from app.config import (
+    DATABASE_AUTO_CREATE_TABLES,
+    DATABASE_PROVIDER,
+    INBOUND_EMAIL_PROVIDER,
+    validate_config,
+    get_config_summary,
+)
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.correlation_id import CorrelationIDMiddleware
 from app.middleware.request_size import RequestSizeLimitMiddleware, get_request_size_limit
@@ -43,9 +49,11 @@ except ValueError as e:
     logger.error(f"Configuration validation failed: {e}")
     sys.exit(1)
 
-# Create database tables (development only)
-if os.getenv("ENV") != "production":
-    logger.info("Creating database tables for development")
+# Create SQLAlchemy tables for development and SQLite/open-source profiles.
+if os.getenv("ENV") != "production" or (
+    DATABASE_PROVIDER == "sqlalchemy" and DATABASE_AUTO_CREATE_TABLES
+):
+    logger.info("Creating SQLAlchemy database tables")
     Base.metadata.create_all(bind=engine)
 
 # CORS configuration 

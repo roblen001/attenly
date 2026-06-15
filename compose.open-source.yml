@@ -1,0 +1,45 @@
+name: attenly
+
+services:
+  backend:
+    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/attenly/attenly-backend:latest}
+    pull_policy: missing
+    build:
+      context: ./backend
+    env_file:
+      - ${ATTENLY_ENV_FILE:-.env}
+    ports:
+      - "${ATTENLY_BACKEND_PORT:-8080}:8080"
+    volumes:
+      - attenly-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    image: ${ATTENLY_FRONTEND_IMAGE:-ghcr.io/attenly/attenly-frontend:latest}
+    pull_policy: missing
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+      VITE_AUTH_PROVIDER: ${VITE_AUTH_PROVIDER:-${AUTH_PROVIDER:-local}}
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-${SUPABASE_URL:-}}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-${SUPABASE_ANON_KEY:-}}
+      VITE_LOCAL_AUTH_USER_ID: ${VITE_LOCAL_AUTH_USER_ID:-${LOCAL_AUTH_USER_ID:-local-admin}}
+      VITE_LOCAL_AUTH_EMAIL: ${VITE_LOCAL_AUTH_EMAIL:-${LOCAL_AUTH_EMAIL:-local-admin@example.com}}
+      VITE_LOCAL_AUTH_DISPLAY_NAME: ${VITE_LOCAL_AUTH_DISPLAY_NAME:-${LOCAL_AUTH_DISPLAY_NAME:-Local Admin}}
+      VITE_LOCAL_AUTH_TOKEN: ${VITE_LOCAL_AUTH_TOKEN:-}
+    ports:
+      - "${ATTENLY_FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  attenly-data:

@@ -26,6 +26,53 @@ Companies do not need to replace every dependency before first launch. They can
 start with the default profile, prove the app internally, then replace one
 provider at a time.
 
+## Quick Start: Docker Compose Local Profile
+
+Use this path when you want the backend and frontend running together with
+local token auth, a SQLite database file, filesystem storage, and no Supabase.
+
+```bash
+cp .env.local.example .env
+```
+
+Edit `.env` and set at least:
+
+```bash
+LOCAL_AUTH_TOKEN=generate-a-long-random-token
+```
+
+For an OpenAI-compatible model endpoint instead of Gemini, set:
+
+```bash
+LLM_PROVIDER=openai_compatible
+EMBEDDING_PROVIDER=openai_compatible
+OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
+OPENAI_COMPATIBLE_API_KEY=replace-with-internal-model-token
+LLM_MODEL=company-document-model
+EMBEDDING_MODEL=company-embedding-model
+```
+
+Then start both containers:
+
+```bash
+docker compose -f compose.open-source.yml --env-file .env up -d --build
+```
+
+Open `http://localhost:5173` and enter the same value you set for
+`LOCAL_AUTH_TOKEN`.
+
+The compose file stores SQLite data and uploaded files in the `attenly-data`
+Docker volume. The frontend container uses a same-origin `/api` proxy to the
+backend, so browser users only need the frontend URL.
+
+When published images are available, use the same compose file without
+`--build`:
+
+```bash
+docker compose -f compose.open-source.yml --env-file .env pull
+docker compose -f compose.open-source.yml --env-file .env up -d
+```
+
 ## Quick Start: Default Profile
 
 Use this path if you want the app to run the same way it works today.
@@ -252,6 +299,11 @@ Open `http://localhost:5173`, enter the same token you set as
 `VITE_LOCAL_AUTH_TOKEN` to prefill the login form for development, but frontend
 environment values are visible in the browser bundle and are not secrets.
 
+For Docker Compose, the frontend image reads these same `VITE_` settings at
+container startup instead of baking them into the build. The default compose
+value is `VITE_API_BASE_URL=/api`, which routes browser calls through the
+frontend nginx proxy to the backend container.
+
 ## Provider Roadmap
 
 The current open-source cleanup keeps the default providers working and documents
@@ -328,7 +380,8 @@ python scripts/verify_open_source_profiles.py
 ```
 
 CI runs this provider profile verifier on pull requests and pushes to `main`
-or `open-sourcing`. It also runs the frontend production build.
+or `open-sourcing`. It also runs the frontend production build, validates the
+open-source compose config, and builds the frontend Docker image.
 
 After installing backend dependencies, smoke test the local-auth SQLite runtime
 routes:

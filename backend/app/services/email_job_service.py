@@ -13,6 +13,7 @@ import uuid
 
 from app import config
 from app.services.email_job_store import get_email_job_store
+from app.services.storage_factory import get_configured_storage_service
 from app.services.document_processor import DocumentProcessor
 from app.services.vector_store import vector_store_manager
 from app.services.report_service import report_service
@@ -24,14 +25,7 @@ document_processor = DocumentProcessor()
 
 
 def get_storage_service():
-    if config.STORAGE_PROVIDER == "filesystem":
-        from app.services.filesystem_storage_service import get_filesystem_storage_service
-
-        return get_filesystem_storage_service()
-
-    from app.services.supabase_storage_service import SupabaseStorageService
-
-    return SupabaseStorageService()
+    return get_configured_storage_service()
 
 
 def get_persistence_service():

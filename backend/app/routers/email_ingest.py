@@ -19,12 +19,12 @@ router = APIRouter(prefix="/email-ingest", tags=["email-ingest"])
 
 EMAIL_INGEST_DISABLED_MESSAGE = (
     "Email ingest is disabled by server configuration. Set "
-    "INBOUND_EMAIL_PROVIDER=resend and configure Resend to enable it."
+    "INBOUND_EMAIL_PROVIDER to resend or microsoft_graph to enable it."
 )
 
 
 def is_email_ingest_enabled() -> bool:
-    return config.INBOUND_EMAIL_PROVIDER == "resend"
+    return config.INBOUND_EMAIL_PROVIDER in {"resend", "microsoft_graph"}
 
 
 def disabled_email_ingest_settings() -> dict:

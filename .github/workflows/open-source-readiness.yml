@@ -40,6 +40,9 @@ jobs:
       - name: Smoke SQLAlchemy email ingest
         run: python scripts/smoke_sqlalchemy_email_ingest.py
 
+      - name: Smoke Microsoft Graph inbound
+        run: python scripts/smoke_microsoft_graph_inbound.py
+
   frontend-build:
     name: Frontend build
     runs-on: ubuntu-latest

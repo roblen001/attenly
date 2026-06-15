@@ -136,9 +136,12 @@ app.include_router(credits.router, tags=["credits"])
 if INBOUND_EMAIL_PROVIDER == "none":
     logger.info("Inbound email is disabled; webhook and email-job routers are not mounted")
 else:
-    from app.routers import webhooks, internal
+    from app.routers import internal
 
-    app.include_router(webhooks.router, tags=["webhooks"])
+    if INBOUND_EMAIL_PROVIDER == "resend":
+        from app.routers import webhooks
+
+        app.include_router(webhooks.router, tags=["webhooks"])
     app.include_router(internal.router, tags=["internal"])
 
 if __name__ == "__main__":

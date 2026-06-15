@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, Request, HTTPException, status, Header
 from fastapi.responses import JSONResponse
 
-from app.config import INTERNAL_CRON_SECRET
+from app.config import INBOUND_EMAIL_PROVIDER, INTERNAL_CRON_SECRET
 from app.services.email_job_service import get_email_job_service
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,15 @@ def verify_cron_secret(x_cron_secret: str = Header(None)) -> bool:
     return True
 
 
+def poll_inbound_email_if_configured() -> dict | None:
+    if INBOUND_EMAIL_PROVIDER != "microsoft_graph":
+        return None
+
+    from app.services.microsoft_graph_inbound_service import get_microsoft_graph_inbound_poller
+
+    return get_microsoft_graph_inbound_poller().poll_messages()
+
+
 @router.post("/internal/process-email-jobs")
 async def process_email_jobs(
     request: Request,
@@ -78,6 +87,8 @@ async def process_email_jobs(
     logger.info("Cron endpoint triggered - processing email jobs")
     
     try:
+        inbound_poll = poll_inbound_email_if_configured()
+
         # Get email job service
         email_job_service = get_email_job_service()
         
@@ -98,6 +109,7 @@ async def process_email_jobs(
             content={
                 "success": True,
                 "message": "Email job processing complete",
+                "inbound_poll": inbound_poll,
                 "summary": result
             }
         )
@@ -111,6 +123,46 @@ async def process_email_jobs(
                 "error": "Internal processing error",
                 "message": str(e)
             }
+        )
+
+
+@router.post("/internal/poll-inbound-email")
+async def poll_inbound_email(
+    request: Request,
+    x_cron_secret: str = Header(None, alias="X-Cron-Secret")
+):
+    """Poll configured inbound email provider without processing queued jobs."""
+    verify_cron_secret(x_cron_secret)
+
+    if INBOUND_EMAIL_PROVIDER != "microsoft_graph":
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "message": "No polling provider configured",
+                "provider": INBOUND_EMAIL_PROVIDER,
+            },
+        )
+
+    try:
+        result = poll_inbound_email_if_configured()
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "message": "Inbound email polling complete",
+                "summary": result,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Error polling inbound email: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "error": "Inbound polling error",
+                "message": str(e),
+            },
         )
 
 

@@ -58,6 +58,22 @@ def _get_local_user(token: str) -> AuthenticatedUser:
     )
 
 
+def _get_external_jwt_user(token: str) -> AuthenticatedUser:
+    from app.services.external_jwt_auth import ExternalJwtAuthError, authenticate_external_jwt
+
+    try:
+        principal = authenticate_external_jwt(token)
+    except ExternalJwtAuthError as exc:
+        raise _unauthorized(str(exc)) from exc
+
+    return AuthenticatedUser(
+        id=principal.id,
+        email=principal.email,
+        user_metadata=principal.user_metadata,
+        created_at=principal.created_at,
+    )
+
+
 async def get_current_user(authorization: Optional[str] = Header(None, alias="Authorization")):
     """
     Dependency to get the current authenticated user from the configured auth provider.
@@ -75,6 +91,9 @@ async def get_current_user(authorization: Optional[str] = Header(None, alias="Au
 
     if config.AUTH_PROVIDER == "local":
         return _get_local_user(token)
+
+    if config.AUTH_PROVIDER == "external_jwt":
+        return _get_external_jwt_user(token)
 
     if config.AUTH_PROVIDER != "supabase":
         logger.error("Unsupported auth provider reached runtime: %s", config.AUTH_PROVIDER)

@@ -8,7 +8,7 @@ import {
 } from './configs';
 import { supabase } from './supabase';
 
-export type AuthProvider = 'supabase' | 'local';
+export type AuthProvider = 'supabase' | 'local' | 'external_jwt';
 export type AuthChangeEvent =
   | 'INITIAL_SESSION'
   | 'SIGNED_IN'
@@ -45,12 +45,15 @@ type SignOutOptions = {
 
 type AuthStateCallback = (event: AuthChangeEvent, session: AppSession | null) => void;
 
-const LOCAL_SESSION_KEY = 'attenly:local-auth-session';
-const listeners = new Set<AuthStateCallback>();
-
 export const authProvider = AUTH_PROVIDER as AuthProvider;
 export const isLocalAuthProvider = authProvider === 'local';
+export const isTokenAuthProvider = authProvider === 'local' || authProvider === 'external_jwt';
 export const localAuthTokenPrefill = LOCAL_AUTH_TOKEN_PREFILL;
+
+const TOKEN_SESSION_KEY = authProvider === 'local'
+  ? 'attenly:local-auth-session'
+  : `attenly:${AUTH_PROVIDER}:auth-session`;
+const listeners = new Set<AuthStateCallback>();
 
 function requireSupabase() {
   if (!supabase) {
@@ -73,44 +76,61 @@ function toAppSession(session: Session | null): AppSession | null {
   };
 }
 
-function readLocalSession(): AppSession | null {
+function decodeJwtPayload(token: string): Record<string, unknown> {
   try {
-    const raw = window.localStorage.getItem(LOCAL_SESSION_KEY);
+    const payload = token.split('.')[1];
+    if (!payload) return {};
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(window.atob(padded));
+  } catch {
+    return {};
+  }
+}
+
+function readTokenSession(): AppSession | null {
+  try {
+    const raw = window.localStorage.getItem(TOKEN_SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AppSession;
     if (!parsed.access_token || !parsed.user?.id) return null;
     return parsed;
   } catch {
-    window.localStorage.removeItem(LOCAL_SESSION_KEY);
+    window.localStorage.removeItem(TOKEN_SESSION_KEY);
     return null;
   }
 }
 
-function writeLocalSession(token: string): AppSession {
+function writeTokenSession(token: string): AppSession {
+  const jwtClaims = authProvider === 'external_jwt' ? decodeJwtPayload(token) : {};
+  const userId = typeof jwtClaims.sub === 'string' ? jwtClaims.sub : LOCAL_AUTH_USER_ID;
+  const email = typeof jwtClaims.email === 'string' ? jwtClaims.email : LOCAL_AUTH_EMAIL;
+  const displayName = typeof jwtClaims.name === 'string' ? jwtClaims.name : LOCAL_AUTH_DISPLAY_NAME;
+
   const session: AppSession = {
     access_token: token,
     refresh_token: '',
     user: {
-      id: LOCAL_AUTH_USER_ID,
-      email: LOCAL_AUTH_EMAIL,
+      id: userId,
+      email,
       user_metadata: {
-        provider: 'local',
-        display_name: LOCAL_AUTH_DISPLAY_NAME,
+        provider: authProvider,
+        display_name: displayName,
       },
       app_metadata: {},
     },
   };
-  window.localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(session));
+  window.localStorage.setItem(TOKEN_SESSION_KEY, JSON.stringify(session));
   return session;
 }
 
-function notifyLocalAuth(event: AuthChangeEvent, session: AppSession | null) {
+function notifyTokenAuth(event: AuthChangeEvent, session: AppSession | null) {
   listeners.forEach((listener) => listener(event, session));
 }
 
 async function getSession(): Promise<AuthResult> {
-  if (isLocalAuthProvider) {
-    return { data: { session: readLocalSession() }, error: null };
+  if (isTokenAuthProvider) {
+    return { data: { session: readTokenSession() }, error: null };
   }
 
   const result = await requireSupabase().auth.getSession();
@@ -121,9 +141,9 @@ async function getSession(): Promise<AuthResult> {
 }
 
 function onAuthStateChange(callback: AuthStateCallback): AuthSubscription {
-  if (isLocalAuthProvider) {
+  if (isTokenAuthProvider) {
     listeners.add(callback);
-    window.setTimeout(() => callback('INITIAL_SESSION', readLocalSession()), 0);
+    window.setTimeout(() => callback('INITIAL_SESSION', readTokenSession()), 0);
     return {
       data: {
         subscription: {
@@ -142,13 +162,13 @@ function onAuthStateChange(callback: AuthStateCallback): AuthSubscription {
 }
 
 async function signInWithPassword(credentials: { email: string; password: string }) {
-  if (isLocalAuthProvider) {
+  if (isTokenAuthProvider) {
     const token = credentials.password.trim();
     if (!token) {
       return { data: { session: null }, error: new Error('Access token is required') };
     }
-    const session = writeLocalSession(token);
-    notifyLocalAuth('SIGNED_IN', session);
+    const session = writeTokenSession(token);
+    notifyTokenAuth('SIGNED_IN', session);
     return { data: { session }, error: null };
   }
 
@@ -164,9 +184,9 @@ async function signInWithToken(token: string) {
 }
 
 async function signOut(options?: SignOutOptions) {
-  if (isLocalAuthProvider) {
-    window.localStorage.removeItem(LOCAL_SESSION_KEY);
-    notifyLocalAuth('SIGNED_OUT', null);
+  if (isTokenAuthProvider) {
+    window.localStorage.removeItem(TOKEN_SESSION_KEY);
+    notifyTokenAuth('SIGNED_OUT', null);
     return { error: null };
   }
 
@@ -174,22 +194,22 @@ async function signOut(options?: SignOutOptions) {
 }
 
 async function signUp(credentials: { email: string; password: string }) {
-  if (isLocalAuthProvider) {
-    return { data: null, error: new Error('Sign up is not available in local auth mode') };
+  if (isTokenAuthProvider) {
+    return { data: null, error: new Error('Sign up is not available in token auth mode') };
   }
   return requireSupabase().auth.signUp(credentials);
 }
 
 async function resetPasswordForEmail(email: string, options?: { redirectTo?: string }) {
-  if (isLocalAuthProvider) {
-    return { data: null, error: new Error('Password reset is not available in local auth mode') };
+  if (isTokenAuthProvider) {
+    return { data: null, error: new Error('Password reset is not available in token auth mode') };
   }
   return requireSupabase().auth.resetPasswordForEmail(email, options);
 }
 
 async function updateUser(attributes: { password?: string }) {
-  if (isLocalAuthProvider) {
-    return { data: null, error: new Error('Password updates are not available in local auth mode') };
+  if (isTokenAuthProvider) {
+    return { data: null, error: new Error('Password updates are not available in token auth mode') };
   }
   return requireSupabase().auth.updateUser(attributes);
 }

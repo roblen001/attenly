@@ -1,7 +1,7 @@
 // AuthCallback.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authClient, isLocalAuthProvider } from '../libs/auth';
+import { authClient, isTokenAuthProvider } from '../libs/auth';
 import { useAuth } from '../feature/auth/useAuth';
 import './Login.css';
 
@@ -26,7 +26,7 @@ const AuthCallback: React.FC = () => {
   useEffect(() => {
     let timer: number | undefined;
 
-    if (isLocalAuthProvider) {
+    if (isTokenAuthProvider) {
       authClient.getSession().then(({ data }) => {
         if (data.session) navigate('/dashboard', { replace: true });
         else navigate('/login', { replace: true });

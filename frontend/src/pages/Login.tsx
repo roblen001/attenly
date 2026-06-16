@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { authClient, isLocalAuthProvider, localAuthTokenPrefill } from "../libs/auth";
+import { authClient, authProvider, isTokenAuthProvider, localAuthTokenPrefill } from "../libs/auth";
 import { useAuth } from "../feature/auth/useAuth";
 import "./Login.css";
 
@@ -17,6 +17,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const tokenLabel = authProvider === 'external_jwt' ? 'Identity Token' : 'Access Token';
 
   // Check for password reset success
   useEffect(() => {
@@ -40,7 +41,7 @@ export default function Login() {
     setMessage("");
 
     try {
-      if (isLocalAuthProvider) {
+      if (isTokenAuthProvider) {
         const { error } = await signInWithToken(localToken);
 
         if (error) {
@@ -142,10 +143,10 @@ export default function Login() {
           <div className="login-form-container">
             <div className="form-header">
               <h2 className="form-title">
-                {isLocalAuthProvider ? "Internal Access" : isPasswordReset ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
+                {isTokenAuthProvider ? "Internal Access" : isPasswordReset ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
               </h2>
               <p className="form-subtitle">
-                {isLocalAuthProvider
+                {isTokenAuthProvider
                   ? "Continue to your company workspace"
                   : isPasswordReset
                   ? "Enter your email to receive a password reset link"
@@ -157,10 +158,10 @@ export default function Login() {
             </div>
 
             <form onSubmit={handleSubmit} className="login-form">
-              {isLocalAuthProvider ? (
+              {isTokenAuthProvider ? (
                 <div className="form-group">
                   <label htmlFor="localToken" className="form-label">
-                    Access Token
+                    {tokenLabel}
                   </label>
                   <input
                     id="localToken"
@@ -168,7 +169,7 @@ export default function Login() {
                     value={localToken}
                     onChange={(e) => setLocalToken(e.target.value)}
                     className="form-input"
-                    placeholder="Enter access token"
+                    placeholder={`Enter ${tokenLabel.toLowerCase()}`}
                     required
                   />
                 </div>
@@ -189,7 +190,7 @@ export default function Login() {
                 </div>
               )}
 
-              {!isLocalAuthProvider && !isPasswordReset && (
+              {!isTokenAuthProvider && !isPasswordReset && (
                 <div className="form-group">
                   <label htmlFor="password" className="form-label">
                     Password
@@ -206,7 +207,7 @@ export default function Login() {
                 </div>
               )}
 
-              {!isLocalAuthProvider && isSignUp && !isPasswordReset && (
+              {!isTokenAuthProvider && isSignUp && !isPasswordReset && (
                 <div className="form-group">
                   <label htmlFor="confirmPassword" className="form-label">
                     Confirm Password
@@ -245,21 +246,21 @@ export default function Login() {
                 {loading ? (
                   <>
                     <span className="loading-spinner"></span>
-                    {isLocalAuthProvider ? "Signing In..." : isPasswordReset ? "Sending Reset Link..." : isSignUp ? "Creating Account..." : "Signing In..."}
+                    {isTokenAuthProvider ? "Signing In..." : isPasswordReset ? "Sending Reset Link..." : isSignUp ? "Creating Account..." : "Signing In..."}
                   </>
                 ) : (
                   <>
                     <span className="btn-icon">
                       {isPasswordReset ? "🔐" : isSignUp ? "🚀" : "✨"}
                     </span>
-                    {isLocalAuthProvider ? "Continue" : isPasswordReset ? "Send Reset Link" : isSignUp ? "Create Account" : "Sign In"}
+                    {isTokenAuthProvider ? "Continue" : isPasswordReset ? "Send Reset Link" : isSignUp ? "Create Account" : "Sign In"}
                     <span className="btn-arrow">→</span>
                   </>
                 )}
               </button>
             </form>
 
-            {!isLocalAuthProvider && (
+            {!isTokenAuthProvider && (
               <div className="form-footer">
                 {!isPasswordReset ? (
                   <>

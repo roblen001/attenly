@@ -53,10 +53,12 @@ If you discover a security vulnerability in Attenly, please report it responsibl
 
 ### Authentication & Authorization
 - JWT-based authentication via Supabase in the current default profile
+- Local bearer-token authentication for trusted pilots and demos
+- External JWT authentication for enterprise IdPs, reverse proxies, or API gateways
 - Row Level Security (RLS) policies for data isolation in the default profile
 - User-specific vector store collections
 - Server-side session validation
-- Provider-neutral authentication is planned for future open-source profiles
+- Full browser OIDC redirect login is planned for future open-source profiles
 
 ### Data Protection
 - Encryption at rest depends on the configured storage/database provider

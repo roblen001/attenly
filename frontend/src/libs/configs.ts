@@ -60,8 +60,8 @@ if (AUTH_PROVIDER === 'supabase' && (!SUPABASE_URL || !SUPABASE_ANON_KEY)) {
   throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are required')
 }
 
-if (!['supabase', 'local'].includes(AUTH_PROVIDER)) {
-  throw new Error("VITE_AUTH_PROVIDER must be either 'supabase' or 'local'")
+if (!['supabase', 'local', 'external_jwt'].includes(AUTH_PROVIDER)) {
+  throw new Error("VITE_AUTH_PROVIDER must be 'supabase', 'local', or 'external_jwt'")
 }
 
 if (!['cloud', 'self_hosted'].includes(TINYMCE_MODE)) {

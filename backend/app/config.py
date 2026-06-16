@@ -72,7 +72,7 @@ ALLOWED_PROVIDER_VALUES: Dict[str, Set[str]] = {
 
 
 CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
-    "auth": {"supabase", "local"},
+    "auth": {"supabase", "local", "external_jwt"},
     "database": {"supabase", "sqlalchemy"},
     "storage": {"supabase", "filesystem"},
     "llm": {"gemini", "openai_compatible"},
@@ -109,6 +109,21 @@ LOCAL_AUTH_TOKEN = os.getenv("LOCAL_AUTH_TOKEN")
 LOCAL_AUTH_USER_ID = os.getenv("LOCAL_AUTH_USER_ID", "local-admin")
 LOCAL_AUTH_EMAIL = os.getenv("LOCAL_AUTH_EMAIL", "local-admin@example.com")
 LOCAL_AUTH_DISPLAY_NAME = os.getenv("LOCAL_AUTH_DISPLAY_NAME", "Local Admin")
+
+# External JWT authentication is intended for enterprise deployments where an
+# existing IdP, reverse proxy, or API gateway issues bearer tokens.
+EXTERNAL_JWT_SECRET = os.getenv("EXTERNAL_JWT_SECRET")
+EXTERNAL_JWT_JWKS_URL = os.getenv("EXTERNAL_JWT_JWKS_URL")
+EXTERNAL_JWT_ALGORITHM = os.getenv(
+    "EXTERNAL_JWT_ALGORITHM",
+    "RS256" if EXTERNAL_JWT_JWKS_URL else "HS256",
+).strip().upper()
+EXTERNAL_JWT_ISSUER = os.getenv("EXTERNAL_JWT_ISSUER")
+EXTERNAL_JWT_AUDIENCE = os.getenv("EXTERNAL_JWT_AUDIENCE")
+EXTERNAL_JWT_USER_ID_CLAIM = os.getenv("EXTERNAL_JWT_USER_ID_CLAIM", "sub")
+EXTERNAL_JWT_EMAIL_CLAIM = os.getenv("EXTERNAL_JWT_EMAIL_CLAIM", "email")
+EXTERNAL_JWT_NAME_CLAIM = os.getenv("EXTERNAL_JWT_NAME_CLAIM", "name")
+EXTERNAL_JWT_REQUIRE_EXP = _env_bool("EXTERNAL_JWT_REQUIRE_EXP", True)
 
 # =============================================================================
 # EMAIL SERVICE CONFIGURATION
@@ -455,6 +470,33 @@ def _validate_profile_and_providers(errors: List[str]) -> None:
     if AUTH_PROVIDER == "local" and not LOCAL_AUTH_TOKEN:
         errors.append("LOCAL_AUTH_TOKEN is required when AUTH_PROVIDER='local'")
 
+    if AUTH_PROVIDER == "external_jwt":
+        if not EXTERNAL_JWT_SECRET and not EXTERNAL_JWT_JWKS_URL:
+            errors.append(
+                "EXTERNAL_JWT_SECRET or EXTERNAL_JWT_JWKS_URL is required when "
+                "AUTH_PROVIDER='external_jwt'"
+            )
+        if EXTERNAL_JWT_SECRET and EXTERNAL_JWT_JWKS_URL:
+            errors.append(
+                "Set either EXTERNAL_JWT_SECRET or EXTERNAL_JWT_JWKS_URL, not both"
+            )
+        if EXTERNAL_JWT_SECRET and not EXTERNAL_JWT_ALGORITHM.startswith("HS"):
+            errors.append("EXTERNAL_JWT_SECRET requires an HMAC algorithm such as HS256")
+        if EXTERNAL_JWT_JWKS_URL and EXTERNAL_JWT_ALGORITHM.startswith("HS"):
+            errors.append("EXTERNAL_JWT_JWKS_URL requires an asymmetric algorithm such as RS256")
+        if not EXTERNAL_JWT_USER_ID_CLAIM:
+            errors.append("EXTERNAL_JWT_USER_ID_CLAIM cannot be blank")
+
+    if AUTH_PROVIDER != "supabase" and (
+        DATABASE_PROVIDER == "supabase" or STORAGE_PROVIDER == "supabase"
+    ):
+        errors.append(
+            "Supabase database/storage require AUTH_PROVIDER='supabase' in the "
+            "current runtime because user-scoped operations rely on Supabase JWTs. "
+            "Use DATABASE_PROVIDER='sqlalchemy' and STORAGE_PROVIDER='filesystem' "
+            "with local or external_jwt auth."
+        )
+
     if OUTBOUND_EMAIL_PROVIDER == "microsoft_graph" or INBOUND_EMAIL_PROVIDER == "microsoft_graph":
         missing_graph = [
             name
@@ -669,6 +711,11 @@ def get_config_summary() -> dict:
             "provider": AUTH_PROVIDER,
             "local_auth_token_configured": bool(LOCAL_AUTH_TOKEN),
             "local_auth_user_id": LOCAL_AUTH_USER_ID if AUTH_PROVIDER == "local" else None,
+            "external_jwt_secret_configured": bool(EXTERNAL_JWT_SECRET),
+            "external_jwt_jwks_url_configured": bool(EXTERNAL_JWT_JWKS_URL),
+            "external_jwt_algorithm": EXTERNAL_JWT_ALGORITHM if AUTH_PROVIDER == "external_jwt" else None,
+            "external_jwt_issuer_configured": bool(EXTERNAL_JWT_ISSUER),
+            "external_jwt_audience_configured": bool(EXTERNAL_JWT_AUDIENCE),
         },
         "llm": {
             "model_name": LLM_MODEL_NAME,

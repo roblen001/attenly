@@ -357,6 +357,8 @@ The default profile uses the providers the app was originally built to support:
 The backend also has an initial provider-safe runtime slice:
 
 - `AUTH_PROVIDER=local` accepts a configured internal bearer token.
+- `AUTH_PROVIDER=external_jwt` trusts bearer tokens from an existing IdP,
+  reverse proxy, or API gateway using either a shared HMAC secret or JWKS URL.
 - `DATABASE_PROVIDER=sqlalchemy` stores app data through SQLAlchemy.
 - `DATABASE_URL=sqlite:////data/attenly.db` uses a local SQLite file.
 - `STORAGE_PROVIDER=filesystem` stores report documents under `STORAGE_PATH`.
@@ -368,6 +370,8 @@ The backend also has an initial provider-safe runtime slice:
   Microsoft Graph and creates email jobs without Resend.
 - `VITE_AUTH_PROVIDER=local` lets the browser app use the same bearer token
   flow without Supabase Auth.
+- `VITE_AUTH_PROVIDER=external_jwt` lets users paste an externally issued JWT
+  into the same token login flow while the backend validates the token.
 - `VITE_TINYMCE_MODE=self_hosted` loads TinyMCE from the frontend container
   instead of Tiny Cloud.
 - `LLM_PROVIDER=openai_compatible` sends extraction and quote prompts to an
@@ -384,8 +388,13 @@ The backend also has an initial provider-safe runtime slice:
 
 The `local` profile can now run the backend and browser app without Supabase.
 It is best for trusted internal pilots, demos, and API testing. Production
-enterprise deployments should still move toward SSO/OIDC instead of a shared
-bearer token.
+enterprise deployments can use `AUTH_PROVIDER=external_jwt` when an existing
+IdP, reverse proxy, or API gateway already issues bearer tokens. Full browser
+OIDC redirect login is still a later adapter.
+
+When leaving Supabase Auth, also use `DATABASE_PROVIDER=sqlalchemy` and
+`STORAGE_PROVIDER=filesystem`. The current Supabase database/storage paths rely
+on Supabase JWTs for user-scoped operations.
 
 Usage limits now work with either Supabase RPCs or SQLAlchemy. The app
 hard-blocks smart AI work once a user reaches their monthly limit. SQLAlchemy
@@ -403,7 +412,7 @@ job stores plus configured storage/report persistence, so SQLAlchemy and
 filesystem installs can process jobs. Microsoft Graph inbound polling can now
 create jobs from a company mailbox.
 
-The remaining non-email enterprise adapter work is production SSO/OIDC auth.
+The remaining non-email enterprise adapter work is full browser OIDC login.
 OpenAI-compatible template ingestion now supports multimodal request shapes
 internally; individual gateways still need a model endpoint that accepts
 uploaded file or image input.
@@ -414,7 +423,9 @@ For a company with internal models that expose an OpenAI-compatible API and no
 shared SQL service yet, use
 `.env.enterprise.example`. The core upload/report flow can run with SQLite,
 filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
-email disabled or Microsoft Graph email. The Docker frontend can
+email disabled or Microsoft Graph email. For production auth, switch to
+`AUTH_PROVIDER=external_jwt` when your company already has an IdP, reverse
+proxy, or API gateway that issues JWT bearer tokens. The Docker frontend can
 self-host TinyMCE, so this path does not require a Tiny Cloud API key.
 SQLite profiles auto-create SQLAlchemy tables by default with
 `DATABASE_AUTO_CREATE_TABLES=true`.

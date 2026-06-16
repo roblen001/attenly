@@ -30,6 +30,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install python-dotenv==1.1.1
           python -m pip install SQLAlchemy==2.0.43
+          python -m pip install diff-match-patch==20200713
 
       - name: Verify documented provider profiles
         run: python scripts/verify_open_source_profiles.py

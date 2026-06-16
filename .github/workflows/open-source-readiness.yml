@@ -37,6 +37,9 @@ jobs:
       - name: Smoke SQLAlchemy usage limits
         run: python scripts/smoke_sqlalchemy_usage_limits.py
 
+      - name: Smoke SQLAlchemy persistence
+        run: python scripts/smoke_sqlalchemy_persistence.py
+
       - name: Smoke SQLAlchemy email ingest
         run: python scripts/smoke_sqlalchemy_email_ingest.py
 

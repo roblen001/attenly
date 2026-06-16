@@ -20,7 +20,7 @@ Attenly is being organized around three setup profiles.
 | --- | --- | --- | --- |
 | `default` | Supported now | Fastest working setup | Supabase + Gemini + optional Resend |
 | `local` | Supported now | No-Supabase internal pilots | Local token auth + SQLAlchemy/SQLite + filesystem storage + Gemini |
-| `enterprise` | Supported for core upload/report flow | Company infrastructure | OpenAI-compatible models + Microsoft Graph outbound + company database/storage |
+| `enterprise` | Supported for core upload/report flow | Company infrastructure | OpenAI-compatible models + SQLAlchemy/filesystem + optional Microsoft Graph email |
 
 Companies do not need to replace every dependency before first launch. They can
 start with the default profile, prove the app internally, then replace one
@@ -410,8 +410,8 @@ uploaded file or image input.
 
 ### Enterprise Example
 
-For a company with internal models that expose an OpenAI-compatible API,
-Microsoft Graph mail, and no shared SQL service yet, use
+For a company with internal models that expose an OpenAI-compatible API and no
+shared SQL service yet, use
 `.env.enterprise.example`. The core upload/report flow can run with SQLite,
 filesystem storage, local token auth, OpenAI-compatible chat/embeddings, and
 email disabled or Microsoft Graph email. The Docker frontend can
@@ -448,6 +448,13 @@ routes:
 
 ```bash
 python scripts/smoke_backend_runtime.py
+```
+
+The CI-friendly SQLAlchemy persistence smoke checks custom agents, saved
+reports, and filesystem document storage without starting the web app:
+
+```bash
+python scripts/smoke_sqlalchemy_persistence.py
 ```
 
 ### Backend

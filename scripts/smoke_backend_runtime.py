@@ -126,14 +126,26 @@ def request_json(
     base_url: str,
     path: str,
     *,
+    method: str = "GET",
     token: str | None = None,
+    payload: Any | None = None,
     timeout: float = 5.0,
-) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, Any]:
     headers = {"Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    request = urllib.request.Request(f"{base_url}{path}", headers=headers)
+    data = None
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(payload).encode("utf-8")
+
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=data,
+        headers=headers,
+        method=method,
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             status = int(response.status)
@@ -222,6 +234,79 @@ def run_case(case: SmokeCase) -> None:
             assert_equal(f"{case.name} email settings status", email_status, 200)
             assert_equal(f"{case.name} email enabled", email["enabled_by_config"], False)
             assert_equal(f"{case.name} email provider", email["provider"], "none")
+
+            auth_status, auth_user = request_json(
+                base_url,
+                "/auth/api/auth/me",
+                token=AUTH_TOKEN,
+            )
+            assert_equal(f"{case.name} auth me status", auth_status, 200)
+            assert_equal(f"{case.name} auth user id", auth_user["id"], "smoke-user")
+
+            agent_payload = {
+                "name": f"{case.name} Custom Agent",
+                "description": "Smoke test custom agent",
+                "report_template": "<html><body><p>{{summary}}</p></body></html>",
+                "report_template_css": "body { font-family: sans-serif; }",
+                "questions": [
+                    {
+                        "id": "summary",
+                        "placeholder": "summary",
+                        "prompt": "Summarize the uploaded documents.",
+                    }
+                ],
+            }
+            create_status, created_agent = request_json(
+                base_url,
+                "/agents/create_custom_agent",
+                method="POST",
+                token=AUTH_TOKEN,
+                payload=agent_payload,
+            )
+            assert_equal(f"{case.name} create custom agent status", create_status, 200)
+            assert_equal(
+                f"{case.name} created custom agent name",
+                created_agent["name"],
+                agent_payload["name"],
+            )
+            agent_id = created_agent["id"]
+
+            list_status, custom_agents = request_json(
+                base_url,
+                "/agents/list_user_custom_agents",
+                token=AUTH_TOKEN,
+            )
+            assert_equal(f"{case.name} list custom agents status", list_status, 200)
+            if agent_id not in {agent["id"] for agent in custom_agents}:
+                raise AssertionError(f"{case.name} created custom agent was not returned by list route")
+
+            get_status, fetched_agent = request_json(
+                base_url,
+                f"/agents/{agent_id}",
+                token=AUTH_TOKEN,
+            )
+            assert_equal(f"{case.name} get custom agent status", get_status, 200)
+            assert_equal(f"{case.name} fetched custom agent id", fetched_agent["id"], agent_id)
+
+            updated_name = f"{case.name} Custom Agent Updated"
+            update_status, updated_agent = request_json(
+                base_url,
+                f"/agents/custom/{agent_id}",
+                method="PUT",
+                token=AUTH_TOKEN,
+                payload={"name": updated_name},
+            )
+            assert_equal(f"{case.name} update custom agent status", update_status, 200)
+            assert_equal(f"{case.name} updated custom agent name", updated_agent["name"], updated_name)
+
+            delete_status, delete_result = request_json(
+                base_url,
+                f"/agents/custom/{agent_id}",
+                method="DELETE",
+                token=AUTH_TOKEN,
+            )
+            assert_equal(f"{case.name} delete custom agent status", delete_status, 200)
+            assert_equal(f"{case.name} delete custom agent result", delete_result["success"], True)
 
             print(f"PASS {case.name}")
         finally:

@@ -31,6 +31,7 @@ jobs:
           python -m pip install python-dotenv==1.1.1
           python -m pip install SQLAlchemy==2.0.43
           python -m pip install diff-match-patch==20200713
+          python -m pip install beautifulsoup4==4.12.3
           python -m pip install PyJWT==2.10.1
 
       - name: Verify documented provider profiles

@@ -19,6 +19,8 @@ public open-source release instead of an open-source preparation branch.
   Microsoft Graph connector settings, local auth, and Docker volume behavior.
 - The repository license is `AGPL-3.0-only`.
 - Docker architecture, connector, model gateway, and troubleshooting docs exist.
+- CI includes a source-build Compose health smoke test with a non-secret
+  self-hosted Docker env.
 
 ## Release Blockers
 
@@ -48,8 +50,6 @@ docker compose up -d --wait
 
 ## Engineering Follow-Up
 
-- Add backend Docker image build coverage to CI.
-- Add a full Compose health smoke test to CI using a non-secret local test env.
 - Reduce backend image size or document why OCR/model dependencies make the
   first image large.
 - Harden provider interfaces for auth, model, storage, email, and template

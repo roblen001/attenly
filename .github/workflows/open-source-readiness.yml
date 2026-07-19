@@ -97,3 +97,32 @@ jobs:
 
       - name: Build frontend Docker image
         run: docker build -t attenly-frontend:test frontend
+
+      - name: Run source-build compose health smoke
+        run: |
+          docker compose \
+            -p attenly-ci \
+            -f compose.yml \
+            -f compose.build.yml \
+            --env-file .github/env/self-hosted-docker.env \
+            up -d --build --wait
+
+          curl -fsS http://localhost:5173/health
+          curl -fsS http://localhost:5173/api/ready
+
+          docker compose \
+            -p attenly-ci \
+            -f compose.yml \
+            -f compose.build.yml \
+            --env-file .github/env/self-hosted-docker.env \
+            exec -T backend sh -lc 'test -w /data && test -d /data/storage'
+
+      - name: Clean up compose smoke
+        if: always()
+        run: |
+          docker compose \
+            -p attenly-ci \
+            -f compose.yml \
+            -f compose.build.yml \
+            --env-file .github/env/self-hosted-docker.env \
+            down -v --remove-orphans

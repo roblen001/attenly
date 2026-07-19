@@ -174,3 +174,10 @@ For cleanup that deletes local data:
 ```bash
 docker compose down -v
 ```
+
+## 7. License Notice
+
+Attenly is licensed as `AGPL-3.0-only`. Internal use and internal modification
+are allowed under the license. If you distribute Attenly or offer a modified
+version over a network, you must provide the corresponding source code under
+AGPL terms unless you have a separate commercial license from the project owner.

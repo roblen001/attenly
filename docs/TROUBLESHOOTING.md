@@ -14,6 +14,15 @@ or engine failures.
 
 ## Compose Config Does Not Render
 
+If `.env` does not exist yet, create it with:
+
+```bash
+python scripts/init_self_hosted_env.py --llm-model company-chat-model --embedding-model company-embedding-model
+```
+
+Replace `company-chat-model` and `company-embedding-model` with model IDs
+served by your gateway.
+
 Run the self-hosted env preflight first:
 
 ```bash

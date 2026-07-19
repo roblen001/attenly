@@ -6,19 +6,19 @@ model endpoint selected through environment variables.
 
 ## 1. Start From the Docker Profile
 
-Copy the example environment file:
+Create the environment file:
 
 ```bash
-cp .env.example .env
+python scripts/init_self_hosted_env.py --llm-model company-chat-model --embedding-model company-embedding-model
 ```
 
-At minimum, replace these values:
+This generates a long `LOCAL_AUTH_TOKEN`, writes `.env`, and leaves the model
+gateway URL at `http://host.docker.internal:11434/v1`. Use `--model-base-url`
+for a company gateway. Replace `company-chat-model` and
+`company-embedding-model` with model IDs served by your gateway.
 
 ```bash
-LOCAL_AUTH_TOKEN=replace-with-a-long-random-token
-OPENAI_COMPATIBLE_BASE_URL=http://host.docker.internal:11434/v1
-LLM_MODEL=replace-with-chat-model
-EMBEDDING_MODEL=replace-with-embedding-model
+python scripts/init_self_hosted_env.py --model-base-url https://models.company.internal/v1 --model-api-key replace-with-gateway-token --llm-model company-chat-model --embedding-model company-embedding-model
 ```
 
 Then start the stack:
@@ -36,6 +36,10 @@ python scripts/check_self_hosted_env.py .env
 ```
 
 This catches common missing or placeholder values before containers start.
+
+If you prefer manual setup, copy `.env.example` to `.env` and replace
+`LOCAL_AUTH_TOKEN`, `OPENAI_COMPATIBLE_BASE_URL`, `LLM_MODEL`, and
+`EMBEDDING_MODEL`.
 
 ## 2. Storage Model
 

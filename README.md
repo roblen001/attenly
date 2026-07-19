@@ -51,13 +51,24 @@ Use this path when you want the backend and frontend running together with
 local token auth, a SQLite database file, filesystem storage, and no Supabase.
 
 ```bash
-python scripts/init_self_hosted_env.py --llm-model company-chat-model --embedding-model company-embedding-model
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
 ```
 
-This creates `.env`, generates `LOCAL_AUTH_TOKEN`, and keeps the default model
-gateway URL at `http://host.docker.internal:11434/v1`. Use `--model-base-url`
-when your model gateway is somewhere else. Replace `company-chat-model` and
-`company-embedding-model` with model IDs served by your gateway.
+Replace `replace-with-chat-model` and `replace-with-embedding-model` before
+running the command. This creates `.env`, generates `LOCAL_AUTH_TOKEN`, and
+keeps the default model gateway URL at `http://host.docker.internal:11434/v1`.
+Use `--model-base-url` when your model gateway is somewhere else.
+
+For a Microsoft 365 pilot with Graph email enabled from the start:
+
+```bash
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
+```
+
+`--email-provider microsoft_graph` enables both outbound email and inbound
+mailbox polling. Use `--outbound-email-provider` and `--inbound-email-provider`
+instead if you only want one direction enabled. Replace the `replace-with-*`
+values before running the command.
 
 If you prefer to edit the file manually:
 
@@ -72,7 +83,7 @@ LOCAL_AUTH_TOKEN=generate-a-long-random-token
 OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
 OPENAI_COMPATIBLE_API_KEY=your-key-if-required
 LLM_MODEL=company-document-model
-EMBEDDING_MODEL=company-embedding-model
+EMBEDDING_MODEL=replace-with-embedding-model
 ```
 
 Before starting Docker, check the env file:
@@ -273,7 +284,7 @@ EMBEDDING_PROVIDER=openai_compatible
 OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
 OPENAI_COMPATIBLE_API_KEY=replace-with-internal-model-token
 LLM_MODEL=company-document-model
-EMBEDDING_MODEL=company-embedding-model
+EMBEDDING_MODEL=replace-with-embedding-model
 ```
 
 Leave `OPENAI_COMPATIBLE_API_KEY` blank only if your internal gateway does not

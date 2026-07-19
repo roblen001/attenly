@@ -28,7 +28,19 @@ Required Entra/Azure setup:
 - grant tenant admin consent
 - configure or choose the mailbox Attenly will use
 
-Outbound email:
+Generate a Graph-ready `.env` for both outbound email and inbound mailbox
+polling:
+
+```bash
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
+```
+
+This generates `LOCAL_AUTH_TOKEN` and `INTERNAL_CRON_SECRET`. Use
+`--outbound-email-provider` and `--inbound-email-provider` instead of
+`--email-provider` when you only want one direction enabled. Replace the
+`replace-with-*` values before running the command.
+
+Equivalent outbound email settings:
 
 ```bash
 OUTBOUND_EMAIL_PROVIDER=microsoft_graph
@@ -38,7 +50,7 @@ GRAPH_CLIENT_SECRET=your-client-secret
 GRAPH_MAILBOX=attenly@company.com
 ```
 
-Inbound mailbox polling:
+Equivalent inbound mailbox polling settings:
 
 ```bash
 INBOUND_EMAIL_PROVIDER=microsoft_graph
@@ -93,6 +105,12 @@ RESEND_WEBHOOK_SECRET=your_resend_webhook_secret
 
 Use Resend when you want a hosted email provider rather than Microsoft 365
 mailbox polling.
+
+You can also generate a Resend-enabled env file:
+
+```bash
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider resend --resend-api-key replace-with-resend-key --resend-webhook-secret replace-with-webhook-secret
+```
 
 ## Current Connector Gaps
 

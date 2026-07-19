@@ -10,8 +10,8 @@ LLM_PROVIDER=openai_compatible
 EMBEDDING_PROVIDER=openai_compatible
 OPENAI_COMPATIBLE_BASE_URL=http://host.docker.internal:11434/v1
 OPENAI_COMPATIBLE_API_KEY=
-LLM_MODEL=company-chat-model
-EMBEDDING_MODEL=company-embedding-model
+LLM_MODEL=replace-with-chat-model
+EMBEDDING_MODEL=replace-with-embedding-model
 EMBEDDING_DIMENSIONS=1536
 ```
 
@@ -40,7 +40,7 @@ Use a normal HTTPS URL for a company gateway:
 OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
 OPENAI_COMPATIBLE_API_KEY=replace-with-gateway-token
 LLM_MODEL=company-document-model
-EMBEDDING_MODEL=company-embedding-model
+EMBEDDING_MODEL=replace-with-embedding-model
 ```
 
 The backend container must be able to reach this URL from inside Docker.

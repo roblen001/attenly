@@ -27,6 +27,8 @@ public open-source release instead of an open-source preparation branch.
   Docker startup.
 - A self-hosted env initialization script generates `.env` with a local auth
   token and required model settings.
+- The env initialization script can also generate Microsoft Graph or Resend
+  email connector settings.
 
 ## Release Blockers
 
@@ -36,7 +38,7 @@ public open-source release instead of an open-source preparation branch.
 - Test a clean published-image install from a fresh clone or clean machine:
 
 ```bash
-cp .env.example .env
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
 docker compose up -d --wait
 ```
 

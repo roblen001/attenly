@@ -9,16 +9,16 @@ model endpoint selected through environment variables.
 Create the environment file:
 
 ```bash
-python scripts/init_self_hosted_env.py --llm-model company-chat-model --embedding-model company-embedding-model
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
 ```
 
-This generates a long `LOCAL_AUTH_TOKEN`, writes `.env`, and leaves the model
-gateway URL at `http://host.docker.internal:11434/v1`. Use `--model-base-url`
-for a company gateway. Replace `company-chat-model` and
-`company-embedding-model` with model IDs served by your gateway.
+Replace `replace-with-chat-model` and `replace-with-embedding-model` before
+running the command. This generates a long `LOCAL_AUTH_TOKEN`, writes `.env`,
+and leaves the model gateway URL at `http://host.docker.internal:11434/v1`.
+Use `--model-base-url` for a company gateway.
 
 ```bash
-python scripts/init_self_hosted_env.py --model-base-url https://models.company.internal/v1 --model-api-key replace-with-gateway-token --llm-model company-chat-model --embedding-model company-embedding-model
+python scripts/init_self_hosted_env.py --model-base-url https://models.company.internal/v1 --model-api-key replace-with-gateway-token --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
 ```
 
 Then start the stack:
@@ -67,8 +67,8 @@ LLM_PROVIDER=openai_compatible
 EMBEDDING_PROVIDER=openai_compatible
 OPENAI_COMPATIBLE_BASE_URL=http://host.docker.internal:11434/v1
 OPENAI_COMPATIBLE_API_KEY=
-LLM_MODEL=company-chat-model
-EMBEDDING_MODEL=company-embedding-model
+LLM_MODEL=replace-with-chat-model
+EMBEDDING_MODEL=replace-with-embedding-model
 ```
 
 Use `host.docker.internal` when the model gateway is running on the host
@@ -104,29 +104,36 @@ INBOUND_EMAIL_PROVIDER=none
 Use this mode for the first local pilot unless email ingestion is part of the
 test.
 
-For Microsoft Graph outbound email:
+To create `.env` with both Microsoft Graph outbound email and inbound mailbox
+polling enabled:
+
+```bash
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
+```
+
+This generates `INTERNAL_CRON_SECRET` for the internal polling routes. To enable
+only one email direction, use:
+
+```bash
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --outbound-email-provider microsoft_graph --inbound-email-provider none --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
+```
+
+The generated Microsoft Graph settings are:
 
 ```bash
 OUTBOUND_EMAIL_PROVIDER=microsoft_graph
-GRAPH_TENANT_ID=your-tenant-id
-GRAPH_CLIENT_ID=your-client-id
-GRAPH_CLIENT_SECRET=your-client-secret
-GRAPH_FROM_EMAIL=attenly@company.com
-```
-
-For Microsoft Graph inbound email polling:
-
-```bash
 INBOUND_EMAIL_PROVIDER=microsoft_graph
-GRAPH_TENANT_ID=your-tenant-id
-GRAPH_CLIENT_ID=your-client-id
-GRAPH_CLIENT_SECRET=your-client-secret
+GRAPH_TENANT_ID=replace-with-tenant-id
+GRAPH_CLIENT_ID=replace-with-client-id
+GRAPH_CLIENT_SECRET=replace-with-client-secret
 GRAPH_MAILBOX=attenly@company.com
-INTERNAL_CRON_SECRET=generate-a-long-random-secret
+INTERNAL_CRON_SECRET=replace-with-generated-secret
+GRAPH_POLL_BATCH_SIZE=10
+GRAPH_POLL_LOOKBACK_SECONDS=300
 ```
 
 Inbound polling is triggered through the internal route documented in
-`README.md`. Keep that route behind internal network controls.
+`docs/CONNECTORS.md`. Keep that route behind internal network controls.
 
 ## 5. Auth Options
 

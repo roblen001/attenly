@@ -73,12 +73,11 @@ print('DocTR models cached successfully');"
 
 # ---- Create non-root user and writable cache AFTER deps are installed ----
 RUN useradd -u 10001 -m appuser \
- && mkdir -p /cache/attenly \
- && chown -R appuser:appuser /cache /app
+ && mkdir -p /cache/attenly /data/storage \
+ && chown -R appuser:appuser /cache /data /app
 
-# Copy app source (after deps to maximize cache)
-COPY . .
-RUN chown -R appuser:appuser /app
+# Copy app source with the runtime owner (after deps to maximize cache)
+COPY --chown=appuser:appuser . .
 
 USER appuser
 

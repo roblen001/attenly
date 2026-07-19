@@ -150,7 +150,7 @@ class EmailService:
         token: str,
         user_alias: str,
     ) -> bool:
-        verification_url = f"{config.API_URL}/email-ingest/verify-sender?token={token}"
+        verification_url = f"{config.PUBLIC_API_URL}/email-ingest/verify-sender?token={token}"
         subject = "Verify your email for Attenly"
         body = f"""Hello,
 

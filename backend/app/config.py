@@ -190,7 +190,13 @@ EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", f"noreply@{EMAIL_FROM_DOMAI
 
 # Application URL (for links in emails)
 APP_URL = os.getenv("APP_URL", "https://app.attenly.ca")
-API_URL = os.getenv("API_URL", "https://api.attenly.ca")
+# PUBLIC_API_URL is the browser-reachable API prefix used in email links. Keep
+# API_URL as a compatibility fallback for existing hosted deployments.
+PUBLIC_API_URL = os.getenv(
+    "PUBLIC_API_URL",
+    os.getenv("API_URL", "https://api.attenly.ca"),
+).rstrip("/")
+API_URL = PUBLIC_API_URL
 
 # Email feature limits (optional - have sensible defaults)
 EMAIL_RATE_LIMIT_JOBS_PER_DAY = int(os.getenv("EMAIL_RATE_LIMIT_JOBS_PER_DAY", "20"))
@@ -419,6 +425,13 @@ CACHE_TTL_SECONDS = 3600
 # VALIDATION FUNCTIONS
 # =============================================================================
 
+_PLACEHOLDER_MARKERS = ("replace-with", "your_", "your-", "change-me")
+
+
+def _is_placeholder(value: str | None) -> bool:
+    normalized = (value or "").strip().lower()
+    return any(marker in normalized for marker in _PLACEHOLDER_MARKERS)
+
 def _validate_profile_and_providers(errors: List[str]) -> None:
     if APP_PROFILE not in KNOWN_APP_PROFILES:
         errors.append(
@@ -469,6 +482,24 @@ def _validate_profile_and_providers(errors: List[str]) -> None:
 
     if AUTH_PROVIDER == "local" and not LOCAL_AUTH_TOKEN:
         errors.append("LOCAL_AUTH_TOKEN is required when AUTH_PROVIDER='local'")
+
+    if AUTH_PROVIDER == "local" and _is_placeholder(LOCAL_AUTH_TOKEN):
+        errors.append(
+            "LOCAL_AUTH_TOKEN still contains an example placeholder; replace it "
+            "with a long random token"
+        )
+
+    if LLM_PROVIDER == "openai_compatible" and _is_placeholder(LLM_MODEL_NAME):
+        errors.append(
+            "LLM_MODEL still contains an example placeholder; set the chat model "
+            "served by OPENAI_COMPATIBLE_BASE_URL"
+        )
+
+    if EMBEDDING_PROVIDER == "openai_compatible" and _is_placeholder(EMBEDDING_MODEL_NAME):
+        errors.append(
+            "EMBEDDING_MODEL still contains an example placeholder; set the embedding "
+            "model served by OPENAI_COMPATIBLE_BASE_URL"
+        )
 
     if AUTH_PROVIDER == "external_jwt":
         if not EXTERNAL_JWT_SECRET and not EXTERNAL_JWT_JWKS_URL:
@@ -551,6 +582,11 @@ def validate_config():
         errors.append(
             "OPENAI_COMPATIBLE_BASE_URL is required when using OpenAI-compatible "
             "LLM, embedding, or template ingest providers"
+        )
+    if uses_openai_compatible and _is_placeholder(OPENAI_COMPATIBLE_BASE_URL):
+        errors.append(
+            "OPENAI_COMPATIBLE_BASE_URL still contains an example placeholder; "
+            "set the URL of the model endpoint"
         )
 
     # LLM ranges

@@ -119,6 +119,13 @@ Graph connector, local auth, and Docker volume guidance.
 See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) if Docker starts but a
 service is unhealthy or a model/connector cannot be reached.
 
+To run an automated published-image smoke test without keeping containers or
+volumes afterward:
+
+```bash
+python scripts/smoke_self_hosted_compose.py
+```
+
 To build from this checkout instead of pulling published images:
 
 ```bash

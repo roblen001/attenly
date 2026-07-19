@@ -36,6 +36,8 @@ public open-source release instead of an open-source preparation branch.
 - Docker volume persistence was verified locally with the published-image stack:
   SQLite data and filesystem storage survived container recreation without
   `docker compose down -v`.
+- A reusable published-image Compose smoke script exists:
+  `python scripts/smoke_self_hosted_compose.py`.
 
 ## Release Blockers
 

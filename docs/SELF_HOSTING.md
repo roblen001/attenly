@@ -29,6 +29,14 @@ docker compose up -d --wait
 
 Open `http://localhost:5173` and enter `LOCAL_AUTH_TOKEN`.
 
+Optional preflight before starting Docker:
+
+```bash
+python scripts/check_self_hosted_env.py .env
+```
+
+This catches common missing or placeholder values before containers start.
+
 ## 2. Storage Model
 
 The default Compose stack uses one Docker volume:

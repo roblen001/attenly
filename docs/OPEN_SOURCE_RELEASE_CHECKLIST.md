@@ -25,6 +25,8 @@ public open-source release instead of an open-source preparation branch.
 - Backend image-size tradeoffs are documented.
 - A self-hosted env preflight script catches common setup mistakes before
   Docker startup.
+- A self-hosted env initialization script generates `.env` with a local auth
+  token and required model settings.
 
 ## Release Blockers
 

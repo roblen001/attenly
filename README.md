@@ -14,6 +14,11 @@ original hosted-provider stack. The simplest on-prem pilot uses:
 The open-source direction is to keep those providers as supported defaults while
 making each provider replaceable over time.
 
+For the current provider support surface, see
+[`docs/PROVIDER_MATRIX.md`](docs/PROVIDER_MATRIX.md). For the remaining release
+checklist, see
+[`docs/OPEN_SOURCE_RELEASE_CHECKLIST.md`](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md).
+
 ## Deployment Profiles
 
 Attenly is being organized around three setup profiles.
@@ -585,6 +590,10 @@ The first open-source milestone is onboarding clarity:
 - support the local no-Supabase pilot path
 - then refactor providers behind stable interfaces in later branches
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for branch policy, validation commands,
+and provider-change expectations.
+
 ## License
 
-License information will be added as part of the open-source preparation work.
+License information has not been selected yet. Add a `LICENSE` before treating
+this repository as a public open-source release.

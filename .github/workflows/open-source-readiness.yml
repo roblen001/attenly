@@ -85,10 +85,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate open-source compose config
+      - name: Validate published-image compose config
         env:
-          ATTENLY_ENV_FILE: .env.local.example
-        run: docker compose -f compose.open-source.yml --env-file .env.local.example config
+          ATTENLY_ENV_FILE: .env.example
+        run: docker compose --env-file .env.example config
+
+      - name: Validate source-build compose config
+        env:
+          ATTENLY_ENV_FILE: .env.example
+        run: docker compose -f compose.yml -f compose.build.yml --env-file .env.example config
 
       - name: Build frontend Docker image
         run: docker build -t attenly-frontend:test frontend

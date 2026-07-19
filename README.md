@@ -3,11 +3,13 @@
 Attenly is an AI-powered document processing and report generation platform for
 enterprise, legal, finance, and operations teams.
 
-The current application is built around a proven default stack:
+The current application supports a self-hosted Docker path as well as its
+original hosted-provider stack. The simplest on-prem pilot uses:
 
-- Supabase for authentication, application data, and document storage
-- Gemini for document extraction, quote extraction, templates, and embeddings
-- Resend for optional email ingest
+- local bearer-token authentication
+- SQLite and filesystem storage in one Docker volume
+- an OpenAI-compatible model endpoint, including compatible local gateways
+- no email connector unless one is explicitly enabled
 
 The open-source direction is to keep those providers as supported defaults while
 making each provider replaceable over time.
@@ -22,9 +24,8 @@ Attenly is being organized around three setup profiles.
 | `local` | Supported now | No-Supabase internal pilots | Local token auth + SQLAlchemy/SQLite + filesystem storage + Gemini |
 | `enterprise` | Supported for core upload/report flow | Company infrastructure | OpenAI-compatible models + SQLAlchemy/filesystem + optional Microsoft Graph email |
 
-Companies do not need to replace every dependency before first launch. They can
-start with the default profile, prove the app internally, then replace one
-provider at a time.
+The local token is intended for a trusted single-user pilot. Proper local user
+accounts are planned before the self-hosted beta is described as company-ready.
 
 The original hosted deployment can keep using a static frontend host such as
 Cloudflare Pages, a managed backend host such as Koyeb, and Tiny Cloud for the
@@ -38,30 +39,23 @@ Use this path when you want the backend and frontend running together with
 local token auth, a SQLite database file, filesystem storage, and no Supabase.
 
 ```bash
-cp .env.local.example .env
+cp .env.example .env
 ```
 
-Edit `.env` and set at least:
+Edit `.env` and replace these example values:
 
 ```bash
 LOCAL_AUTH_TOKEN=generate-a-long-random-token
-```
-
-For an OpenAI-compatible model endpoint instead of Gemini, set:
-
-```bash
-LLM_PROVIDER=openai_compatible
-EMBEDDING_PROVIDER=openai_compatible
 OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
-OPENAI_COMPATIBLE_API_KEY=replace-with-internal-model-token
+OPENAI_COMPATIBLE_API_KEY=your-key-if-required
 LLM_MODEL=company-document-model
 EMBEDDING_MODEL=company-embedding-model
 ```
 
-Then start both containers:
+Then start the published images:
 
 ```bash
-docker compose -f compose.open-source.yml --env-file .env up -d --build
+docker compose up -d --wait
 ```
 
 Open `http://localhost:5173` and enter the same value you set for
@@ -73,16 +67,16 @@ backend, so browser users only need the frontend URL. The open-source frontend
 container also self-hosts TinyMCE at `/tinymce/tinymce.min.js`; no Tiny Cloud
 API key is required for this Docker path.
 
-When published images are available, use the same compose file without
-`--build`:
+To build from this checkout instead of pulling published images:
 
 ```bash
-docker compose -f compose.open-source.yml --env-file .env pull
-docker compose -f compose.open-source.yml --env-file .env up -d
+docker compose -f compose.yml -f compose.build.yml up -d --build --wait
 ```
 
-The compose file defaults to `ghcr.io/attenly/*:latest`. Forks, company mirrors,
-or private registries can override the images without editing the file:
+During open-source preparation the compose file defaults to the
+`open-sourcing` image tag. Versioned releases will use immutable tags rather
+than relying on `latest`. Forks, company mirrors, or private registries can
+override the images without editing the file:
 
 ```bash
 ATTENLY_IMAGE_NAMESPACE=your-ghcr-owner
@@ -128,7 +122,7 @@ GEMINI_API_KEY=your_gemini_api_key
 TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
 
 APP_URL=http://localhost:5173
-API_URL=http://localhost:8080
+PUBLIC_API_URL=http://localhost:5173/api
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 

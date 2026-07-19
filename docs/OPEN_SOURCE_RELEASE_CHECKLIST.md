@@ -17,10 +17,10 @@ public open-source release instead of an open-source preparation branch.
   project.
 - A self-hosting guide exists for the Docker pilot, model gateway settings,
   Microsoft Graph connector settings, local auth, and Docker volume behavior.
+- The repository license is `AGPL-3.0-only`.
 
 ## Release Blockers
 
-- Choose and commit a `LICENSE`.
 - Push `open-sourcing` and confirm GitHub workflows pass.
 - Confirm GHCR publishes both backend and frontend images under the intended
   namespace.

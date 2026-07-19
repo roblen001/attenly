@@ -600,5 +600,11 @@ and provider-change expectations.
 
 ## License
 
-License information has not been selected yet. Add a `LICENSE` before treating
-this repository as a public open-source release.
+Attenly is licensed under the GNU Affero General Public License v3.0 only
+(`AGPL-3.0-only`). See [`LICENSE`](LICENSE).
+
+AGPL allows internal use and modification, but if someone distributes Attenly or
+offers a modified version over a network, they must provide the corresponding
+source code under AGPL terms. Proprietary resale, white-label distribution, or
+managed hosting without those AGPL obligations requires a separate commercial
+license from the project owner.

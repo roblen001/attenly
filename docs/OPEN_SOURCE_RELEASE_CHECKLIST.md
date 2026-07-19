@@ -22,6 +22,7 @@ public open-source release instead of an open-source preparation branch.
 - CI includes a source-build Compose health smoke test with a non-secret
   self-hosted Docker env.
 - Backend source builds can skip DocTR model pre-cache for faster health-only CI.
+- Backend image-size tradeoffs are documented.
 
 ## Release Blockers
 
@@ -51,8 +52,7 @@ docker compose up -d --wait
 
 ## Engineering Follow-Up
 
-- Reduce backend image size or document why OCR/model dependencies make the
-  first image large.
+- Revisit backend image variants after the first clean published-image install.
 - Harden provider interfaces for auth, model, storage, email, and template
   ingest customization.
 - Implement full browser OIDC redirect login for enterprise deployments.

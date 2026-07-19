@@ -107,6 +107,9 @@ ATTENLY_PRECACHE_DOCTR_MODELS=false docker compose -f compose.yml -f compose.bui
 
 This does not remove OCR support. It defers model download until first OCR use.
 
+See [`BACKEND_IMAGE_SIZE.md`](BACKEND_IMAGE_SIZE.md) for more detail on the
+current image-size tradeoff.
+
 ## Microsoft Graph Fails
 
 Check the backend logs first:

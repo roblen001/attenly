@@ -15,6 +15,8 @@ public open-source release instead of an open-source preparation branch.
 - Backend readiness validates database, filesystem storage, and configuration.
 - Docker volume persistence has been verified locally with the `attenly-test`
   project.
+- A self-hosting guide exists for the Docker pilot, model gateway settings,
+  Microsoft Graph connector settings, local auth, and Docker volume behavior.
 
 ## Release Blockers
 
@@ -41,8 +43,9 @@ docker compose up -d --wait
 - Replace temporary `open-sourcing` image tag guidance with the first immutable
   release tag.
 - Add a concise architecture overview for the Docker deployment.
-- Add a connector guide for Microsoft Graph, Resend, and disabled email mode.
-- Add a model gateway guide for OpenAI-compatible chat and embeddings.
+- Expand connector documentation for Microsoft Graph, Resend, and disabled
+  email mode.
+- Expand model gateway documentation for OpenAI-compatible chat and embeddings.
 - Add a short troubleshooting section for Docker Desktop, local model endpoints,
   and volume persistence.
 

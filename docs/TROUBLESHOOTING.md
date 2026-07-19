@@ -94,6 +94,19 @@ If generation fails:
 - verify Docker can reach the gateway URL
 - increase `OPENAI_COMPATIBLE_TIMEOUT_SECONDS` for slow local models
 
+## Backend Source Build Is Slow
+
+The backend image includes OCR dependencies. By default, source builds also
+pre-cache DocTR OCR models so first OCR use is faster.
+
+For CI or health-only local builds, skip model pre-cache:
+
+```bash
+ATTENLY_PRECACHE_DOCTR_MODELS=false docker compose -f compose.yml -f compose.build.yml build backend
+```
+
+This does not remove OCR support. It defers model download until first OCR use.
+
 ## Microsoft Graph Fails
 
 Check the backend logs first:

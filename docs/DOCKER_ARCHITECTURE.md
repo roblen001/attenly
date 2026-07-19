@@ -70,6 +70,16 @@ docker compose -f compose.yml -f compose.build.yml up -d --build --wait
 `compose.build.yml` only adds build contexts and forces Compose to build local
 images.
 
+The backend source build pre-caches DocTR OCR models by default. For CI or fast
+health-only builds, skip that pre-cache:
+
+```bash
+ATTENLY_PRECACHE_DOCTR_MODELS=false docker compose -f compose.yml -f compose.build.yml build backend
+```
+
+When pre-cache is skipped, the app can still start. OCR models are downloaded on
+first OCR use instead.
+
 ## Health Checks
 
 Frontend:

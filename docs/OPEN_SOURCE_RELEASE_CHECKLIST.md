@@ -21,6 +21,7 @@ public open-source release instead of an open-source preparation branch.
 - Docker architecture, connector, model gateway, and troubleshooting docs exist.
 - CI includes a source-build Compose health smoke test with a non-secret
   self-hosted Docker env.
+- Backend source builds can skip DocTR model pre-cache for faster health-only CI.
 
 ## Release Blockers
 

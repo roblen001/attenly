@@ -14,6 +14,12 @@ or engine failures.
 
 ## Compose Config Does Not Render
 
+Run the self-hosted env preflight first:
+
+```bash
+python scripts/check_self_hosted_env.py .env
+```
+
 Validate the config before starting containers:
 
 ```bash

@@ -20,6 +20,11 @@ checklist, see
 [`docs/OPEN_SOURCE_RELEASE_CHECKLIST.md`](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md).
 For a company-facing Docker pilot guide, see
 [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md).
+Operational details are split into
+[`docs/DOCKER_ARCHITECTURE.md`](docs/DOCKER_ARCHITECTURE.md),
+[`docs/MODEL_GATEWAYS.md`](docs/MODEL_GATEWAYS.md),
+[`docs/CONNECTORS.md`](docs/CONNECTORS.md), and
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
 ## Deployment Profiles
 
@@ -76,6 +81,8 @@ API key is required for this Docker path.
 
 See [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) for model gateway, Microsoft
 Graph connector, local auth, and Docker volume guidance.
+See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) if Docker starts but a
+service is unhealthy or a model/connector cannot be reached.
 
 To build from this checkout instead of pulling published images:
 

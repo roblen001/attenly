@@ -23,6 +23,8 @@ public open-source release instead of an open-source preparation branch.
   self-hosted Docker env.
 - Backend source builds can skip DocTR model pre-cache for faster health-only CI.
 - Backend image-size tradeoffs are documented.
+- A self-hosted env preflight script catches common setup mistakes before
+  Docker startup.
 
 ## Release Blockers
 

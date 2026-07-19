@@ -143,6 +143,8 @@ celerybeat.pid
 env/
 venv/
 ENV/
+!.github/env/
+!.github/env/self-hosted-docker.env
 env.bak/
 venv.bak/
 

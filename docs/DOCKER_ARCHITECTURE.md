@@ -80,6 +80,9 @@ ATTENLY_PRECACHE_DOCTR_MODELS=false docker compose -f compose.yml -f compose.bui
 When pre-cache is skipped, the app can still start. OCR models are downloaded on
 first OCR use instead.
 
+See [`BACKEND_IMAGE_SIZE.md`](BACKEND_IMAGE_SIZE.md) for why the backend image
+is large and how to think about future image variants.
+
 ## Health Checks
 
 Frontend:

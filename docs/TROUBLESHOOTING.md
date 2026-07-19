@@ -48,6 +48,20 @@ Common causes:
 - invalid provider names
 - required provider credentials missing
 
+## Frontend Port Is Already Allocated
+
+If startup fails with a message like `Bind for 0.0.0.0:5173 failed: port is
+already allocated`, another local process is using the default frontend port.
+
+Regenerate `.env` with a free port and restart:
+
+```bash
+python scripts/init_self_hosted_env.py --force --frontend-port 5174 --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
+docker compose up -d --wait
+```
+
+Then open `http://localhost:5174`.
+
 ## Backend Is Unhealthy
 
 Check:

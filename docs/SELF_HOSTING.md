@@ -29,6 +29,14 @@ docker compose up -d --wait
 
 Open `http://localhost:5173` and enter `LOCAL_AUTH_TOKEN`.
 
+If port `5173` is already in use on your machine, regenerate `.env` with a
+different frontend port and open that port instead:
+
+```bash
+python scripts/init_self_hosted_env.py --force --frontend-port 5174 --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
+docker compose up -d --wait
+```
+
 Optional preflight before starting Docker:
 
 ```bash

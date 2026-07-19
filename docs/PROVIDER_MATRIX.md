@@ -45,6 +45,9 @@ which parts are still adapter work.
 - Full browser OIDC redirect login is not implemented yet. Use
   `AUTH_PROVIDER=external_jwt` only when another component already issues the
   bearer token.
+- Proprietary resale, white-label distribution, and managed hosting require
+  separate commercial terms unless the distributor complies with AGPL source
+  sharing obligations.
 - The backend Docker image currently includes OCR/model dependencies and can be
   large. Future work should consider optional OCR image variants or lazy model
   download.

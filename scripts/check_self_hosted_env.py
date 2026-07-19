@@ -194,7 +194,10 @@ def main() -> int:
     path = Path(args.env_file)
     if not path.exists():
         print(f"ERROR: {path} does not exist.")
-        print("Copy .env.example to .env, edit it, then run this check again.")
+        print(
+            "Run scripts/init_self_hosted_env.py to create it, or copy "
+            ".env.example to .env and edit it manually."
+        )
         return 2
 
     env = parse_env(path)

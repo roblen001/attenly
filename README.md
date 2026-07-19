@@ -18,6 +18,8 @@ For the current provider support surface, see
 [`docs/PROVIDER_MATRIX.md`](docs/PROVIDER_MATRIX.md). For the remaining release
 checklist, see
 [`docs/OPEN_SOURCE_RELEASE_CHECKLIST.md`](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md).
+For a company-facing Docker pilot guide, see
+[`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md).
 
 ## Deployment Profiles
 
@@ -71,6 +73,9 @@ Docker volume. The frontend container uses a same-origin `/api` proxy to the
 backend, so browser users only need the frontend URL. The open-source frontend
 container also self-hosts TinyMCE at `/tinymce/tinymce.min.js`; no Tiny Cloud
 API key is required for this Docker path.
+
+See [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) for model gateway, Microsoft
+Graph connector, local auth, and Docker volume guidance.
 
 To build from this checkout instead of pulling published images:
 

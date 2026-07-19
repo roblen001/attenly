@@ -51,10 +51,21 @@ Use this path when you want the backend and frontend running together with
 local token auth, a SQLite database file, filesystem storage, and no Supabase.
 
 ```bash
+python scripts/init_self_hosted_env.py --llm-model company-chat-model --embedding-model company-embedding-model
+```
+
+This creates `.env`, generates `LOCAL_AUTH_TOKEN`, and keeps the default model
+gateway URL at `http://host.docker.internal:11434/v1`. Use `--model-base-url`
+when your model gateway is somewhere else. Replace `company-chat-model` and
+`company-embedding-model` with model IDs served by your gateway.
+
+If you prefer to edit the file manually:
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` and replace these example values:
+Then replace these example values:
 
 ```bash
 LOCAL_AUTH_TOKEN=generate-a-long-random-token
@@ -62,6 +73,12 @@ OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
 OPENAI_COMPATIBLE_API_KEY=your-key-if-required
 LLM_MODEL=company-document-model
 EMBEDDING_MODEL=company-embedding-model
+```
+
+Before starting Docker, check the env file:
+
+```bash
+python scripts/check_self_hosted_env.py .env
 ```
 
 Then start the published images:

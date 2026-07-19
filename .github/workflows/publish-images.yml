@@ -10,7 +10,8 @@ on:
     paths:
       - backend/**
       - frontend/**
-      - compose.open-source.yml
+      - compose.yml
+      - compose.build.yml
       - .github/workflows/publish-images.yml
   workflow_dispatch:
 

@@ -1,0 +1,54 @@
+name: attenly
+
+services:
+  backend:
+    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-backend:${ATTENLY_IMAGE_TAG:-open-sourcing}}
+    pull_policy: missing
+    init: true
+    env_file:
+      - ${ATTENLY_ENV_FILE:-.env}
+    expose:
+      - "8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - attenly-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    image: ${ATTENLY_FRONTEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-frontend:${ATTENLY_IMAGE_TAG:-open-sourcing}}
+    pull_policy: missing
+    init: true
+    environment:
+      VITE_API_BASE_URL: /api
+      VITE_AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      VITE_SUPABASE_URL: ${SUPABASE_URL:-}
+      VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      VITE_LOCAL_AUTH_USER_ID: ${LOCAL_AUTH_USER_ID:-local-admin}
+      VITE_LOCAL_AUTH_EMAIL: ${LOCAL_AUTH_EMAIL:-local-admin@example.com}
+      VITE_LOCAL_AUTH_DISPLAY_NAME: ${LOCAL_AUTH_DISPLAY_NAME:-Local Admin}
+      VITE_TINYMCE_MODE: ${VITE_TINYMCE_MODE:-self_hosted}
+      VITE_TINYMCE_SCRIPT_SRC: ${VITE_TINYMCE_SCRIPT_SRC:-/tinymce/tinymce.min.js}
+      VITE_TINYMCE_LICENSE_KEY: ${VITE_TINYMCE_LICENSE_KEY:-gpl}
+      VITE_TINYMCE_API_KEY: ${VITE_TINYMCE_API_KEY:-}
+    ports:
+      - "${ATTENLY_FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  attenly-data:

@@ -140,6 +140,45 @@ def verify_case(case: ProfileCase) -> None:
     print(f"PASS {case.name}")
 
 
+def verify_example_placeholders_are_rejected() -> None:
+    env = base_env()
+    env.update(
+        {
+            "APP_PROFILE": "local",
+            "AUTH_PROVIDER": "local",
+            "LOCAL_AUTH_TOKEN": "replace-with-a-long-random-token",
+            "DATABASE_PROVIDER": "sqlalchemy",
+            "DATABASE_URL": "sqlite:////data/attenly.db",
+            "STORAGE_PROVIDER": "filesystem",
+            "STORAGE_PATH": "/data/storage",
+            "LLM_PROVIDER": "openai_compatible",
+            "LLM_MODEL": "replace-with-chat-model",
+            "EMBEDDING_PROVIDER": "openai_compatible",
+            "EMBEDDING_MODEL": "replace-with-embedding-model",
+            "OPENAI_COMPATIBLE_BASE_URL": "http://host.docker.internal:11434/v1",
+            "TEMPLATE_INGEST_PROVIDER": "disabled",
+            "OUTBOUND_EMAIL_PROVIDER": "none",
+            "INBOUND_EMAIL_PROVIDER": "none",
+        }
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", SUMMARY_SCRIPT],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    output = f"{result.stdout}\n{result.stderr}"
+    if result.returncode == 0 or "example placeholder" not in output:
+        raise AssertionError(
+            "Unchanged self-hosted example placeholders must fail validation\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    print("PASS unchanged_self_hosted_placeholders_rejected")
+
+
 def cases() -> list[ProfileCase]:
     return [
         ProfileCase(
@@ -323,6 +362,8 @@ def cases() -> list[ProfileCase]:
 def main() -> int:
     for case in cases():
         verify_case(case)
+
+    verify_example_placeholders_are_rejected()
 
     print("All documented open-source profile checks passed.")
     return 0

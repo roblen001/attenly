@@ -16,9 +16,10 @@ COPY docker-entrypoint.sh /docker-entrypoint.d/40-attenly-runtime-config.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY --from=builder /app/node_modules/tinymce /usr/share/nginx/html/tinymce
 
-RUN chmod +x /docker-entrypoint.d/40-attenly-runtime-config.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.d/40-attenly-runtime-config.sh \
+ && chmod +x /docker-entrypoint.d/40-attenly-runtime-config.sh
 
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget -qO- http://localhost/health || exit 1
+  CMD wget -qO- http://127.0.0.1/health || exit 1

@@ -1,18 +1,20 @@
 """Health check endpoints for monitoring and load balancer integration."""
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 from app.limits.slowapi import limiter, get_rate_limit
 from app.client import supabase_client
 import logging
 import time
 import os
+import tempfile
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/health")
 @limiter.limit(get_rate_limit("health"))
-async def health_check(request):
+async def health_check(request: Request):
     """
     Basic health check endpoint for load balancers.
     
@@ -33,12 +35,13 @@ async def health_check(request):
 
 @router.get("/ready")
 @limiter.limit(get_rate_limit("health"))
-async def readiness_check(request):
+async def readiness_check(request: Request):
     """
     Comprehensive readiness check that validates all external dependencies.
     
     This endpoint checks:
     - Selected database provider connectivity
+    - Persistent filesystem writability for local storage
     - Configuration validity
     
     Returns 503 if any dependency is unavailable.
@@ -46,6 +49,7 @@ async def readiness_check(request):
     start_time = time.time()
     checks = {
         "database": {"status": "unknown", "response_time": None},
+        "storage": {"status": "unknown"},
         "configuration": {"status": "unknown"}
     }
     
@@ -78,6 +82,34 @@ async def readiness_check(request):
         checks["database"]["error"] = str(e)
         overall_status = "unhealthy"
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    # The local self-hosted profile must be able to write to its persistent
+    # Docker volume before it is considered ready.
+    try:
+        from app import config
+
+        if config.STORAGE_PROVIDER == "filesystem":
+            storage_root = Path(config.FILESYSTEM_STORAGE_PATH).expanduser().resolve()
+            storage_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                prefix=".attenly-readiness-",
+                dir=storage_root,
+            ) as probe:
+                probe.write(b"ready")
+                probe.flush()
+            checks["storage"]["status"] = "healthy"
+            checks["storage"]["provider"] = "filesystem"
+        else:
+            # External storage is exercised by application operations. Readiness
+            # validates its configuration without creating user data.
+            checks["storage"]["status"] = "configured"
+            checks["storage"]["provider"] = config.STORAGE_PROVIDER
+    except Exception as e:
+        logger.error(f"Storage readiness check failed: {e}")
+        checks["storage"]["status"] = "unhealthy"
+        checks["storage"]["error"] = str(e)
+        overall_status = "unhealthy"
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     
     # Check configuration
     try:
@@ -108,7 +140,7 @@ async def readiness_check(request):
 
 @router.get("/metrics")
 @limiter.limit(get_rate_limit("health"))
-async def metrics_endpoint(request):
+async def metrics_endpoint(request: Request):
     """
     Basic metrics endpoint in Prometheus format.
     

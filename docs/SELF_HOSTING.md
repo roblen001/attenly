@@ -170,6 +170,16 @@ expects a token to already exist.
 
 ## 6. Validation Checklist
 
+For a quick packaging check, run the automated published-image smoke test:
+
+```bash
+python scripts/smoke_self_hosted_compose.py
+```
+
+It starts a disposable Compose stack, checks frontend/backend health, verifies
+Docker volume persistence across container recreation, and removes the stack
+and volume afterward. It does not call your model endpoint.
+
 After startup, verify:
 
 ```bash

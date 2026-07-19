@@ -59,6 +59,13 @@ running the command. This creates `.env`, generates `LOCAL_AUTH_TOKEN`, and
 keeps the default model gateway URL at `http://host.docker.internal:11434/v1`.
 Use `--model-base-url` when your model gateway is somewhere else.
 
+If `localhost:5173` is already in use, generate the env file with a different
+frontend port:
+
+```bash
+python scripts/init_self_hosted_env.py --frontend-port 5174 --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
+```
+
 For a Microsoft 365 pilot with Graph email enabled from the start:
 
 ```bash

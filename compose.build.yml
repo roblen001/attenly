@@ -4,6 +4,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        ATTENLY_PRECACHE_DOCTR_MODELS: ${ATTENLY_PRECACHE_DOCTR_MODELS:-true}
 
   frontend:
     pull_policy: build

@@ -18,6 +18,7 @@ public open-source release instead of an open-source preparation branch.
 - A self-hosting guide exists for the Docker pilot, model gateway settings,
   Microsoft Graph connector settings, local auth, and Docker volume behavior.
 - The repository license is `AGPL-3.0-only`.
+- Docker architecture, connector, model gateway, and troubleshooting docs exist.
 
 ## Release Blockers
 
@@ -42,12 +43,8 @@ docker compose up -d --wait
 
 - Replace temporary `open-sourcing` image tag guidance with the first immutable
   release tag.
-- Add a concise architecture overview for the Docker deployment.
-- Expand connector documentation for Microsoft Graph, Resend, and disabled
-  email mode.
-- Expand model gateway documentation for OpenAI-compatible chat and embeddings.
-- Add a short troubleshooting section for Docker Desktop, local model endpoints,
-  and volume persistence.
+- Review and tighten the operator docs after the first clean published-image
+  install.
 
 ## Engineering Follow-Up
 

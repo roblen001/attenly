@@ -25,6 +25,7 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
 # --- Runtime stage ---
 FROM python:3.11-slim-bookworm AS runtime
 WORKDIR /app
+ARG ATTENLY_PRECACHE_DOCTR_MODELS=true
 
 # Conservative threading to avoid OOM; you can tune later
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -54,22 +55,26 @@ COPY requirements.txt .
 RUN pip install --no-index --find-links /wheels -r requirements.txt && \
     rm -rf /wheels
 
-# ---- Pre-download DocTR models during build (as root) ----
+# ---- Optionally pre-download DocTR models during build (as root) ----
 # Use smallest/fastest CPU pair:
 #   det_arch='db_mobilenet_v3_large'
 #   reco_arch='crnn_mobilenet_v3_small'
 RUN mkdir -p /cache/attenly/doctr && \
-    DOCTR_CACHE_DIR=/cache/attenly/doctr \
-    OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TORCH_NUM_THREADS=1 \
-    CUDA_VISIBLE_DEVICES="" \
-    python -c "\
+    if [ "$ATTENLY_PRECACHE_DOCTR_MODELS" = "true" ]; then \
+      DOCTR_CACHE_DIR=/cache/attenly/doctr \
+      OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TORCH_NUM_THREADS=1 \
+      CUDA_VISIBLE_DEVICES="" \
+      python -c "\
 import os; \
 os.environ['CUDA_VISIBLE_DEVICES']=''; \
 os.environ['DOCTR_CACHE_DIR']='/cache/attenly/doctr'; \
 from doctr.models import ocr_predictor; \
 print('Pre-caching DocTR models (small/fast)...'); \
 _ = ocr_predictor(det_arch='db_mobilenet_v3_large', reco_arch='crnn_mobilenet_v3_small', pretrained=True); \
-print('DocTR models cached successfully');"
+print('DocTR models cached successfully');"; \
+    else \
+      echo "Skipping DocTR model pre-cache; models will be downloaded on first OCR use."; \
+    fi
 
 # ---- Create non-root user and writable cache AFTER deps are installed ----
 RUN useradd -u 10001 -m appuser \

@@ -62,12 +62,13 @@ Use `--model-base-url` when your model gateway is somewhere else.
 For Gemini models, including Gemini smart template ingestion:
 
 ```bash
-python scripts/init_self_hosted_env.py --provider gemini --gemini-api-key replace-with-gemini-key --template-ingest-provider gemini --template-ingest-model gemini-2.5-pro
+python scripts/init_self_hosted_env.py --provider gemini --llm-model gemini-3.5-flash --embedding-model gemini-embedding-2 --embedding-dimensions 768 --template-ingest-provider gemini --template-ingest-model gemini-3.5-flash
 ```
 
 This sets Gemini for report generation, embeddings, and multimodal template
-upload interpretation. Replace `replace-with-gemini-key` before running the
-command.
+upload interpretation. The script prompts for `GEMINI_API_KEY` if you do not
+pass `--gemini-api-key`; prefer the prompt for local testing so the key does not
+land in shell history.
 
 If `localhost:5173` is already in use, generate the env file with a different
 frontend port:
@@ -110,7 +111,9 @@ LLM_PROVIDER=gemini
 EMBEDDING_PROVIDER=gemini
 GEMINI_API_KEY=replace-with-gemini-key
 TEMPLATE_INGEST_PROVIDER=gemini
-TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+LLM_MODEL=gemini-3.5-flash
+EMBEDDING_MODEL=gemini-embedding-2
+TEMPLATE_INGEST_MODEL_NAME=gemini-3.5-flash
 EMBEDDING_DIMENSIONS=768
 ```
 
@@ -206,7 +209,9 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 SUPABASE_KEY=your_supabase_service_role_or_anon_key
 
 GEMINI_API_KEY=your_gemini_api_key
-TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+LLM_MODEL=gemini-3.5-flash
+EMBEDDING_MODEL=gemini-embedding-2
+TEMPLATE_INGEST_MODEL_NAME=gemini-3.5-flash
 
 APP_URL=http://localhost:5173
 PUBLIC_API_URL=http://localhost:5173/api
@@ -352,7 +357,7 @@ For the current supported smart template ingestion path:
 
 ```bash
 TEMPLATE_INGEST_PROVIDER=gemini
-TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+TEMPLATE_INGEST_MODEL_NAME=gemini-3.5-flash
 ```
 
 For OpenAI or an OpenAI-compatible gateway, use the same base URL and API key

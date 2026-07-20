@@ -15,9 +15,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Iterable
@@ -104,10 +106,13 @@ def assert_equal(label: str, value: object, expected: object) -> None:
 
 
 def check_http(frontend_port: str) -> None:
-    frontend_health = request_text(f"http://localhost:{frontend_port}/health").strip()
+    frontend_base_url = f"http://localhost:{frontend_port}/"
+    frontend_health = request_text(
+        urllib.parse.urljoin(frontend_base_url, "health")
+    ).strip()
     assert_equal("frontend /health", frontend_health, "ok")
 
-    ready = request_json(f"http://localhost:{frontend_port}/api/ready")
+    ready = request_json(urllib.parse.urljoin(frontend_base_url, "api/ready"))
     assert_equal("backend /api/ready status", ready["status"], "healthy")
     checks = ready["checks"]  # type: ignore[index]
     assert_equal("database check", checks["database"]["status"], "healthy")  # type: ignore[index]
@@ -116,6 +121,34 @@ def check_http(frontend_port: str) -> None:
         "configuration check",
         checks["configuration"]["status"],  # type: ignore[index]
         "healthy",
+    )
+
+    index_html = request_text(frontend_base_url)
+    script_paths = re.findall(r'<script[^>]+src="([^"]+\.js)"', index_html)
+    if not script_paths:
+        raise AssertionError("frontend index did not reference a JavaScript bundle")
+
+    worker_path = None
+    for script_path in script_paths:
+        script_text = request_text(urllib.parse.urljoin(frontend_base_url, script_path))
+        worker_match = re.search(
+            r"assets/pdf\.worker\.min-[A-Za-z0-9_-]+\.mjs",
+            script_text,
+        )
+        if worker_match:
+            worker_path = worker_match.group(0)
+            break
+
+    if not worker_path:
+        raise AssertionError("frontend bundle did not reference the PDF.js worker")
+
+    worker_url = urllib.parse.urljoin(frontend_base_url, worker_path)
+    with urllib.request.urlopen(worker_url, timeout=10) as response:
+        worker_content_type = response.headers.get_content_type()
+    assert_equal(
+        "PDF.js worker Content-Type",
+        worker_content_type,
+        "application/javascript",
     )
 
 

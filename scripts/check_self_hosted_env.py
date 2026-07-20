@@ -19,6 +19,24 @@ PLACEHOLDER_MARKERS = (
     "<tenant-id>",
     "<internal_cron_secret>",
 )
+CURRENT_GEMINI_LLM_MODEL = "gemini-3.5-flash"
+CURRENT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
+GEMINI_MODELS_BLOCKED_FOR_NEW_USERS = {
+    "gemini-2.5-flash": (
+        "Google may reject this model for new Gemini API users; use "
+        f"{CURRENT_GEMINI_LLM_MODEL} for current Docker pilots"
+    ),
+}
+GEMINI_SHUT_DOWN_MODELS = {
+    "gemini-embedding-001": (
+        "has been shut down; use "
+        f"{CURRENT_GEMINI_EMBEDDING_MODEL}"
+    ),
+    "text-embedding-004": (
+        "has been shut down; use "
+        f"{CURRENT_GEMINI_EMBEDDING_MODEL}"
+    ),
+}
 
 
 def parse_env(path: Path) -> Dict[str, str]:
@@ -164,6 +182,18 @@ def validate(env: Dict[str, str]) -> tuple[List[str], List[str]]:
     )
     if uses_gemini:
         require(errors, env, "GEMINI_API_KEY", when="a Gemini provider is enabled")
+
+    if llm_provider == "gemini":
+        llm_model = env.get("LLM_MODEL", "").strip()
+        warning = GEMINI_MODELS_BLOCKED_FOR_NEW_USERS.get(llm_model)
+        if warning:
+            warnings.append(f"LLM_MODEL={llm_model}: {warning}")
+
+    if embedding_provider == "gemini":
+        embedding_model = env.get("EMBEDDING_MODEL", "").strip()
+        error = GEMINI_SHUT_DOWN_MODELS.get(embedding_model)
+        if error:
+            errors.append(f"EMBEDDING_MODEL={embedding_model} {error}")
 
     if outbound_email == "microsoft_graph" or inbound_email == "microsoft_graph":
         for key in ("GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET", "GRAPH_MAILBOX"):

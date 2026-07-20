@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "./configs";
-import { authClient } from "./auth";
+import { authClient, isLocalAuthProvider, isTokenAuthProvider, storeAuthError } from "./auth";
 
 interface ApiOptions extends RequestInit {
   nonCritical?: boolean; // If true, 401 errors won't sign out the user
@@ -107,6 +107,19 @@ export async function api(path: string, init: ApiOptions = {}) {
   
   // Handle authentication errors
   if (res.status === 401) {
+    let backendDetail = '';
+    try {
+      const body = await res.json() as { detail?: unknown };
+      backendDetail = typeof body.detail === 'string' ? body.detail : '';
+    } catch {
+      // Fall back to the user-facing message below.
+    }
+    const authError = isLocalAuthProvider
+      ? 'Your access token is invalid or no longer accepted. Enter the current deployment access token.'
+      : isTokenAuthProvider
+      ? 'Your identity token is invalid or no longer accepted. Enter a current identity token.'
+      : backendDetail || 'Your session is no longer valid. Please sign in again.';
+
     console.error('Authentication failed for API call:', {
       path,
       nonCritical,
@@ -119,7 +132,7 @@ export async function api(path: string, init: ApiOptions = {}) {
     // For non-critical API calls, don't sign out the user
     if (nonCritical) {
       console.warn('Non-critical API call failed with 401, not signing out user');
-      throw new Error('Authentication failed for non-critical API call');
+      throw new Error(authError);
     }
     
     // For critical API calls, sign out user and redirect
@@ -127,6 +140,8 @@ export async function api(path: string, init: ApiOptions = {}) {
     if (currentPath !== '/login' && currentPath !== '/') {
       console.log('Signing out user and redirecting to login due to 401 error');
       
+      storeAuthError(authError);
+
       // Sign out the user and clear session
       await authClient.signOut();
       
@@ -137,7 +152,7 @@ export async function api(path: string, init: ApiOptions = {}) {
     }
     
     // Throw error with clear message
-    throw new Error('Authentication failed. Please log in again.');
+    throw new Error(authError);
   }
   if (!res.ok)
     throw new Error(`${res.status} ${await res.text().catch(() => "")}`);

@@ -8,7 +8,7 @@ which parts are still adapter work.
 
 | Area | Provider | Env Setting | Notes |
 | --- | --- | --- | --- |
-| Auth | Local bearer token | `AUTH_PROVIDER=local` | Trusted internal pilot mode. Users enter the configured token in the browser. |
+| Auth | Local bearer token | `AUTH_PROVIDER=local` | Trusted internal pilot mode. One shared token maps every login to the same configured local identity and workspace. |
 | Auth | External JWT | `AUTH_PROVIDER=external_jwt` | For an IdP, reverse proxy, or API gateway that already issues bearer tokens. Full browser OIDC redirect login is not implemented yet. |
 | Database | SQLAlchemy + SQLite | `DATABASE_PROVIDER=sqlalchemy`, `DATABASE_URL=sqlite:////data/attenly.db` | Default Docker self-hosted path. Tables can be auto-created with `DATABASE_AUTO_CREATE_TABLES=true`. |
 | Database | Supabase | `DATABASE_PROVIDER=supabase` | Original hosted/default stack. |

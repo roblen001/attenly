@@ -144,67 +144,74 @@ class EmbeddingBatchService:
         batch_index: int,
         retry_count: int = 0
     ) -> BatchResult:
-        """Generate embeddings for a single batch using the real batch API with retry logic"""
+        """Generate embeddings for a single batch with retry logic"""
         if self.provider == "openai_compatible":
             return await self._generate_openai_compatible_embeddings(
                 texts,
                 batch_index,
                 retry_count,
             )
+
+        return await self._generate_gemini_embeddings(texts, batch_index, retry_count)
+
+    async def _generate_gemini_embeddings(
+        self,
+        texts: List[str],
+        batch_index: int,
+        retry_count: int = 0,
+    ) -> BatchResult:
+        """
+        Generate Gemini embeddings for a single Attenly batch.
+
+        Some Gemini API keys/projects block the synchronous BatchEmbedContents
+        method. Use the standard embedContent method once per text while keeping
+        Attenly's outer batching/concurrency behavior.
+        """
         
         start_time = time.time()
         await self._rate_limit_delay()
 
-        # Use the real batch API endpoint with correct format.
-        # Keep the API key in a header, not in the URL, so failed request logs do
-        # not leak credentials.
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:batchEmbedContents"
-        # Correct payload format per Google AI API documentation
-        payload = {
-            "requests": [
-                {
-                    "model": f"models/{self.model_name}",
-                    "content": {"parts": [{"text": text}]},
-                    "outputDimensionality": self.embedding_dimensions,
-                }
-                for text in texts
-            ]
-        }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:embedContent"
 
         client = _get_client()
         backoff = 0.5
 
         for attempt in range(self.max_retries + 1):
             try:
-                logger.debug(f"Making batch API call for {len(texts)} texts (batch {batch_index}, attempt {attempt + 1})")
-                
-                r = await client.post(
-                    url,
-                    headers=self._gemini_headers(),
-                    json=payload,
-                    timeout=self.timeout,
+                logger.debug(
+                    "Making Gemini embedContent calls for %s texts "
+                    "(batch %s, attempt %s)",
+                    len(texts),
+                    batch_index,
+                    attempt + 1,
                 )
-                
-                # Handle server errors with retry
-                if r.status_code >= 500:
-                    raise httpx.HTTPStatusError("Server error", request=r.request, response=r)
-                
-                r.raise_for_status()
-                data = r.json()
 
-                # Response format: {"embeddings": [{"values": [...]}, ...]}
-                emb_items = data.get("embeddings", [])
-                if not emb_items:
-                    raise ValueError(f"Bad batch response: keys={list(data.keys())}")
+                embeddings = []
+                for text in texts:
+                    response = await client.post(
+                        url,
+                        headers=self._gemini_headers(),
+                        json=self._gemini_embed_content_payload(text),
+                        timeout=self.timeout,
+                    )
 
-                embeddings = [item["values"] for item in emb_items]
-                if len(embeddings) != len(texts):
-                    raise ValueError(f"Batch size mismatch ({len(embeddings)} != {len(texts)})")
+                    # Handle server errors with retry
+                    if response.status_code >= 500:
+                        raise httpx.HTTPStatusError(
+                            "Server error",
+                            request=response.request,
+                            response=response,
+                        )
+
+                    response.raise_for_status()
+                    embeddings.append(
+                        self._parse_gemini_embedding_response(response.json())
+                    )
 
                 processing_time = time.time() - start_time
                 
                 # Update statistics
-                self.total_api_calls += 1
+                self.total_api_calls += len(texts)
                 self.total_embeddings_generated += len(embeddings)
                 self.total_processing_time += processing_time
 
@@ -267,6 +274,35 @@ class EmbeddingBatchService:
             error="Maximum retries exceeded",
             success=False,
         )
+
+    def _gemini_embed_content_payload(self, text: str) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "model": f"models/{self.model_name}",
+            "content": {"parts": [{"text": text}]},
+        }
+        if self.embedding_dimensions:
+            payload["output_dimensionality"] = self.embedding_dimensions
+        return payload
+
+    def _parse_gemini_embedding_response(self, data: Dict[str, Any]) -> List[float]:
+        embedding = data.get("embedding")
+        if isinstance(embedding, dict) and isinstance(embedding.get("values"), list):
+            values = embedding["values"]
+        elif isinstance(data.get("embeddings"), list) and data["embeddings"]:
+            first_embedding = data["embeddings"][0]
+            if not isinstance(first_embedding, dict) or not isinstance(
+                first_embedding.get("values"),
+                list,
+            ):
+                raise ValueError(
+                    f"Bad Gemini embedding response: keys={list(data.keys())}"
+                )
+            values = first_embedding["values"]
+        else:
+            raise ValueError(f"Bad Gemini embedding response: keys={list(data.keys())}")
+
+        self.embedding_dimensions = len(values)
+        return values
 
     def _gemini_headers(self) -> Dict[str, str]:
         return {

@@ -416,6 +416,14 @@ Open `http://localhost:5173`, enter the same token you set as
 `VITE_LOCAL_AUTH_TOKEN` to prefill the login form for development, but frontend
 environment values are visible in the browser bundle and are not secrets.
 
+Local token auth is a shared deployment credential, not a user-account system.
+Every valid token is mapped to the configured `LOCAL_AUTH_USER_ID` (by default,
+`local-admin`), so rotating `LOCAL_AUTH_TOKEN` changes the workspace password
+without changing the workspace owner or hiding its existing agents and reports.
+Use Supabase auth or `external_jwt` for distinct user identities. External JWT
+mode currently expects users to obtain and paste a token; full browser OIDC
+redirect login is still planned.
+
 For Docker Compose, the frontend image reads these same `VITE_` settings at
 container startup instead of baking them into the build. The default compose
 value is `VITE_API_BASE_URL=/api`, which routes browser calls through the
@@ -442,7 +450,8 @@ The default profile uses the providers the app was originally built to support:
 
 The backend also has an initial provider-safe runtime slice:
 
-- `AUTH_PROVIDER=local` accepts a configured internal bearer token.
+- `AUTH_PROVIDER=local` accepts a shared deployment bearer token and maps every
+  valid login to one configured local identity.
 - `AUTH_PROVIDER=external_jwt` trusts bearer tokens from an existing IdP,
   reverse proxy, or API gateway using either a shared HMAC secret or JWKS URL.
 - `DATABASE_PROVIDER=sqlalchemy` stores app data through SQLAlchemy.

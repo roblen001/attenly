@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { authClient, authProvider, isTokenAuthProvider, localAuthTokenPrefill } from "../libs/auth";
+import {
+  authClient,
+  authProvider,
+  consumeAuthError,
+  isLocalAuthProvider,
+  isTokenAuthProvider,
+  localAuthTokenPrefill,
+} from "../libs/auth";
 import { useAuth } from "../feature/auth/useAuth";
 import "./Login.css";
 
@@ -15,9 +22,9 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [localToken, setLocalToken] = useState(localAuthTokenPrefill);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => consumeAuthError());
   const [message, setMessage] = useState("");
-  const tokenLabel = authProvider === 'external_jwt' ? 'Identity Token' : 'Access Token';
+  const tokenLabel = authProvider === 'external_jwt' ? 'Identity Token' : 'Deployment Access Token';
 
   // Check for password reset success
   useEffect(() => {
@@ -147,7 +154,9 @@ export default function Login() {
               </h2>
               <p className="form-subtitle">
                 {isTokenAuthProvider
-                  ? "Continue to your company workspace"
+                  ? isLocalAuthProvider
+                    ? "Unlock this deployment's shared company workspace"
+                    : "Continue to your company workspace"
                   : isPasswordReset
                   ? "Enter your email to receive a password reset link"
                   : isSignUp 
@@ -172,6 +181,11 @@ export default function Login() {
                     placeholder={`Enter ${tokenLabel.toLowerCase()}`}
                     required
                   />
+                  {isLocalAuthProvider && (
+                    <p className="form-help">
+                      This shared token is not a separate user account. Everyone using it opens the same local workspace.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="form-group">

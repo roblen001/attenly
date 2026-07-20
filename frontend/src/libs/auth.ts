@@ -1,5 +1,6 @@
 import type { Session, User } from '@supabase/supabase-js';
 import {
+  API_BASE_URL,
   AUTH_PROVIDER,
   LOCAL_AUTH_DISPLAY_NAME,
   LOCAL_AUTH_EMAIL,
@@ -45,6 +46,12 @@ type SignOutOptions = {
 
 type AuthStateCallback = (event: AuthChangeEvent, session: AppSession | null) => void;
 
+type AuthenticatedUserResponse = {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+};
+
 export const authProvider = AUTH_PROVIDER as AuthProvider;
 export const isLocalAuthProvider = authProvider === 'local';
 export const isTokenAuthProvider = authProvider === 'local' || authProvider === 'external_jwt';
@@ -53,7 +60,26 @@ export const localAuthTokenPrefill = LOCAL_AUTH_TOKEN_PREFILL;
 const TOKEN_SESSION_KEY = authProvider === 'local'
   ? 'attenly:local-auth-session'
   : `attenly:${AUTH_PROVIDER}:auth-session`;
+const AUTH_ERROR_KEY = 'attenly:auth-error';
 const listeners = new Set<AuthStateCallback>();
+
+export function storeAuthError(message: string) {
+  try {
+    window.sessionStorage.setItem(AUTH_ERROR_KEY, message);
+  } catch {
+    // The login page still has a generic fallback when session storage is unavailable.
+  }
+}
+
+export function consumeAuthError(): string {
+  try {
+    const message = window.sessionStorage.getItem(AUTH_ERROR_KEY) ?? '';
+    window.sessionStorage.removeItem(AUTH_ERROR_KEY);
+    return message;
+  } catch {
+    return '';
+  }
+}
 
 function requireSupabase() {
   if (!supabase) {
@@ -101,10 +127,10 @@ function readTokenSession(): AppSession | null {
   }
 }
 
-function writeTokenSession(token: string): AppSession {
+function writeTokenSession(token: string, authenticatedUser: AuthenticatedUserResponse): AppSession {
   const jwtClaims = authProvider === 'external_jwt' ? decodeJwtPayload(token) : {};
-  const userId = typeof jwtClaims.sub === 'string' ? jwtClaims.sub : LOCAL_AUTH_USER_ID;
-  const email = typeof jwtClaims.email === 'string' ? jwtClaims.email : LOCAL_AUTH_EMAIL;
+  const userId = authenticatedUser.id || (typeof jwtClaims.sub === 'string' ? jwtClaims.sub : LOCAL_AUTH_USER_ID);
+  const email = authenticatedUser.email || (typeof jwtClaims.email === 'string' ? jwtClaims.email : LOCAL_AUTH_EMAIL);
   const displayName = typeof jwtClaims.name === 'string' ? jwtClaims.name : LOCAL_AUTH_DISPLAY_NAME;
 
   const session: AppSession = {
@@ -116,12 +142,52 @@ function writeTokenSession(token: string): AppSession {
       user_metadata: {
         provider: authProvider,
         display_name: displayName,
+        ...(authenticatedUser.user_metadata ?? {}),
       },
       app_metadata: {},
     },
   };
   window.localStorage.setItem(TOKEN_SESSION_KEY, JSON.stringify(session));
   return session;
+}
+
+async function validateTokenWithBackend(token: string): Promise<AuthenticatedUserResponse> {
+  const apiBaseUrl = API_BASE_URL.replace(/\/$/, '');
+  const tokenName = isLocalAuthProvider ? 'deployment access token' : 'identity token';
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}/auth/api/auth/me`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch {
+    throw new Error('Unable to verify the access token. Check that Attenly is running and try again.');
+  }
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json() as { detail?: unknown };
+      detail = typeof body.detail === 'string' ? body.detail : '';
+    } catch {
+      // Use the status-specific message below when the response is not JSON.
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(`That ${tokenName} is invalid. Enter a current token and try again.`);
+    }
+
+    throw new Error(detail || `Unable to verify the access token (server returned ${response.status}).`);
+  }
+
+  const user = await response.json() as AuthenticatedUserResponse;
+  if (!user.id) {
+    throw new Error('The authentication server returned an invalid user identity.');
+  }
+  return user;
 }
 
 function notifyTokenAuth(event: AuthChangeEvent, session: AppSession | null) {
@@ -167,9 +233,18 @@ async function signInWithPassword(credentials: { email: string; password: string
     if (!token) {
       return { data: { session: null }, error: new Error('Access token is required') };
     }
-    const session = writeTokenSession(token);
-    notifyTokenAuth('SIGNED_IN', session);
-    return { data: { session }, error: null };
+
+    try {
+      const authenticatedUser = await validateTokenWithBackend(token);
+      const session = writeTokenSession(token, authenticatedUser);
+      notifyTokenAuth('SIGNED_IN', session);
+      return { data: { session }, error: null };
+    } catch (error) {
+      return {
+        data: { session: null },
+        error: error instanceof Error ? error : new Error('Unable to verify the access token.'),
+      };
+    }
   }
 
   const result = await requireSupabase().auth.signInWithPassword(credentials);

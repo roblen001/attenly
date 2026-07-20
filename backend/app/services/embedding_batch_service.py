@@ -17,7 +17,6 @@ import time
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
-import google.generativeai as genai
 import httpx
 from app.config import (
     GEMINI_API_KEY,
@@ -82,7 +81,6 @@ class EmbeddingBatchService:
         if self.provider == "gemini":
             if not self.api_key:
                 raise ValueError("GEMINI_API_KEY is required for batch embedding service")
-            genai.configure(api_key=self.api_key)
         elif self.provider == "openai_compatible":
             if not self.base_url:
                 raise ValueError(

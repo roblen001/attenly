@@ -15,10 +15,10 @@ import base64
 import io
 import json
 import logging
-import os
 import re
-import tempfile
 from typing import Tuple, Optional, Set, Dict
+
+import httpx
 
 from app.config import (
     GEMINI_API_KEY,
@@ -32,6 +32,11 @@ from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 from app.schemas import TemplateIngestResponse
 
 logger = logging.getLogger(__name__)
+
+GEMINI_GENERATE_CONTENT_BASE_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models"
+)
+GEMINI_TEMPLATE_TIMEOUT_SECONDS = 300.0
 
 
 class TemplateIngestService:
@@ -1004,7 +1009,7 @@ breaks, and placeholders as faithfully as possible.
         user_id: Optional[str] = None
     ) -> Tuple[str, str]:
         """
-        Call Gemini 2.5 Pro with strict prompt, return (html_body, css)
+        Call the configured Gemini model with strict prompt and inline file data.
 
         Args:
             file_content: File content as bytes
@@ -1015,86 +1020,52 @@ breaks, and placeholders as faithfully as possible.
         Returns:
             Tuple of (html_body, css). Raises RuntimeError when Gemini fails.
         """
-        temp_file_path = None
         try:
-            import google.generativeai as genai
-
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel(self.model_name)
-            
-            # Gemini's upload_file() requires a file path, not BytesIO
-            # Write content to temporary file
-            logger.info(f"Writing file content to temporary file: {filename}")
-            
-            # Determine file extension for temp file
-            file_extensions = {
-                'pdf': '.pdf',
-                'docx': '.docx',
-                'html': '.html'
+            mime_type = self._mime_type_for_file_type(file_type)
+            encoded_file = base64.b64encode(file_content).decode("ascii")
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inlineData": {
+                                    "mimeType": mime_type,
+                                    "data": encoded_file,
+                                }
+                            },
+                            {"text": self.NORMALIZATION_PROMPT},
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0.0,
+                    "responseMimeType": "application/json",
+                    "responseSchema": self.RESPONSE_SCHEMA,
+                },
             }
-            file_ext = file_extensions.get(file_type, '.tmp')
-            
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(mode='wb', suffix=file_ext, delete=False) as temp_file:
-                temp_file.write(file_content)
-                temp_file_path = temp_file.name
-            
-            logger.info("Temporary file created for Gemini processing")
-            
-            # Determine MIME type
-            mime_types = {
-                'pdf': 'application/pdf',
-                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'html': 'text/html'
-            }
-            mime_type = mime_types.get(file_type, 'application/octet-stream')
-            
-            # Upload file to Gemini using file path
-            logger.info(f"Uploading file to Gemini: {filename}")
-            uploaded_file = genai.upload_file(
-                temp_file_path,
-                mime_type=mime_type
-            )
-            
-            # Generate content with prompt
-            logger.info(f"Calling Gemini {self.model_name} for template normalization")
-            generation_config = genai.types.GenerationConfig(
-                temperature=0.0,
-                response_mime_type="application/json",
-                response_schema=self.RESPONSE_SCHEMA,
-            )
-            response = model.generate_content(
-                [self.NORMALIZATION_PROMPT, uploaded_file],
-                generation_config=generation_config,
+
+            logger.info("Calling Gemini %s for template normalization", self.model_name)
+            with httpx.Client(timeout=GEMINI_TEMPLATE_TIMEOUT_SECONDS) as client:
+                response = client.post(
+                    self._gemini_generate_content_url(),
+                    headers=self._gemini_headers(),
+                    json=payload,
+                )
+            self._raise_for_gemini_error(response)
+
+            response_data = response.json()
+            usage = response_data.get("usageMetadata") or {}
+            self._track_template_credit_usage(
+                user_id,
+                filename,
+                file_type,
+                {
+                    "prompt_tokens": int(usage.get("promptTokenCount") or 0),
+                    "completion_tokens": int(usage.get("candidatesTokenCount") or 0),
+                },
             )
 
-            # Track credit usage if user_id provided
-            if user_id and hasattr(response, 'usage_metadata') and response.usage_metadata:
-                try:
-                    from app.services.credit_service import get_credit_service
-
-                    credit_service = get_credit_service()
-                    input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
-                    output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-
-                    cost_cad = credit_service.calculate_cost(self.model_name, input_tokens, output_tokens)
-
-                    credit_service.consume_credits_sync(
-                        user_id=user_id,
-                        cost_cad=cost_cad,
-                        operation_type="llm_template",
-                        model=self.model_name,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        metadata={"filename": filename, "file_type": file_type}
-                    )
-
-                    logger.info(f"Template credit usage: {cost_cad:.6f} CAD ({input_tokens} in, {output_tokens} out)")
-                except Exception as e:
-                    logger.warning(f"Failed to track template credits: {e}")
-
-            # Parse response
-            response_text = response.text.strip()
+            response_text = self._gemini_response_text(response_data).strip()
             logger.debug(f"Gemini response: {response_text[:500]}...")
             
             # Try to parse JSON
@@ -1133,14 +1104,41 @@ breaks, and placeholders as faithfully as possible.
             safe_error = self._safe_gemini_error_message(e)
             logger.error("Gemini normalization failed: %s", safe_error)
             raise RuntimeError(safe_error) from None
-        finally:
-            # Clean up temporary file
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.unlink(temp_file_path)
-                    logger.debug("Temporary file deleted")
-                except Exception as e:
-                    logger.warning(f"Failed to delete temporary file: {str(e)}")
+
+    def _gemini_generate_content_url(self) -> str:
+        return f"{GEMINI_GENERATE_CONTENT_BASE_URL}/{self.model_name}:generateContent"
+
+    @staticmethod
+    def _gemini_headers() -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY or "",
+        }
+
+    @staticmethod
+    def _gemini_response_text(data: dict) -> str:
+        return "".join(
+            str(part.get("text", ""))
+            for candidate in data.get("candidates") or []
+            if isinstance(candidate, dict)
+            for part in (candidate.get("content") or {}).get("parts") or []
+            if isinstance(part, dict)
+        )
+
+    @staticmethod
+    def _raise_for_gemini_error(response: httpx.Response) -> None:
+        if response.is_success:
+            return
+
+        detail = ""
+        try:
+            detail = str((response.json().get("error") or {}).get("message") or "")
+        except (ValueError, AttributeError):
+            detail = response.text[:500]
+
+        if detail:
+            raise RuntimeError(f"Gemini request failed (HTTP {response.status_code}): {detail}")
+        raise RuntimeError(f"Gemini request failed (HTTP {response.status_code})")
 
     @staticmethod
     def _safe_gemini_error_message(error: Exception) -> str:

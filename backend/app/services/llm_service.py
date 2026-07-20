@@ -40,6 +40,11 @@ from app.config import (
 
 logger = logging.getLogger(__name__)
 
+GEMINI_GENERATE_CONTENT_BASE_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models"
+)
+GEMINI_REQUEST_TIMEOUT_SECONDS = 300.0
+
 
 class AnswerQuality(Enum):
     """Enum for answer quality assessment"""
@@ -62,15 +67,12 @@ class LLMService:
 
         try:
             if self.provider == "gemini":
-                import google.generativeai as genai
-
                 if not self.api_key:
                     logger.warning("GEMINI_API_KEY not found in environment variables")
                     raise ValueError("Gemini API key not configured")
 
-                genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel(self.model_name)
-                self.genai = genai
+                self.model = None
+                self.genai = None
                 self.available = True
                 logger.info("Initialized Gemini LLM service with model: %s", self.model_name)
             elif self.provider == "openai_compatible":
@@ -116,6 +118,40 @@ class LLMService:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
+    def _gemini_generate_content_url(self) -> str:
+        return f"{GEMINI_GENERATE_CONTENT_BASE_URL}/{self.model_name}:generateContent"
+
+    def _gemini_headers(self) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+
+    @staticmethod
+    def _gemini_response_text(data: Dict[str, Any]) -> str:
+        return "".join(
+            str(part.get("text", ""))
+            for candidate in data.get("candidates") or []
+            if isinstance(candidate, dict)
+            for part in (candidate.get("content") or {}).get("parts") or []
+            if isinstance(part, dict)
+        )
+
+    @staticmethod
+    def _raise_for_gemini_error(response: httpx.Response) -> None:
+        if response.is_success:
+            return
+
+        detail = ""
+        try:
+            detail = str((response.json().get("error") or {}).get("message") or "")
+        except (ValueError, AttributeError):
+            detail = response.text[:500]
+
+        if detail:
+            raise RuntimeError(f"Gemini request failed (HTTP {response.status_code}): {detail}")
+        raise RuntimeError(f"Gemini request failed (HTTP {response.status_code})")
+
     def _generate_json_text_sync(
         self,
         prompt: str,
@@ -127,30 +163,33 @@ class LLMService:
         if self.provider == "gemini":
             generation_config_kwargs: Dict[str, Any] = {
                 "temperature": temperature,
-                "response_mime_type": "application/json",
+                "responseMimeType": "application/json",
             }
             if response_schema:
-                generation_config_kwargs["response_schema"] = response_schema
+                generation_config_kwargs["responseSchema"] = response_schema
 
-            generation_config = self.genai.types.GenerationConfig(
-                **generation_config_kwargs
-            )
-            response = self.model.generate_content(
-                prompt,
-                generation_config=generation_config,
-            )
-            if not response or not response.text:
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": generation_config_kwargs,
+            }
+            with httpx.Client(timeout=GEMINI_REQUEST_TIMEOUT_SECONDS) as client:
+                response = client.post(
+                    self._gemini_generate_content_url(),
+                    headers=self._gemini_headers(),
+                    json=payload,
+                )
+            self._raise_for_gemini_error(response)
+            data = response.json()
+            response_text = self._gemini_response_text(data)
+            if not response_text:
                 return "", {"input_tokens": 0, "output_tokens": 0}
 
-            token_usage = {"input_tokens": 0, "output_tokens": 0}
-            if hasattr(response, "usage_metadata") and response.usage_metadata:
-                token_usage["input_tokens"] = getattr(
-                    response.usage_metadata, "prompt_token_count", 0
-                ) or 0
-                token_usage["output_tokens"] = getattr(
-                    response.usage_metadata, "candidates_token_count", 0
-                ) or 0
-            return response.text, token_usage
+            usage = data.get("usageMetadata") or {}
+            token_usage = {
+                "input_tokens": int(usage.get("promptTokenCount") or 0),
+                "output_tokens": int(usage.get("candidatesTokenCount") or 0),
+            }
+            return response_text, token_usage
 
         if self.provider == "openai_compatible":
             payload = {
@@ -560,10 +599,7 @@ INSTRUCTIONS:
 """
 
     def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Create JSON schema for structured batch response from questions with chunks - simplified for compatibility"""
-        
-        # For the older API, we'll use a simpler approach without schema validation
-        # This ensures compatibility with google-generativeai 0.8.2
+        """Create a future batch schema hook; per-question calls currently provide schemas."""
         return {}
 
     def _parse_batch_response_with_individual_contexts(self, response_text: str,

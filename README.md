@@ -59,6 +59,16 @@ running the command. This creates `.env`, generates `LOCAL_AUTH_TOKEN`, and
 keeps the default model gateway URL at `http://host.docker.internal:11434/v1`.
 Use `--model-base-url` when your model gateway is somewhere else.
 
+For Gemini models, including Gemini smart template ingestion:
+
+```bash
+python scripts/init_self_hosted_env.py --provider gemini --gemini-api-key replace-with-gemini-key --template-ingest-provider gemini --template-ingest-model gemini-2.5-pro
+```
+
+This sets Gemini for report generation, embeddings, and multimodal template
+upload interpretation. Replace `replace-with-gemini-key` before running the
+command.
+
 If `localhost:5173` is already in use, generate the env file with a different
 frontend port:
 
@@ -91,6 +101,17 @@ OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
 OPENAI_COMPATIBLE_API_KEY=your-key-if-required
 LLM_MODEL=company-document-model
 EMBEDDING_MODEL=replace-with-embedding-model
+```
+
+For Gemini manual setup instead, set:
+
+```bash
+LLM_PROVIDER=gemini
+EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=replace-with-gemini-key
+TEMPLATE_INGEST_PROVIDER=gemini
+TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+EMBEDDING_DIMENSIONS=768
 ```
 
 Before starting Docker, check the env file:

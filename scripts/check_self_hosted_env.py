@@ -145,6 +145,17 @@ def validate(env: Dict[str, str]) -> tuple[List[str], List[str]]:
             "TEMPLATE_INGEST_PROVIDER=openai_compatible requires a multimodal "
             "model endpoint; test core report generation first."
         )
+    elif template_provider == "gemini":
+        require(
+            errors,
+            env,
+            "TEMPLATE_INGEST_MODEL_NAME",
+            when="TEMPLATE_INGEST_PROVIDER=gemini",
+        )
+        warnings.append(
+            "TEMPLATE_INGEST_PROVIDER=gemini requires a multimodal Gemini model; "
+            "test core report generation first."
+        )
 
     uses_gemini = (
         llm_provider == "gemini"

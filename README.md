@@ -663,6 +663,12 @@ with the same header to poll without processing queued jobs.
   bundled into browser code, so that setting is only a convenience prefill.
 - Redis is not required by the current runtime.
 
+## Troubleshooting
+
+See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for common local
+Docker issues, including port conflicts, unhealthy containers, Microsoft Graph
+setup failures, and Gemini embedding `403 Forbidden` errors during file upload.
+
 ## Contributing
 
 The first open-source milestone is onboarding clarity:

@@ -1031,6 +1031,15 @@ async def test_single_question(
         question_result = llm_result["results"].get("{{Test Question}}")
         if not question_result:
             raise HTTPException(status_code=500, detail="No result returned for test question")
+        if question_result.get("error"):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "The model did not return a valid structured answer. "
+                    "Please retry the prompt. If this continues, verify that the selected "
+                    "model supports JSON structured output."
+                ),
+            )
         
         # Apply bbox matching if we have OCR documents with bounding boxes
         if bbox_data and question_result.get("source_chunks"):
@@ -2091,6 +2100,19 @@ async def upload_template(
                     "css": result.css,
                     "source": result.source,
                     "error": result.error,
+                    "warnings": result.warnings,
+                },
+            )
+
+        if not result.success:
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "success": False,
+                    "html_body": "",
+                    "css": "",
+                    "source": result.source,
+                    "error": result.error or "Template processing failed.",
                     "warnings": result.warnings,
                 },
             )

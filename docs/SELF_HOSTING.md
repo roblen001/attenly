@@ -21,6 +21,12 @@ Use `--model-base-url` for a company gateway.
 python scripts/init_self_hosted_env.py --model-base-url https://models.company.internal/v1 --model-api-key replace-with-gateway-token --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
 ```
 
+For Gemini report generation, embeddings, and Gemini smart template ingestion:
+
+```bash
+python scripts/init_self_hosted_env.py --provider gemini --gemini-api-key replace-with-gemini-key --template-ingest-provider gemini --template-ingest-model gemini-2.5-pro
+```
+
 Then start the stack:
 
 ```bash
@@ -98,7 +104,16 @@ TEMPLATE_INGEST_PROVIDER=disabled
 ```
 
 Enable it only after the core upload/report flow works. Smart template ingestion
-requires a multimodal model endpoint.
+requires a multimodal model endpoint. For Gemini:
+
+```bash
+LLM_PROVIDER=gemini
+EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=replace-with-gemini-key
+TEMPLATE_INGEST_PROVIDER=gemini
+TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+EMBEDDING_DIMENSIONS=768
+```
 
 ## 4. Connector Options
 

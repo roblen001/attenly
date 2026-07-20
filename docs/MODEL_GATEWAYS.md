@@ -45,6 +45,26 @@ EMBEDDING_MODEL=replace-with-embedding-model
 
 The backend container must be able to reach this URL from inside Docker.
 
+## Gemini
+
+Use Gemini when you want Google-hosted report generation, embeddings, and
+multimodal template ingestion:
+
+```bash
+python scripts/init_self_hosted_env.py --provider gemini --gemini-api-key replace-with-gemini-key --template-ingest-provider gemini --template-ingest-model gemini-2.5-pro
+```
+
+Equivalent env settings:
+
+```bash
+LLM_PROVIDER=gemini
+EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=replace-with-gemini-key
+TEMPLATE_INGEST_PROVIDER=gemini
+TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+EMBEDDING_DIMENSIONS=768
+```
+
 ## Template Ingestion
 
 For the simplest pilot:
@@ -64,6 +84,13 @@ For smart template upload with an OpenAI-compatible endpoint:
 ```bash
 TEMPLATE_INGEST_PROVIDER=openai_compatible
 TEMPLATE_INGEST_MODEL=company-multimodal-model
+```
+
+For smart template upload with Gemini:
+
+```bash
+TEMPLATE_INGEST_PROVIDER=gemini
+TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
 ```
 
 Smart template ingestion needs a strong multimodal model. Do not enable it

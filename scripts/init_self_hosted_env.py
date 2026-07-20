@@ -17,6 +17,9 @@ from check_self_hosted_env import parse_env, validate
 
 DEFAULT_MODEL_BASE_URL = "http://host.docker.internal:11434/v1"
 DEFAULT_EMBEDDING_DIMENSIONS = "1536"
+DEFAULT_GEMINI_LLM_MODEL = "gemini-3.5-flash"
+DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
+DEFAULT_GEMINI_TEMPLATE_INGEST_MODEL = "gemini-3.5-flash"
 EMAIL_PROVIDER_CHOICES = ("none", "microsoft_graph", "resend")
 MODEL_PROVIDER_CHOICES = ("openai_compatible", "gemini")
 TEMPLATE_INGEST_PROVIDER_CHOICES = ("disabled", "basic", "gemini", "openai_compatible")
@@ -114,12 +117,17 @@ def apply_model_updates(
 
     if llm_provider == "openai_compatible":
         updates["LLM_MODEL"] = prompt_value("LLM_MODEL", args.llm_model)
+    elif llm_provider == "gemini":
+        updates["LLM_MODEL"] = args.llm_model or DEFAULT_GEMINI_LLM_MODEL
     else:
         updates["LLM_MODEL"] = args.llm_model or ""
 
     if embedding_provider == "openai_compatible":
         updates["EMBEDDING_MODEL"] = prompt_value("EMBEDDING_MODEL", args.embedding_model)
         updates["EMBEDDING_DIMENSIONS"] = args.embedding_dimensions or DEFAULT_EMBEDDING_DIMENSIONS
+    elif embedding_provider == "gemini":
+        updates["EMBEDDING_MODEL"] = args.embedding_model or DEFAULT_GEMINI_EMBEDDING_MODEL
+        updates["EMBEDDING_DIMENSIONS"] = args.embedding_dimensions or "768"
     else:
         updates["EMBEDDING_MODEL"] = args.embedding_model or ""
         updates["EMBEDDING_DIMENSIONS"] = args.embedding_dimensions or "768"
@@ -135,7 +143,9 @@ def apply_model_updates(
         updates["GEMINI_API_KEY"] = args.gemini_api_key or ""
 
     if template_ingest_provider == "gemini":
-        updates["TEMPLATE_INGEST_MODEL_NAME"] = args.template_ingest_model or "gemini-2.5-pro"
+        updates["TEMPLATE_INGEST_MODEL_NAME"] = (
+            args.template_ingest_model or DEFAULT_GEMINI_TEMPLATE_INGEST_MODEL
+        )
     elif template_ingest_provider == "openai_compatible":
         updates["TEMPLATE_INGEST_MODEL"] = prompt_value(
             "TEMPLATE_INGEST_MODEL",
@@ -241,7 +251,7 @@ def main() -> int:
         "--template-ingest-model",
         help=(
             "Model used when smart template ingestion is enabled. Defaults to "
-            "gemini-2.5-pro for Gemini."
+            f"{DEFAULT_GEMINI_TEMPLATE_INGEST_MODEL} for Gemini."
         ),
     )
     parser.add_argument("--frontend-port", default="5173", help="Frontend host port.")

@@ -228,10 +228,10 @@ STORAGE_MAX_FILE_SIZE_MB = int(os.getenv("STORAGE_MAX_FILE_SIZE_MB", "100"))
 # LLM SERVICE CONFIGURATION
 # =============================================================================
 
-LLM_MODEL_NAME = os.getenv("LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash-lite"))
+LLM_MODEL_NAME = os.getenv("LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-3.5-flash"))
 TEMPLATE_INGEST_MODEL_NAME = os.getenv(
     "TEMPLATE_INGEST_MODEL",
-    os.getenv("TEMPLATE_INGEST_MODEL_NAME", "gemini-2.5-pro"),
+    os.getenv("TEMPLATE_INGEST_MODEL_NAME", "gemini-3.5-flash"),
 )
 LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = int(os.getenv("LLM_MAX_CONTEXT_TOKENS_PER_QUESTION", "4000"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
@@ -239,11 +239,15 @@ LLM_THINKING_BUDGET = int(os.getenv("LLM_THINKING_BUDGET", "0"))
 LLM_RESPONSE_FORMAT = os.getenv("LLM_RESPONSE_FORMAT", "application/json")
 
 # =============================================================================
-# MODEL PRICING (CAD per 1M tokens) - Updated: 2025-01
+# MODEL PRICING (CAD per 1M tokens) - Updated: 2026-07
 # Based on Google Gemini pricing, converted to CAD (~1.35x USD)
 # =============================================================================
 
 MODEL_PRICING = {
+    "gemini-3.5-flash": {
+        "input_per_million": 2.03,   # CAD per 1M input tokens
+        "output_per_million": 12.15, # CAD per 1M output tokens, including thinking tokens
+    },
     "gemini-2.5-flash-lite": {
         "input_per_million": 0.10,   # CAD per 1M input tokens
         "output_per_million": 0.40,  # CAD per 1M output tokens
@@ -254,6 +258,10 @@ MODEL_PRICING = {
     },
     "gemini-embedding-001": {
         "input_per_million": 0.015,  # CAD per 1M tokens (no output tokens)
+        "output_per_million": 0.00,
+    },
+    "gemini-embedding-2": {
+        "input_per_million": 0.27,   # CAD per 1M text input tokens
         "output_per_million": 0.00,
     },
 }
@@ -284,7 +292,7 @@ VECTOR_SEARCH_MAX_SOURCE_QUOTES = int(os.getenv("VECTOR_SEARCH_MAX_SOURCE_QUOTES
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
 EMBEDDING_MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "1"))
 EMBEDDING_TIMEOUT_SECONDS = int(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "30"))
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-001"))
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-2"))
 EMBEDDING_MAX_CONCURRENT_BATCHES = int(os.getenv("EMBEDDING_MAX_CONCURRENT_BATCHES", "1"))
 EMBEDDING_DIMENSIONS = int(os.getenv(
     "EMBEDDING_DIMENSIONS",

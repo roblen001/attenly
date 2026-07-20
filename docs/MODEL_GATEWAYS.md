@@ -51,7 +51,7 @@ Use Gemini when you want Google-hosted report generation, embeddings, and
 multimodal template ingestion:
 
 ```bash
-python scripts/init_self_hosted_env.py --provider gemini --gemini-api-key replace-with-gemini-key --template-ingest-provider gemini --template-ingest-model gemini-2.5-pro
+python scripts/init_self_hosted_env.py --provider gemini --llm-model gemini-3.5-flash --embedding-model gemini-embedding-2 --embedding-dimensions 768 --template-ingest-provider gemini --template-ingest-model gemini-3.5-flash
 ```
 
 Equivalent env settings:
@@ -60,8 +60,10 @@ Equivalent env settings:
 LLM_PROVIDER=gemini
 EMBEDDING_PROVIDER=gemini
 GEMINI_API_KEY=replace-with-gemini-key
+LLM_MODEL=gemini-3.5-flash
+EMBEDDING_MODEL=gemini-embedding-2
 TEMPLATE_INGEST_PROVIDER=gemini
-TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+TEMPLATE_INGEST_MODEL_NAME=gemini-3.5-flash
 EMBEDDING_DIMENSIONS=768
 ```
 
@@ -90,7 +92,7 @@ For smart template upload with Gemini:
 
 ```bash
 TEMPLATE_INGEST_PROVIDER=gemini
-TEMPLATE_INGEST_MODEL_NAME=gemini-2.5-pro
+TEMPLATE_INGEST_MODEL_NAME=gemini-3.5-flash
 ```
 
 Smart template ingestion needs a strong multimodal model. Do not enable it

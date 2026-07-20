@@ -130,6 +130,30 @@ like `gemini-embedding-2:batchEmbedContents` and `403 Forbidden`, the upload
 itself worked. The failure happened when Attenly tried to embed the extracted
 document chunks for search/retrieval.
 
+If the error says `API key not valid` or `API_KEY_INVALID`, the model names are
+not the root cause. Create a new Gemini API key in Google AI Studio, update
+`.env`, and recreate the containers. Rotate any key that appeared in logs,
+screenshots, chat, or shell history.
+
+If report generation logs say `gemini-2.5-flash is no longer available to new
+users`, update `.env` to use the current Gemini default:
+
+```bash
+LLM_MODEL=gemini-3.5-flash
+```
+
+For a full Gemini Docker pilot, the expected model settings are:
+
+```bash
+LLM_PROVIDER=gemini
+EMBEDDING_PROVIDER=gemini
+LLM_MODEL=gemini-3.5-flash
+EMBEDDING_MODEL=gemini-embedding-2
+EMBEDDING_DIMENSIONS=768
+TEMPLATE_INGEST_PROVIDER=gemini
+TEMPLATE_INGEST_MODEL_NAME=gemini-3.5-flash
+```
+
 If the error says `GenerativeService.BatchEmbedContents are blocked`, rebuild
 from the current source. Current Gemini embedding code uses
 `models.embedContent` instead of the blocked synchronous batch method.

@@ -123,6 +123,48 @@ If generation fails:
 - verify Docker can reach the gateway URL
 - increase `OPENAI_COMPATIBLE_TIMEOUT_SECONDS` for slow local models
 
+## File Upload Fails With Gemini Embedding 403
+
+If files upload in the browser but document processing fails with backend logs
+like `gemini-embedding-2:batchEmbedContents` and `403 Forbidden`, the upload
+itself worked. The failure happened when Attenly tried to embed the extracted
+document chunks for search/retrieval.
+
+Check these first:
+
+- Rotate the Gemini key if it appeared in logs, screenshots, chat, or terminal
+  output.
+- Confirm `.env` has `EMBEDDING_PROVIDER=gemini`,
+  `EMBEDDING_MODEL=gemini-embedding-2`, and `EMBEDDING_DIMENSIONS=768`.
+- Confirm the key was created for Gemini API access in Google AI Studio.
+- If the key is restricted, allow the Gemini API / Generative Language API.
+- If Google returns 403 outside Attenly too, create a new key or check project
+  access/billing/region restrictions.
+
+You can test the key directly from PowerShell without printing it:
+
+```powershell
+$env:GEMINI_API_KEY = "replace-with-new-key"
+$body = @{
+  content = @{ parts = @(@{ text = "hello from attenly" }) }
+  output_dimensionality = 768
+} | ConvertTo-Json -Depth 5
+
+$response = Invoke-RestMethod `
+  -Method Post `
+  -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent" `
+  -Headers @{
+    "x-goog-api-key" = $env:GEMINI_API_KEY
+    "Content-Type" = "application/json"
+  } `
+  -Body $body
+
+$response.embedding.values.Count
+```
+
+The expected output is `768`. If that direct test fails with 403, fix the
+Gemini key/project before retesting Attenly.
+
 ## Backend Source Build Is Slow
 
 The backend image includes OCR dependencies. By default, source builds also

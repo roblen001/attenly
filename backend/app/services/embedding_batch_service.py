@@ -155,15 +155,17 @@ class EmbeddingBatchService:
         start_time = time.time()
         await self._rate_limit_delay()
 
-        # Use the real batch API endpoint with correct format
+        # Use the real batch API endpoint with correct format.
+        # Keep the API key in a header, not in the URL, so failed request logs do
+        # not leak credentials.
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:batchEmbedContents"
-        params = {"key": self.api_key}
         # Correct payload format per Google AI API documentation
         payload = {
             "requests": [
                 {
                     "model": f"models/{self.model_name}",
-                    "content": {"parts": [{"text": text}]}
+                    "content": {"parts": [{"text": text}]},
+                    "outputDimensionality": self.embedding_dimensions,
                 }
                 for text in texts
             ]
@@ -176,7 +178,12 @@ class EmbeddingBatchService:
             try:
                 logger.debug(f"Making batch API call for {len(texts)} texts (batch {batch_index}, attempt {attempt + 1})")
                 
-                r = await client.post(url, params=params, json=payload)
+                r = await client.post(
+                    url,
+                    headers=self._gemini_headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                )
                 
                 # Handle server errors with retry
                 if r.status_code >= 500:
@@ -215,6 +222,22 @@ class EmbeddingBatchService:
             except (httpx.HTTPError, ValueError) as e:
                 error_msg = f"Batch {batch_index} failed (attempt {attempt + 1}): {str(e)}"
                 logger.warning(error_msg)
+
+                if self._is_non_retryable_client_error(e):
+                    self.error_count += 1
+                    logger.error(
+                        "Batch %s failed with non-retryable Gemini client error: %s",
+                        batch_index,
+                        self._safe_http_error_message(e),
+                    )
+                    return BatchResult(
+                        embeddings=[],
+                        batch_index=batch_index,
+                        processing_time=time.time() - start_time,
+                        retry_count=attempt,
+                        error=self._safe_http_error_message(e),
+                        success=False,
+                    )
                 
                 if attempt < self.max_retries:
                     logger.info(f"Retrying batch {batch_index} after {backoff}s delay")
@@ -244,6 +267,34 @@ class EmbeddingBatchService:
             error="Maximum retries exceeded",
             success=False,
         )
+
+    def _gemini_headers(self) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+
+    def _is_non_retryable_client_error(self, error: Exception) -> bool:
+        if not isinstance(error, httpx.HTTPStatusError):
+            return False
+        status_code = error.response.status_code
+        return 400 <= status_code < 500 and status_code not in {408, 429}
+
+    def _safe_http_error_message(self, error: Exception) -> str:
+        if not isinstance(error, httpx.HTTPStatusError):
+            return str(error)
+
+        status_code = error.response.status_code
+        detail = ""
+        try:
+            body = error.response.json()
+            detail = body.get("error", {}).get("message", "")
+        except ValueError:
+            detail = error.response.text[:500]
+
+        if detail:
+            return f"HTTP {status_code}: {detail}"
+        return f"HTTP {status_code}"
 
     def _openai_compatible_url(self, path: str) -> str:
         base_url = (self.base_url or "").rstrip("/")

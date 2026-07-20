@@ -18,6 +18,8 @@ from check_self_hosted_env import parse_env, validate
 DEFAULT_MODEL_BASE_URL = "http://host.docker.internal:11434/v1"
 DEFAULT_EMBEDDING_DIMENSIONS = "1536"
 EMAIL_PROVIDER_CHOICES = ("none", "microsoft_graph", "resend")
+MODEL_PROVIDER_CHOICES = ("openai_compatible", "gemini")
+TEMPLATE_INGEST_PROVIDER_CHOICES = ("disabled", "basic", "gemini", "openai_compatible")
 
 
 def prompt_value(name: str, current: str | None, default: str | None = None) -> str:
@@ -76,6 +78,75 @@ def selected_email_providers(args: argparse.Namespace) -> tuple[str, str]:
     return outbound, inbound
 
 
+def selected_model_providers(args: argparse.Namespace) -> tuple[str, str]:
+    default_provider = args.provider or "openai_compatible"
+    llm_provider = args.llm_provider or default_provider
+    embedding_provider = args.embedding_provider or default_provider
+    return llm_provider, embedding_provider
+
+
+def apply_model_updates(
+    updates: Dict[str, str],
+    args: argparse.Namespace,
+    llm_provider: str,
+    embedding_provider: str,
+    template_ingest_provider: str,
+) -> None:
+    updates["LLM_PROVIDER"] = llm_provider
+    updates["EMBEDDING_PROVIDER"] = embedding_provider
+    updates["TEMPLATE_INGEST_PROVIDER"] = template_ingest_provider
+
+    uses_openai_compatible = (
+        llm_provider == "openai_compatible"
+        or embedding_provider == "openai_compatible"
+        or template_ingest_provider == "openai_compatible"
+    )
+    if uses_openai_compatible:
+        updates["OPENAI_COMPATIBLE_BASE_URL"] = prompt_value(
+            "OPENAI_COMPATIBLE_BASE_URL",
+            args.model_base_url,
+            DEFAULT_MODEL_BASE_URL,
+        )
+        updates["OPENAI_COMPATIBLE_API_KEY"] = args.model_api_key
+    else:
+        updates["OPENAI_COMPATIBLE_BASE_URL"] = ""
+        updates["OPENAI_COMPATIBLE_API_KEY"] = ""
+
+    if llm_provider == "openai_compatible":
+        updates["LLM_MODEL"] = prompt_value("LLM_MODEL", args.llm_model)
+    else:
+        updates["LLM_MODEL"] = args.llm_model or ""
+
+    if embedding_provider == "openai_compatible":
+        updates["EMBEDDING_MODEL"] = prompt_value("EMBEDDING_MODEL", args.embedding_model)
+        updates["EMBEDDING_DIMENSIONS"] = args.embedding_dimensions or DEFAULT_EMBEDDING_DIMENSIONS
+    else:
+        updates["EMBEDDING_MODEL"] = args.embedding_model or ""
+        updates["EMBEDDING_DIMENSIONS"] = args.embedding_dimensions or "768"
+
+    uses_gemini = (
+        llm_provider == "gemini"
+        or embedding_provider == "gemini"
+        or template_ingest_provider == "gemini"
+    )
+    if uses_gemini:
+        updates["GEMINI_API_KEY"] = prompt_value("GEMINI_API_KEY", args.gemini_api_key)
+    else:
+        updates["GEMINI_API_KEY"] = args.gemini_api_key or ""
+
+    if template_ingest_provider == "gemini":
+        updates["TEMPLATE_INGEST_MODEL_NAME"] = args.template_ingest_model or "gemini-2.5-pro"
+    elif template_ingest_provider == "openai_compatible":
+        updates["TEMPLATE_INGEST_MODEL"] = prompt_value(
+            "TEMPLATE_INGEST_MODEL",
+            args.template_ingest_model,
+        )
+        updates["TEMPLATE_INGEST_MODEL_NAME"] = ""
+    else:
+        updates["TEMPLATE_INGEST_MODEL"] = ""
+        updates["TEMPLATE_INGEST_MODEL_NAME"] = ""
+
+
 def apply_email_updates(
     updates: Dict[str, str],
     args: argparse.Namespace,
@@ -128,6 +199,25 @@ def main() -> int:
     parser.add_argument("--force", action="store_true", help="Overwrite output file.")
     parser.add_argument("--local-auth-token", help="Use this token instead of generating one.")
     parser.add_argument(
+        "--provider",
+        choices=MODEL_PROVIDER_CHOICES,
+        help=(
+            "Set both LLM and embedding providers. Defaults to openai_compatible. "
+            "Use gemini for Gemini-backed local pilots."
+        ),
+    )
+    parser.add_argument(
+        "--llm-provider",
+        choices=MODEL_PROVIDER_CHOICES,
+        help="Set only the LLM provider.",
+    )
+    parser.add_argument(
+        "--embedding-provider",
+        choices=MODEL_PROVIDER_CHOICES,
+        help="Set only the embedding provider.",
+    )
+    parser.add_argument("--gemini-api-key", help="Gemini API key.")
+    parser.add_argument(
         "--model-base-url",
         help=f"OpenAI-compatible base URL. Defaults to {DEFAULT_MODEL_BASE_URL}.",
     )
@@ -136,8 +226,23 @@ def main() -> int:
     parser.add_argument("--embedding-model", help="Embedding model served by the gateway.")
     parser.add_argument(
         "--embedding-dimensions",
-        default=DEFAULT_EMBEDDING_DIMENSIONS,
-        help="Embedding vector dimensions. Defaults to 1536.",
+        help=(
+            "Embedding vector dimensions. Defaults to 1536 for OpenAI-compatible "
+            "providers and 768 for Gemini."
+        ),
+    )
+    parser.add_argument(
+        "--template-ingest-provider",
+        default="disabled",
+        choices=TEMPLATE_INGEST_PROVIDER_CHOICES,
+        help="Template upload interpretation provider. Defaults to disabled.",
+    )
+    parser.add_argument(
+        "--template-ingest-model",
+        help=(
+            "Model used when smart template ingestion is enabled. Defaults to "
+            "gemini-2.5-pro for Gemini."
+        ),
     )
     parser.add_argument("--frontend-port", default="5173", help="Frontend host port.")
     parser.add_argument(
@@ -174,6 +279,7 @@ def main() -> int:
     args = parser.parse_args()
     generated_local_auth_token = args.local_auth_token is None
     outbound_email_provider, inbound_email_provider = selected_email_providers(args)
+    llm_provider, embedding_provider = selected_model_providers(args)
 
     template_path = Path(args.template)
     output_path = Path(args.output)
@@ -184,19 +290,14 @@ def main() -> int:
         "ATTENLY_FRONTEND_PORT": args.frontend_port,
         "AUTH_PROVIDER": "local",
         "LOCAL_AUTH_TOKEN": args.local_auth_token or secrets.token_urlsafe(32),
-        "LLM_PROVIDER": "openai_compatible",
-        "EMBEDDING_PROVIDER": "openai_compatible",
-        "OPENAI_COMPATIBLE_BASE_URL": prompt_value(
-            "OPENAI_COMPATIBLE_BASE_URL",
-            args.model_base_url,
-            DEFAULT_MODEL_BASE_URL,
-        ),
-        "OPENAI_COMPATIBLE_API_KEY": args.model_api_key,
-        "LLM_MODEL": prompt_value("LLM_MODEL", args.llm_model),
-        "EMBEDDING_MODEL": prompt_value("EMBEDDING_MODEL", args.embedding_model),
-        "EMBEDDING_DIMENSIONS": args.embedding_dimensions,
-        "TEMPLATE_INGEST_PROVIDER": "disabled",
     }
+    apply_model_updates(
+        updates,
+        args,
+        llm_provider,
+        embedding_provider,
+        args.template_ingest_provider,
+    )
     generated_internal_cron_secret = apply_email_updates(
         updates,
         args,
@@ -227,6 +328,11 @@ def main() -> int:
     print(
         "Email providers: "
         f"outbound={outbound_email_provider}, inbound={inbound_email_provider}."
+    )
+    print(
+        "Model providers: "
+        f"llm={llm_provider}, embedding={embedding_provider}, "
+        f"template_ingest={args.template_ingest_provider}."
     )
     if generated_internal_cron_secret:
         print("INTERNAL_CRON_SECRET was generated and written to the file.")

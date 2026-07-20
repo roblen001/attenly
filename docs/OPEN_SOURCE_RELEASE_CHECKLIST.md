@@ -29,6 +29,8 @@ public open-source release instead of an open-source preparation branch.
   token and required model settings.
 - The env initialization script can also generate Microsoft Graph or Resend
   email connector settings.
+- The env initialization script can generate Gemini-backed report generation,
+  embeddings, and smart template-ingest settings.
 - GHCR `open-sourcing` images for backend and frontend were pulled and booted
   locally with Docker Compose.
 - A disposable published-image stack reached healthy frontend and backend

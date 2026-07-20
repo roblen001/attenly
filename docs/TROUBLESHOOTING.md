@@ -130,6 +130,10 @@ like `gemini-embedding-2:batchEmbedContents` and `403 Forbidden`, the upload
 itself worked. The failure happened when Attenly tried to embed the extracted
 document chunks for search/retrieval.
 
+If the error says `GenerativeService.BatchEmbedContents are blocked`, rebuild
+from the current source. Current Gemini embedding code uses
+`models.embedContent` instead of the blocked synchronous batch method.
+
 Check these first:
 
 - Rotate the Gemini key if it appeared in logs, screenshots, chat, or terminal

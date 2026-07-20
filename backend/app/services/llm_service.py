@@ -121,12 +121,19 @@ class LLMService:
         prompt: str,
         *,
         temperature: float,
+        response_schema: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, Dict[str, int]]:
         """Generate JSON text using the selected LLM provider."""
         if self.provider == "gemini":
+            generation_config_kwargs: Dict[str, Any] = {
+                "temperature": temperature,
+                "response_mime_type": "application/json",
+            }
+            if response_schema:
+                generation_config_kwargs["response_schema"] = response_schema
+
             generation_config = self.genai.types.GenerationConfig(
-                temperature=temperature,
-                response_mime_type="application/json",
+                **generation_config_kwargs
             )
             response = self.model.generate_content(
                 prompt,
@@ -850,6 +857,35 @@ ANSWER:"""
 
         return f'"{question.placeholder}": "string value"'
 
+    def _get_response_json_schema(self, question: QuestionOut) -> Dict[str, Any]:
+        """Build the concrete JSON schema used for a single-question response."""
+        if question.answer_type == AnswerType.LIST:
+            answer_schema: Dict[str, Any] = {
+                "type": "array",
+                "items": {"type": "string"},
+            }
+        elif question.answer_type == AnswerType.TABLE and question.columns:
+            column_properties = {
+                column.key: {"type": "string"}
+                for column in question.columns
+            }
+            answer_schema = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": column_properties,
+                    "required": list(column_properties),
+                },
+            }
+        else:
+            answer_schema = {"type": "string"}
+
+        return {
+            "type": "object",
+            "properties": {question.placeholder: answer_schema},
+            "required": [question.placeholder],
+        }
+
     def _create_single_question_prompt(self, question: QuestionOut,
                                        relevant_chunks: List[Dict],
                                        document_context: Dict) -> str:
@@ -912,6 +948,7 @@ Respond with valid JSON only."""
         question = question_item['question']
         relevant_chunks = question_item['relevant_chunks']
         placeholder = question.placeholder
+        token_usage = {"input_tokens": 0, "output_tokens": 0}
 
         try:
             # Create focused prompt for this single question
@@ -920,6 +957,7 @@ Respond with valid JSON only."""
             response_text, token_usage = self._generate_json_text_sync(
                 prompt,
                 temperature=LLM_TEMPERATURE,
+                response_schema=self._get_response_json_schema(question),
             )
 
             if not response_text:
@@ -958,7 +996,7 @@ Respond with valid JSON only."""
                 "source_chunks": [],
                 "word_count": 0,
                 "error": f"Failed to parse response: {str(e)}",
-                "token_usage": {"input_tokens": 0, "output_tokens": 0}
+                "token_usage": token_usage
             })
         except Exception as e:
             logger.warning(f"Error processing question {placeholder}: {e}")

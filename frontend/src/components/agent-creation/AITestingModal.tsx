@@ -104,7 +104,17 @@ const AITestingModal: React.FC<AITestingModalProps> = ({
 
     } catch (err) {
       console.error('Question testing failed:', err);
-      setError(err instanceof Error ? err.message : 'Failed to test question');
+      let errorMessage = err instanceof Error ? err.message : 'Failed to test question';
+      const jsonStartIndex = errorMessage.indexOf('{');
+      if (jsonStartIndex !== -1) {
+        try {
+          const errorPayload = JSON.parse(errorMessage.substring(jsonStartIndex));
+          errorMessage = errorPayload.detail || errorPayload.error || errorMessage;
+        } catch {
+          // Keep the original network error when the response body is not JSON.
+        }
+      }
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

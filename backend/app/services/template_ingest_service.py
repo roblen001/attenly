@@ -8,7 +8,7 @@ Provider-aware template normalization:
 - Basic mode handles simple DOCX/HTML conversion without AI.
 - Disabled mode lets local/enterprise deployments avoid a hard Gemini dependency.
 - Sanitizes HTML and CSS for security.
-- Returns blank template with default CSS as fallback when AI cannot normalize.
+- Returns an explicit error when AI cannot normalize a PDF template.
 """
 
 import base64
@@ -36,6 +36,15 @@ logger = logging.getLogger(__name__)
 
 class TemplateIngestService:
     """Service for provider-aware template normalization."""
+
+    RESPONSE_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "html_body": {"type": "string"},
+            "css": {"type": "string"},
+        },
+        "required": ["html_body", "css"],
+    }
     
     # Prompt for high-capability multimodal template normalization.
     NORMALIZATION_PROMPT = """You are an expert document template normalizer for Attenly, a legal/enterprise document automation platform.
@@ -342,16 +351,19 @@ breaks, and placeholders as faithfully as possible.
                     warnings.append("AI normalization returned empty, using basic DOCX conversion")
                     return self._process_with_basic_converter(content, file_type, filename, warnings)
                 
-                # No valid output - return blank template
-                logger.warning(f"Could not process template {filename}, returning blank template")
-                warnings.append("Template could not be processed, using blank template")
-                html_body, css = self._create_blank_template()
+                # A blank fallback is misleading for PDFs: the editor would show a
+                # successful template that bears no relation to the uploaded file.
+                logger.warning("Could not process PDF template %s", filename)
                 return TemplateIngestResponse(
-                    success=True,
-                    html_body=html_body,
-                    css=css,
-                    source="blank",
-                    warnings=warnings
+                    success=False,
+                    html_body="",
+                    css="",
+                    source="error",
+                    error=(
+                        "Gemini could not convert the uploaded template. Verify the "
+                        "Gemini API key and template-ingest model, then try again."
+                    ),
+                    warnings=warnings,
                 )
                 
         except Exception as e:
@@ -1001,7 +1013,7 @@ breaks, and placeholders as faithfully as possible.
             user_id: Optional user ID for credit tracking
 
         Returns:
-            Tuple of (html_body, css) - empty strings if failed
+            Tuple of (html_body, css). Raises RuntimeError when Gemini fails.
         """
         temp_file_path = None
         try:
@@ -1046,7 +1058,15 @@ breaks, and placeholders as faithfully as possible.
             
             # Generate content with prompt
             logger.info(f"Calling Gemini {self.model_name} for template normalization")
-            response = model.generate_content([self.NORMALIZATION_PROMPT, uploaded_file])
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.0,
+                response_mime_type="application/json",
+                response_schema=self.RESPONSE_SCHEMA,
+            )
+            response = model.generate_content(
+                [self.NORMALIZATION_PROMPT, uploaded_file],
+                generation_config=generation_config,
+            )
 
             # Track credit usage if user_id provided
             if user_id and hasattr(response, 'usage_metadata') and response.usage_metadata:
@@ -1106,11 +1126,13 @@ breaks, and placeholders as faithfully as possible.
                 return '', ''
                 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini JSON response: {str(e)}")
-            return '', ''
+            safe_error = "Gemini returned invalid JSON for the uploaded template."
+            logger.error("%s Parser detail: %s", safe_error, e)
+            raise RuntimeError(safe_error) from None
         except Exception as e:
-            logger.error(f"Gemini normalization failed: {str(e)}", exc_info=True)
-            return '', ''
+            safe_error = self._safe_gemini_error_message(e)
+            logger.error("Gemini normalization failed: %s", safe_error)
+            raise RuntimeError(safe_error) from None
         finally:
             # Clean up temporary file
             if temp_file_path and os.path.exists(temp_file_path):
@@ -1119,6 +1141,38 @@ breaks, and placeholders as faithfully as possible.
                     logger.debug("Temporary file deleted")
                 except Exception as e:
                     logger.warning(f"Failed to delete temporary file: {str(e)}")
+
+    @staticmethod
+    def _safe_gemini_error_message(error: Exception) -> str:
+        """Return an actionable Gemini error without leaking credentials."""
+        message = str(error)
+        if GEMINI_API_KEY:
+            message = message.replace(GEMINI_API_KEY, "[REDACTED]")
+        message = re.sub(
+            r"([?&]key=)[^&\s\"']+",
+            r"\1[REDACTED]",
+            message,
+            flags=re.IGNORECASE,
+        )
+
+        normalized = message.lower()
+        if "api_key_invalid" in normalized or "api key not valid" in normalized:
+            return (
+                "Gemini rejected the API key. Create a valid Gemini API key, update "
+                "GEMINI_API_KEY, and recreate the backend container."
+            )
+        if "permission_denied" in normalized or "403" in normalized:
+            return (
+                "Gemini denied this template request. Check the API key restrictions "
+                "and confirm the configured template-ingest model is enabled for its project."
+            )
+        if "not_found" in normalized or "404" in normalized:
+            return (
+                "Gemini could not find the configured template-ingest model. Check "
+                "TEMPLATE_INGEST_MODEL_NAME and recreate the backend container."
+            )
+
+        return f"Gemini template request failed: {message[:500]}"
     
     def _fallback_to_mammoth(self, docx_content: bytes) -> str:
         """

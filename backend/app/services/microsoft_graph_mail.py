@@ -154,7 +154,7 @@ class MicrosoftGraphMailClient:
 
         response = self.request_json(
             "GET",
-            f"{self._mailbox_path()}/messages",
+            f"{self._mailbox_path()}/mailFolders/inbox/messages",
             query={
                 "$select": ",".join(
                     [

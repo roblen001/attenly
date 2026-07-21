@@ -10,6 +10,30 @@ import './Settings.css';
 
 type SettingsTab = 'credits' | 'email';
 
+type VerificationNotice = {
+  type: 'success' | 'error';
+  message: string;
+};
+
+const verificationNotices: Record<string, VerificationNotice> = {
+  success: {
+    type: 'success',
+    message: 'Email address verified. This sender can now submit documents to Attenly.',
+  },
+  invalid: {
+    type: 'error',
+    message: 'This verification link is invalid, expired, or already used. Request a new link from Verified Senders if needed.',
+  },
+  disabled: {
+    type: 'error',
+    message: 'Email ingest is disabled on this Attenly deployment.',
+  },
+  failed: {
+    type: 'error',
+    message: 'We could not verify this email address. Request a new verification link and try again.',
+  },
+};
+
 const disabledEmailSettings = (
   message = 'Email ingest is disabled by server configuration.',
   provider = 'none'
@@ -45,6 +69,24 @@ export default function Settings() {
   const [disabling, setDisabling] = useState(false);
   const [updatingAgent, setUpdatingAgent] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState<VerificationNotice | null>(null);
+
+  // Turn the public email-link callback into a clear in-app result, then remove
+  // the callback parameter so refreshing the page does not repeat the message.
+  useEffect(() => {
+    const verificationResult = searchParams.get('sender_verification');
+    if (!verificationResult) return;
+
+    setActiveTab('email');
+    setVerificationNotice(
+      verificationNotices[verificationResult] || verificationNotices.failed
+    );
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', 'email');
+    nextParams.delete('sender_verification');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Update URL when tab changes
   const handleTabChange = (tab: SettingsTab) => {
@@ -263,6 +305,25 @@ export default function Settings() {
       {/* Email Ingest Tab */}
       {activeTab === 'email' && (
         <div className="settings-content">
+          {verificationNotice && (
+            <div
+              className={`verification-banner ${verificationNotice.type}`}
+              role={verificationNotice.type === 'success' ? 'status' : 'alert'}
+            >
+              <span className="verification-icon">
+                {verificationNotice.type === 'success' ? '\u2713' : '!'}
+              </span>
+              <span>{verificationNotice.message}</span>
+              <button
+                onClick={() => setVerificationNotice(null)}
+                className="close-verification"
+                aria-label="Dismiss verification message"
+              >
+                x
+              </button>
+            </div>
+          )}
+
           {emailError && (
             <div className="error-banner">
               <span className="error-icon">!</span>

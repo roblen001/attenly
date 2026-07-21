@@ -121,7 +121,10 @@ If generation fails:
 - verify the model names exist
 - verify the embedding dimensions match the embedding model
 - verify Docker can reach the gateway URL
-- increase `OPENAI_COMPATIBLE_TIMEOUT_SECONDS` for slow local models
+- use `OPENAI_COMPATIBLE_TIMEOUT_SECONDS=300` for difficult local reasoning or
+  multimodal requests
+- check external gateway limits; RunPod's public HTTP proxy cannot carry a
+  five-minute request, so use a private/direct endpoint or SSH tunnel
 
 ## File Upload Fails With Gemini Embedding 403
 

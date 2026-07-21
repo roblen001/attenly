@@ -3,7 +3,7 @@ import { authClient, isLocalAuthProvider, isTokenAuthProvider, storeAuthError } 
 
 interface ApiOptions extends RequestInit {
   nonCritical?: boolean; // If true, 401 errors won't sign out the user
-  timeout?: number; // Request timeout in milliseconds (default: 30000)
+  timeout?: number; // Request timeout in milliseconds (default: 600000)
   retries?: number; // Number of retries for GET requests (default: 2)
 }
 

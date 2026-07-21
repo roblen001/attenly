@@ -130,6 +130,17 @@ class SupabaseEmailJobStore:
         )
         return result.data[0] if result.data else None
 
+    def get_endpoint_for_user(self, user_id: str) -> Optional[Dict[str, Any]]:
+        result = (
+            self._client()
+            .table("email_ingest_endpoints")
+            .select("*")
+            .eq("user_id", str(user_id))
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
     def is_verified_sender(self, user_id: str, email: str) -> bool:
         result = (
             self._client()
@@ -327,6 +338,18 @@ class SqlAlchemyEmailJobStore:
             endpoint = (
                 session.query(EmailIngestEndpoint)
                 .filter(EmailIngestEndpoint.full_address == full_address.lower())
+                .first()
+            )
+            return _endpoint_to_dict(endpoint) if endpoint else None
+
+    def get_endpoint_for_user(self, user_id: str) -> Optional[Dict[str, Any]]:
+        from app.db import SessionLocal
+        from app.models import EmailIngestEndpoint
+
+        with SessionLocal() as session:
+            endpoint = (
+                session.query(EmailIngestEndpoint)
+                .filter(EmailIngestEndpoint.user_id == str(user_id))
                 .first()
             )
             return _endpoint_to_dict(endpoint) if endpoint else None

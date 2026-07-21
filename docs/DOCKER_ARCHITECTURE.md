@@ -1,6 +1,6 @@
 # Docker Architecture
 
-The default self-hosted deployment is one Docker Compose project with two
+The default self-hosted deployment is one Docker Compose project with three
 services and one persistent volume.
 
 ## Services
@@ -8,7 +8,8 @@ services and one persistent volume.
 | Service | Role | Host Exposure |
 | --- | --- | --- |
 | `frontend` | Nginx serves the React app, runtime config, TinyMCE, `/health`, and proxies `/api` to the backend. | Publishes `ATTENLY_FRONTEND_PORT`, default `5173`. |
-| `backend` | FastAPI app for auth, uploads, report generation, storage, email jobs, and provider integrations. | Exposed only inside the Compose network on port `8080`. |
+| `backend` | FastAPI app for auth, uploads, report viewing, storage, and provider-backed interactive requests. | Exposed only inside the Compose network on port `8080`. |
+| `email-worker` | Background process that polls inbound email and processes queued email report jobs. | No host port. |
 
 Browser traffic should enter through the frontend:
 
@@ -17,11 +18,14 @@ browser -> http://localhost:5173 -> frontend nginx -> /api -> backend:8080
 ```
 
 The backend is intentionally not published to the host by `compose.yml`.
+The `email-worker` also stays private. It uses the same image and environment
+as the backend, but it runs `python -m app.workers.email_worker` instead of
+Uvicorn.
 
 ## Persistent Data
 
-The `attenly-data` Docker volume is mounted at `/data` in the backend
-container.
+The `attenly-data` Docker volume is mounted at `/data` in the backend and
+`email-worker` containers.
 
 Default paths:
 
@@ -33,6 +37,10 @@ STORAGE_PATH=/data/storage
 
 Container recreation keeps the volume. `docker compose down` keeps the volume.
 `docker compose down -v` deletes the volume.
+
+SQLite runs with WAL mode and a busy timeout so the web process and
+`email-worker` can share the same local database during a pilot. For heavier
+production use, move `DATABASE_URL` to a managed SQL database.
 
 ## Runtime Configuration
 
@@ -103,4 +111,38 @@ Backend readiness checks:
 - filesystem storage writability when `STORAGE_PROVIDER=filesystem`
 - config validation
 
-Compose waits for backend readiness before starting the frontend.
+Email worker health:
+
+```text
+python -m app.workers.email_worker --healthcheck
+```
+
+The worker writes a heartbeat file while it runs. The health check allows a
+long heartbeat age so five-minute model/template jobs are not treated as a
+failure.
+
+Compose waits for backend readiness before starting the frontend and worker.
+
+## Email Job Execution
+
+The Docker self-hosted path defaults to:
+
+```bash
+EMAIL_JOB_EXECUTION_MODE=worker
+EMAIL_WORKER_POLL_INTERVAL_SECONDS=30
+EMAIL_WORKER_MAX_JOBS_PER_CYCLE=1
+```
+
+This means inbound Microsoft Graph or Resend jobs run outside the web backend.
+The Settings page, saved reports, and ordinary API requests should remain
+usable while an emailed report is being generated.
+
+To watch background email work:
+
+```bash
+docker compose logs -f email-worker
+```
+
+`EMAIL_JOB_EXECUTION_MODE=inline` is available only for legacy deployments that
+do not run the worker service and instead call `/internal/process-email-jobs`
+from an external scheduler.

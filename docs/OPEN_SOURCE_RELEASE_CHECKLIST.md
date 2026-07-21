@@ -43,6 +43,13 @@ public open-source release instead of an open-source preparation branch.
   `docker compose down -v`.
 - A reusable published-image Compose smoke script exists:
   `python scripts/smoke_self_hosted_compose.py`.
+- The default Compose shape now separates interactive web traffic from inbound
+  email/report generation with a dedicated `email-worker` service.
+- Microsoft Graph was validated locally with a real test tenant: Entra token,
+  `Mail.Read`, `Mail.Send`, sender verification, alias delivery, inbound
+  report generation, saved report link, and report-ready email.
+- Saved-report pages no longer block on reference PDF preloading before the
+  report body renders.
 
 ## Release Blockers
 
@@ -66,7 +73,13 @@ docker compose up -d --wait
   - route the generated Attenly address to `GRAPH_MAILBOX`
   - verify a sender, then send a small PDF to the generated address
   - run `python scripts/trigger_microsoft_graph_poll.py .env`
+  - watch `docker compose logs -f email-worker`
   - confirm one accepted/successful job, a saved report, and the ready email
+- Regression test the separated worker path:
+  - send two attachment-bearing emails close together
+  - open an existing saved report while the worker is processing
+  - confirm the saved report opens quickly and the worker completes jobs in
+    sequence
 
 ## Documentation Before Public Announcement
 

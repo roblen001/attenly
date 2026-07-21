@@ -91,6 +91,9 @@ def main() -> int:
     }
     if inbound_provider == "microsoft_graph":
         updates["INTERNAL_CRON_SECRET"] = cron_secret
+        updates["EMAIL_JOB_EXECUTION_MODE"] = "worker"
+        updates["EMAIL_WORKER_POLL_INTERVAL_SECONDS"] = "30"
+        updates["EMAIL_WORKER_MAX_JOBS_PER_CYCLE"] = "1"
 
     original_lines = path.read_text(encoding="utf-8").splitlines()
     updated_lines = update_env_lines(original_lines, updates)
@@ -114,7 +117,7 @@ def main() -> int:
         for warning in warnings:
             print(f"- {warning}")
     print(f"Next: python scripts/check_microsoft_graph_connection.py {path}")
-    print("Then redeploy or recreate the backend so it loads the updated env file.")
+    print("Then recreate the Compose stack so backend and email-worker load the updated env file.")
     return 0
 
 

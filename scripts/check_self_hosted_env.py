@@ -134,6 +134,12 @@ def validate(env: Dict[str, str]) -> tuple[List[str], List[str]]:
             "OPENAI_COMPATIBLE_BASE_URL",
             when="an OpenAI-compatible provider is enabled",
         )
+        timeout_value = env.get("OPENAI_COMPATIBLE_TIMEOUT_SECONDS", "300")
+        try:
+            if int(timeout_value) < 1:
+                errors.append("OPENAI_COMPATIBLE_TIMEOUT_SECONDS must be at least 1")
+        except ValueError:
+            errors.append("OPENAI_COMPATIBLE_TIMEOUT_SECONDS must be an integer")
 
     if llm_provider == "openai_compatible":
         require(errors, env, "LLM_MODEL", when="LLM_PROVIDER=openai_compatible")
@@ -163,6 +169,14 @@ def validate(env: Dict[str, str]) -> tuple[List[str], List[str]]:
             "TEMPLATE_INGEST_PROVIDER=openai_compatible requires a multimodal "
             "model endpoint; test core report generation first."
         )
+        try:
+            if int(env.get("OPENAI_COMPATIBLE_TIMEOUT_SECONDS", "300")) < 300:
+                warnings.append(
+                    "Smart template ingestion may need five minutes; consider "
+                    "OPENAI_COMPATIBLE_TIMEOUT_SECONDS=300."
+                )
+        except ValueError:
+            pass
     elif template_provider == "gemini":
         require(
             errors,

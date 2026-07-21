@@ -168,7 +168,7 @@ INBOUND_EMAIL_PROVIDER = _normalized_env("INBOUND_EMAIL_PROVIDER", _inbound_emai
 # branches can consume stable names without changing env examples again.
 OPENAI_COMPATIBLE_BASE_URL = os.getenv("OPENAI_COMPATIBLE_BASE_URL")
 OPENAI_COMPATIBLE_API_KEY = os.getenv("OPENAI_COMPATIBLE_API_KEY")
-OPENAI_COMPATIBLE_TIMEOUT_SECONDS = int(os.getenv("OPENAI_COMPATIBLE_TIMEOUT_SECONDS", "120"))
+OPENAI_COMPATIBLE_TIMEOUT_SECONDS = int(os.getenv("OPENAI_COMPATIBLE_TIMEOUT_SECONDS", "300"))
 
 GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID")
 GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
@@ -596,6 +596,8 @@ def validate_config():
             "OPENAI_COMPATIBLE_BASE_URL still contains an example placeholder; "
             "set the URL of the model endpoint"
         )
+    if uses_openai_compatible and OPENAI_COMPATIBLE_TIMEOUT_SECONDS < 1:
+        errors.append("OPENAI_COMPATIBLE_TIMEOUT_SECONDS must be at least 1")
 
     # LLM ranges
     if LLM_MAX_CONTEXT_TOKENS_PER_QUESTION < 1000:
@@ -769,6 +771,7 @@ def get_config_summary() -> dict:
             "gemini_api_key_configured": bool(GEMINI_API_KEY),
             "openai_compatible_base_url_configured": bool(OPENAI_COMPATIBLE_BASE_URL),
             "openai_compatible_api_key_configured": bool(OPENAI_COMPATIBLE_API_KEY),
+            "openai_compatible_timeout_seconds": OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
         },
         "embedding": {
             "provider": EMBEDDING_PROVIDER,

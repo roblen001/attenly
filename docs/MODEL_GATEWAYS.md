@@ -10,6 +10,7 @@ LLM_PROVIDER=openai_compatible
 EMBEDDING_PROVIDER=openai_compatible
 OPENAI_COMPATIBLE_BASE_URL=http://host.docker.internal:11434/v1
 OPENAI_COMPATIBLE_API_KEY=
+OPENAI_COMPATIBLE_TIMEOUT_SECONDS=300
 LLM_MODEL=replace-with-chat-model
 EMBEDDING_MODEL=replace-with-embedding-model
 EMBEDDING_DIMENSIONS=1536
@@ -17,6 +18,14 @@ EMBEDDING_DIMENSIONS=1536
 
 Use `OPENAI_COMPATIBLE_API_KEY=` blank only for trusted local endpoints that do
 not require authentication.
+
+The default model timeout is five minutes so difficult reasoning and
+multimodal template requests can finish. The frontend proxy waits up to ten
+minutes, leaving time for the backend to return a useful timeout response.
+External proxies can impose shorter limits that Attenly cannot override. For
+example, [RunPod's public HTTP proxy](https://docs.runpod.io/pods/configuration/expose-ports)
+has a 100-second connection limit; use a secured direct endpoint or SSH tunnel
+for five-minute requests.
 
 ## Local Gateway on the Docker Host
 
@@ -106,4 +115,4 @@ until the core upload/report flow works.
 | Report generation fails quickly | Chat model name is not served by the gateway. | Verify `LLM_MODEL` with the gateway. |
 | Embedding step fails | Embedding model name or dimensions do not match the gateway. | Verify `EMBEDDING_MODEL` and `EMBEDDING_DIMENSIONS`. |
 | Container cannot reach model server | Wrong host URL from Docker's network. | Try `host.docker.internal` for host-local servers. |
-| Requests time out | Model is too slow for current timeout. | Increase `OPENAI_COMPATIBLE_TIMEOUT_SECONDS`. |
+| Requests time out | Model is too slow for the configured timeout, or an external proxy has a shorter limit. | Keep `OPENAI_COMPATIBLE_TIMEOUT_SECONDS=300` and check the gateway/proxy limit. |

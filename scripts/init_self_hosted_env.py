@@ -16,6 +16,7 @@ from check_self_hosted_env import parse_env, validate
 
 
 DEFAULT_MODEL_BASE_URL = "http://host.docker.internal:11434/v1"
+DEFAULT_MODEL_TIMEOUT_SECONDS = "300"
 DEFAULT_EMBEDDING_DIMENSIONS = "1536"
 DEFAULT_GEMINI_LLM_MODEL = "gemini-3.5-flash"
 DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
@@ -111,9 +112,11 @@ def apply_model_updates(
             DEFAULT_MODEL_BASE_URL,
         )
         updates["OPENAI_COMPATIBLE_API_KEY"] = args.model_api_key
+        updates["OPENAI_COMPATIBLE_TIMEOUT_SECONDS"] = args.model_timeout_seconds
     else:
         updates["OPENAI_COMPATIBLE_BASE_URL"] = ""
         updates["OPENAI_COMPATIBLE_API_KEY"] = ""
+        updates["OPENAI_COMPATIBLE_TIMEOUT_SECONDS"] = args.model_timeout_seconds
 
     if llm_provider == "openai_compatible":
         updates["LLM_MODEL"] = prompt_value("LLM_MODEL", args.llm_model)
@@ -232,6 +235,14 @@ def main() -> int:
         help=f"OpenAI-compatible base URL. Defaults to {DEFAULT_MODEL_BASE_URL}.",
     )
     parser.add_argument("--model-api-key", default="", help="Optional model gateway API key.")
+    parser.add_argument(
+        "--model-timeout-seconds",
+        default=DEFAULT_MODEL_TIMEOUT_SECONDS,
+        help=(
+            "Maximum time for one OpenAI-compatible model request. Defaults to "
+            f"{DEFAULT_MODEL_TIMEOUT_SECONDS} seconds."
+        ),
+    )
     parser.add_argument("--llm-model", help="Chat/completions model served by the gateway.")
     parser.add_argument("--embedding-model", help="Embedding model served by the gateway.")
     parser.add_argument(

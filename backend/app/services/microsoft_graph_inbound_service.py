@@ -146,6 +146,39 @@ class MicrosoftGraphInboundPoller:
 
         return attachments, skipped
 
+    def _routing_addresses(self, message: Dict[str, Any]) -> tuple[List[str], Optional[str]]:
+        """Resolve Graph recipients, including Exchange's local-workspace alias fallback.
+
+        Exchange Online can normalize an alias to the mailbox's primary SMTP
+        address in both ``toRecipients`` and the message headers returned by
+        Graph. A trusted local-auth deployment has exactly one configured local
+        workspace identity, so mail delivered to ``GRAPH_MAILBOX`` can be
+        deterministically routed to that user's active endpoint. Other auth
+        modes must preserve a real endpoint address and never use this fallback.
+        """
+        recipients = _recipient_addresses(message)
+        if any(self.job_store.get_endpoint_by_address(address) for address in recipients):
+            return recipients, None
+
+        mailbox = (config.GRAPH_MAILBOX or "").strip().lower()
+        if config.AUTH_PROVIDER != "local" or mailbox not in recipients:
+            return recipients, None
+
+        endpoint = self.job_store.get_endpoint_for_user(config.LOCAL_AUTH_USER_ID)
+        if not endpoint or not endpoint.get("is_active"):
+            return recipients, None
+
+        endpoint_address = (endpoint.get("full_address") or "").strip().lower()
+        if not endpoint_address:
+            return recipients, None
+
+        logger.info(
+            "Routing Graph-normalized mailbox recipient %s to local endpoint %s",
+            mailbox,
+            endpoint_address,
+        )
+        return [endpoint_address, *recipients], endpoint_address
+
     def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         message_id = message["id"]
         provider_message_id = message.get("internetMessageId") or message_id
@@ -156,11 +189,12 @@ class MicrosoftGraphInboundPoller:
             return {"status": "duplicate", "job_id": existing_job["id"]}
 
         attachments, skipped_attachments = self._attachment_inputs(message_id)
+        routing_addresses, fallback_address = self._routing_addresses(message)
 
         result = self.intake_service.handle_inbound_email(
             provider=self.provider,
             provider_message_id=provider_message_id,
-            to_addresses=_recipient_addresses(message),
+            to_addresses=routing_addresses,
             from_address=_sender_address(message),
             subject=message.get("subject") or "",
             body_text=_message_body_text(message),
@@ -169,6 +203,8 @@ class MicrosoftGraphInboundPoller:
                 "graph_message_id": message_id,
                 "graph_internet_message_id": message.get("internetMessageId"),
                 "receivedDateTime": message.get("receivedDateTime"),
+                "graph_recipient_addresses": _recipient_addresses(message),
+                "graph_local_auth_fallback_address": fallback_address,
                 "skipped_graph_attachments": skipped_attachments or None,
             },
         )

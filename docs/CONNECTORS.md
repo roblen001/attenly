@@ -170,10 +170,24 @@ one-user test:
    and save.
 4. Allow time for the alias to propagate before sending the test attachment.
 
+The message appearing in the `GRAPH_MAILBOX` Inbox is expected. The alias is a
+delivery address for that mailbox, and Attenly polls the Inbox rather than
+receiving a separate mailbox or webhook copy.
+
+Exchange Online can expose an alias-delivered message through Graph with only
+the mailbox's primary address in both `toRecipients` and the standard message
+headers. In `AUTH_PROVIDER=local` mode, Attenly safely handles this Microsoft
+normalization by routing mail delivered to `GRAPH_MAILBOX` to the configured
+local user's active email endpoint. The verified-sender check still applies.
+Use a dedicated mailbox for Attenly so unrelated attachment-bearing mail from a
+verified sender is not treated as an Attenly submission.
+
 For a multi-user production deployment, configure the company's mail routing so
 every generated address at `EMAIL_INGEST_DOMAIN` reaches the polled mailbox
 while preserving the original recipient address. Creating aliases manually is
-only appropriate for this small test.
+only appropriate for this small local-auth test. Do not depend on the
+single-workspace fallback to distinguish multiple users because Graph no longer
+provides Attenly with the alias after Exchange normalizes it.
 
 ### End-to-end connector test
 

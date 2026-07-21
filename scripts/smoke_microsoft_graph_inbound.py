@@ -21,6 +21,7 @@ def configure_env(data_dir: Path) -> None:
             "APP_PROFILE": "enterprise",
             "AUTH_PROVIDER": "local",
             "LOCAL_AUTH_TOKEN": "graph-smoke-token",
+            "LOCAL_AUTH_USER_ID": "graph-user",
             "DATABASE_PROVIDER": "sqlalchemy",
             "DATABASE_URL": f"sqlite:///{db_path.as_posix()}",
             "DATABASE_AUTO_CREATE_TABLES": "true",
@@ -71,7 +72,7 @@ class FakeGraphClient:
                 "receivedDateTime": "2026-06-15T12:00:00Z",
                 "from": {"emailAddress": {"address": "sender@example.com"}},
                 "toRecipients": [
-                    {"emailAddress": {"address": "u_graphsmoke@mail.example.test"}}
+                    {"emailAddress": {"address": "attenly@example.com"}}
                 ],
                 "ccRecipients": [],
                 "body": {"content": "Please process this attachment."},

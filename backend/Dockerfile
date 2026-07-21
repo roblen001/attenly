@@ -55,6 +55,9 @@ COPY requirements.txt .
 RUN pip install --no-index --find-links /wheels -r requirements.txt && \
     rm -rf /wheels
 
+# Fail the image build if the pinned WeasyPrint/PyDyf pair cannot render a PDF.
+RUN python -c "from weasyprint import HTML; pdf = HTML(string='<p>PDF smoke test</p>').write_pdf(presentational_hints=True, optimize_images=True); assert pdf.startswith(b'%PDF-'), 'WeasyPrint did not produce a PDF'"
+
 # ---- Optionally pre-download DocTR models during build (as root) ----
 # Use smallest/fastest CPU pair:
 #   det_arch='db_mobilenet_v3_large'

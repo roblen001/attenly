@@ -197,7 +197,7 @@ class WeasyPrintPDFGenerator:
             return pdf_bytes
 
         except Exception as e:
-            logger.error(f"Failed to generate PDF report: {e}")
+            logger.exception("Failed to generate PDF report")
             raise ValueError(f"PDF generation failed: {str(e)}")
 
     def _populate_html_template(self, template_html: str, report_data: Dict[str, Any],

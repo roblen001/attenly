@@ -7,6 +7,7 @@ settings, verified senders, and default agents.
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from app import config
@@ -39,6 +40,13 @@ def disabled_email_ingest_settings() -> dict:
         "provider": config.INBOUND_EMAIL_PROVIDER,
         "message": EMAIL_INGEST_DISABLED_MESSAGE,
     }
+
+
+def sender_verification_redirect(result: str) -> RedirectResponse:
+    """Return the browser to the Email Ingest settings with a safe result code."""
+    app_url = config.APP_URL.rstrip("/")
+    target = f"{app_url}/settings?tab=email&sender_verification={result}"
+    return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
 def require_email_ingest_enabled() -> None:
@@ -478,34 +486,20 @@ async def verify_sender(token: str = Query(...)):
         token: Verification token from email link
         
     Returns:
-        Success/error message as JSON
+        Redirect to the user-facing Email Ingest settings page
     """
     try:
         if not is_email_ingest_enabled():
-            return {
-                "status": "disabled",
-                "reason": "email_ingest_disabled",
-                "message": EMAIL_INGEST_DISABLED_MESSAGE,
-            }
+            return sender_verification_redirect("disabled")
 
         success, message = email_ingest_service.verify_sender(token)
         
         if success:
-            return {
-                "status": "success",
-                "message": message
-            }
-        else:
-            return {
-                "status": "error",
-                "reason": "invalid_or_expired_token",
-                "message": message
-            }
+            return sender_verification_redirect("success")
+
+        logger.warning("Sender verification rejected: %s", message)
+        return sender_verification_redirect("invalid")
             
     except Exception as e:
         logger.error(f"Verification failed: {str(e)}")
-        return {
-            "status": "error",
-            "reason": "verification_failed",
-            "message": "Verification failed. Please try again."
-        }
+        return sender_verification_redirect("failed")

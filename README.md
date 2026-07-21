@@ -59,6 +59,34 @@ running the command. This creates `.env`, generates `LOCAL_AUTH_TOKEN`, and
 keeps the default model gateway URL at `http://host.docker.internal:11434/v1`.
 Use `--model-base-url` when your model gateway is somewhere else.
 
+### Local Ollama or a Company Model Endpoint
+
+"OpenAI-compatible" means the endpoint follows the OpenAI HTTP route and JSON
+shapes; the models can still run entirely on company hardware. Attenly expects
+a base URL ending in `/v1` and calls `POST /v1/chat/completions` for generation
+and `POST /v1/embeddings` for embeddings.
+
+For a small Ollama example with multimodal template ingestion:
+
+```bash
+ollama pull qwen3.5:9b
+ollama pull embeddinggemma
+ollama list
+```
+
+Then configure Attenly:
+
+```bash
+python scripts/init_self_hosted_env.py --provider openai_compatible --model-base-url http://host.docker.internal:11434/v1 --llm-model qwen3.5:9b --embedding-model embeddinggemma:latest --embedding-dimensions 768 --template-ingest-provider openai_compatible --template-ingest-model qwen3.5:9b
+```
+
+Replace `host.docker.internal` with a private server DNS name when Ollama or a
+company gateway runs on another machine. Model names are examples, not fixed
+requirements. A custom gateway can use any model or internal logic as long as
+it implements the expected OpenAI-compatible routes. See
+[`docs/MODEL_GATEWAYS.md`](docs/MODEL_GATEWAYS.md) for Linux Ollama setup,
+network security, verification commands, and the complete endpoint contract.
+
 For Gemini models, including Gemini smart template ingestion:
 
 ```bash

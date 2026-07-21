@@ -108,6 +108,10 @@ OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
 OPENAI_COMPATIBLE_API_KEY=replace-with-gateway-token
 ```
 
+For copy-paste Ollama installation, model download/loading, private-network
+exposure, and the exact API contract for a company-built endpoint, see
+[`MODEL_GATEWAYS.md`](MODEL_GATEWAYS.md).
+
 Template ingestion is disabled in the simplest profile:
 
 ```bash

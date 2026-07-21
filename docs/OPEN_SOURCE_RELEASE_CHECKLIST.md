@@ -29,6 +29,9 @@ public open-source release instead of an open-source preparation branch.
   token and required model settings.
 - The env initialization script can also generate Microsoft Graph or Resend
   email connector settings.
+- Existing model configurations can enable Graph without being replaced, and a
+  live preflight can verify the Entra token, mailbox read query, attachments,
+  and optional outbound send before Docker is recreated.
 - The env initialization script can generate Gemini-backed report generation,
   embeddings, and smart template-ingest settings.
 - GHCR `open-sourcing` images for backend and frontend were pulled and booted
@@ -57,8 +60,13 @@ docker compose up -d --wait
   - authenticate with `LOCAL_AUTH_TOKEN`
   - upload documents
   - generate a report through the configured model endpoint
-- Test the Microsoft Graph connector path with real Entra credentials if the
-  first public pilot should include Microsoft 365 email.
+- Test the Microsoft Graph connector path with real Entra credentials:
+  - run `python scripts/check_microsoft_graph_connection.py .env`
+  - enable email ingest and select a default agent
+  - route the generated Attenly address to `GRAPH_MAILBOX`
+  - verify a sender, then send a small PDF to the generated address
+  - run `python scripts/trigger_microsoft_graph_poll.py .env`
+  - confirm one accepted/successful job, a saved report, and the ready email
 
 ## Documentation Before Public Announcement
 

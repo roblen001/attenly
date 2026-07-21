@@ -1,4 +1,9 @@
-"""Trigger one local Microsoft Graph poll-and-process cycle through Attenly."""
+"""Trigger one local Microsoft Graph polling cycle through Attenly.
+
+In the Docker self-hosted profile, accepted jobs are processed by the
+email-worker service. Legacy deployments with EMAIL_JOB_EXECUTION_MODE=inline
+can still process jobs through the same route.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ def main() -> int:
     parser.add_argument(
         "--poll-only",
         action="store_true",
-        help="Poll the mailbox without processing accepted jobs.",
+        help="Poll the mailbox through the poll-only route.",
     )
     args = parser.parse_args()
 

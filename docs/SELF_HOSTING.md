@@ -151,8 +151,9 @@ polling enabled:
 python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
 ```
 
-This generates `INTERNAL_CRON_SECRET` for the internal polling routes. To enable
-only one email direction, use:
+This generates `INTERNAL_CRON_SECRET` for internal manual polling routes and
+configures the Compose `email-worker` service to process inbound jobs outside
+the web backend. To enable only one email direction, use:
 
 ```bash
 python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --outbound-email-provider microsoft_graph --inbound-email-provider none --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
@@ -170,10 +171,14 @@ GRAPH_MAILBOX=attenly@company.com
 INTERNAL_CRON_SECRET=replace-with-generated-secret
 GRAPH_POLL_BATCH_SIZE=10
 GRAPH_POLL_LOOKBACK_SECONDS=300
+EMAIL_JOB_EXECUTION_MODE=worker
+EMAIL_WORKER_POLL_INTERVAL_SECONDS=30
+EMAIL_WORKER_MAX_JOBS_PER_CYCLE=1
 ```
 
-Inbound polling is triggered through the internal route documented in
-`docs/CONNECTORS.md`. Keep that route behind internal network controls.
+Inbound polling runs automatically in the `email-worker` container. The
+internal route documented in `docs/CONNECTORS.md` is still available as a
+manual nudge and should stay behind internal network controls.
 
 ## 5. Auth Options
 
@@ -209,9 +214,9 @@ For a quick packaging check, run the automated published-image smoke test:
 python scripts/smoke_self_hosted_compose.py
 ```
 
-It starts a disposable Compose stack, checks frontend/backend health, verifies
-Docker volume persistence across container recreation, and removes the stack
-and volume afterward. It does not call your model endpoint.
+It starts a disposable Compose stack, checks frontend/backend/email-worker
+health, verifies Docker volume persistence across container recreation, and
+removes the stack and volume afterward. It does not call your model endpoint.
 
 After startup, verify:
 

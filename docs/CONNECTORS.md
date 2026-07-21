@@ -128,18 +128,32 @@ GRAPH_MAILBOX=attenly@company.com
 INTERNAL_CRON_SECRET=generate-a-long-random-secret
 GRAPH_POLL_BATCH_SIZE=10
 GRAPH_POLL_LOOKBACK_SECONDS=300
+EMAIL_JOB_EXECUTION_MODE=worker
+EMAIL_WORKER_POLL_INTERVAL_SECONDS=30
+EMAIL_WORKER_MAX_JOBS_PER_CYCLE=1
 ```
 
 The Graph app needs application mail permissions for the configured mailbox.
-For inbound polling, call:
+In the Docker self-hosted profile, Compose starts an `email-worker` service
+that polls the mailbox and processes accepted jobs automatically. The web
+backend stays focused on interactive app requests.
+
+Watch it with:
+
+```bash
+docker compose logs -f email-worker
+```
+
+To request an immediate poll manually, call:
 
 ```text
 POST /internal/process-email-jobs
 Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 ```
 
-This polls Graph, stores valid attachments through the configured storage
-provider, creates email jobs, and processes pending jobs.
+With `EMAIL_JOB_EXECUTION_MODE=worker`, the route returns after polling and the
+worker handles queued jobs. Set `EMAIL_JOB_EXECUTION_MODE=inline` only for a
+legacy single-process deployment where no worker service is running.
 
 To poll without processing queued jobs:
 
@@ -194,8 +208,8 @@ provides Attenly with the alias after Exchange normalizes it.
 1. Recreate the backend so it loads the updated `.env`:
 
    ```bash
-   docker compose pull backend
-   docker compose up -d --force-recreate backend
+   docker compose pull
+   docker compose up -d --force-recreate --wait
    ```
 
    If you are testing unpublished source changes, build the backend with
@@ -213,18 +227,19 @@ provides Attenly with the alias after Exchange normalizes it.
    above.
 7. Send a new email from the verified sender to the generated address. Include
    one small PDF and put the report instruction in the message body.
-8. Trigger one poll-and-process cycle:
+8. Either wait for the next worker poll or trigger one immediate poll:
 
    ```bash
    python scripts/trigger_microsoft_graph_poll.py .env
    ```
 
-9. Confirm the returned Graph summary shows one accepted message and the job
-   summary shows one successful job. Confirm the report appears in Attenly and
-   the sender receives the report-ready email.
+9. Watch `docker compose logs -f email-worker`. Confirm the Graph summary shows
+   one accepted message and the worker logs show one successful job. Confirm
+   the report appears in Attenly and the sender receives the report-ready
+   email.
 
-The production deployment needs a scheduler to call the process route every
-one or two minutes. A manual trigger is sufficient for this acceptance test.
+The production Docker deployment does not need an external scheduler for normal
+Graph polling. A manual trigger is still useful for acceptance testing.
 
 ## Resend
 

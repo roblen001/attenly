@@ -93,6 +93,7 @@ def validate(env: Dict[str, str]) -> tuple[List[str], List[str]]:
     template_provider = provider(env, "TEMPLATE_INGEST_PROVIDER", "disabled")
     outbound_email = provider(env, "OUTBOUND_EMAIL_PROVIDER", "none")
     inbound_email = provider(env, "INBOUND_EMAIL_PROVIDER", "none")
+    email_job_execution_mode = provider(env, "EMAIL_JOB_EXECUTION_MODE", "worker")
     database_provider = provider(env, "DATABASE_PROVIDER", "sqlalchemy")
     storage_provider = provider(env, "STORAGE_PROVIDER", "filesystem")
 
@@ -220,6 +221,30 @@ def validate(env: Dict[str, str]) -> tuple[List[str], List[str]]:
             "INTERNAL_CRON_SECRET",
             when="INBOUND_EMAIL_PROVIDER=microsoft_graph",
         )
+
+    if inbound_email in {"microsoft_graph", "resend"}:
+        if email_job_execution_mode not in {"worker", "inline"}:
+            errors.append("EMAIL_JOB_EXECUTION_MODE must be 'worker' or 'inline'")
+        if email_job_execution_mode == "inline":
+            warnings.append(
+                "EMAIL_JOB_EXECUTION_MODE=inline processes email jobs inside the "
+                "web backend; Docker pilots should use worker."
+            )
+
+        poll_interval = env.get("EMAIL_WORKER_POLL_INTERVAL_SECONDS", "30")
+        try:
+            if int(poll_interval) < 5:
+                errors.append("EMAIL_WORKER_POLL_INTERVAL_SECONDS must be at least 5")
+        except ValueError:
+            errors.append("EMAIL_WORKER_POLL_INTERVAL_SECONDS must be an integer")
+
+        max_jobs = env.get("EMAIL_WORKER_MAX_JOBS_PER_CYCLE", "1")
+        try:
+            max_jobs_int = int(max_jobs)
+            if max_jobs_int < 1 or max_jobs_int > 10:
+                errors.append("EMAIL_WORKER_MAX_JOBS_PER_CYCLE must be between 1 and 10")
+        except ValueError:
+            errors.append("EMAIL_WORKER_MAX_JOBS_PER_CYCLE must be an integer")
 
     if outbound_email == "resend" or inbound_email == "resend":
         require(errors, env, "RESEND_API_KEY", when="Resend email is enabled")

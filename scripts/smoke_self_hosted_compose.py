@@ -2,8 +2,8 @@
 
 This script intentionally uses only the Python standard library. It creates a
 temporary env file with local auth, starts the published-image Compose stack,
-checks frontend/backend health, verifies Docker volume persistence across
-container recreation, and then removes the disposable stack and volume.
+checks frontend/backend/email-worker health, verifies Docker volume persistence
+across container recreation, and then removes the disposable stack and volume.
 
 It does not call the configured model endpoint, Microsoft Graph, Resend, or any
 external API. Use it to prove that the Docker packaging boots correctly before
@@ -242,7 +242,7 @@ def main() -> int:
             print("Starting published-image Compose stack")
             run(compose_args(env_path, args.project_name, "up", "-d", "--wait"), env=command_env)
 
-            print("Checking frontend and backend health")
+            print("Checking frontend, backend, and email-worker health")
             check_http(args.frontend_port)
 
             print("Verifying Docker volume persistence across container recreation")

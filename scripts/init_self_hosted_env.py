@@ -21,6 +21,8 @@ DEFAULT_EMBEDDING_DIMENSIONS = "1536"
 DEFAULT_GEMINI_LLM_MODEL = "gemini-3.5-flash"
 DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
 DEFAULT_GEMINI_TEMPLATE_INGEST_MODEL = "gemini-3.5-flash"
+DEFAULT_EMAIL_WORKER_POLL_INTERVAL_SECONDS = "30"
+DEFAULT_EMAIL_WORKER_MAX_JOBS_PER_CYCLE = "1"
 EMAIL_PROVIDER_CHOICES = ("none", "microsoft_graph", "resend")
 MODEL_PROVIDER_CHOICES = ("openai_compatible", "gemini")
 TEMPLATE_INGEST_PROVIDER_CHOICES = ("disabled", "basic", "gemini", "openai_compatible")
@@ -186,6 +188,9 @@ def apply_email_updates(
         updates["GRAPH_POLL_LOOKBACK_SECONDS"] = args.graph_poll_lookback_seconds
 
     if inbound_email_provider == "microsoft_graph":
+        updates["EMAIL_JOB_EXECUTION_MODE"] = args.email_job_execution_mode
+        updates["EMAIL_WORKER_POLL_INTERVAL_SECONDS"] = args.email_worker_poll_interval_seconds
+        updates["EMAIL_WORKER_MAX_JOBS_PER_CYCLE"] = args.email_worker_max_jobs_per_cycle
         if args.internal_cron_secret:
             updates["INTERNAL_CRON_SECRET"] = args.internal_cron_secret
         else:
@@ -197,6 +202,9 @@ def apply_email_updates(
         updates["RESEND_API_KEY"] = prompt_value("RESEND_API_KEY", args.resend_api_key)
 
     if inbound_email_provider == "resend":
+        updates["EMAIL_JOB_EXECUTION_MODE"] = args.email_job_execution_mode
+        updates["EMAIL_WORKER_POLL_INTERVAL_SECONDS"] = args.email_worker_poll_interval_seconds
+        updates["EMAIL_WORKER_MAX_JOBS_PER_CYCLE"] = args.email_worker_max_jobs_per_cycle
         updates["RESEND_WEBHOOK_SECRET"] = prompt_value(
             "RESEND_WEBHOOK_SECRET",
             args.resend_webhook_secret,
@@ -294,6 +302,25 @@ def main() -> int:
     parser.add_argument(
         "--internal-cron-secret",
         help="Secret for internal email polling routes. Generated for Graph inbound if omitted.",
+    )
+    parser.add_argument(
+        "--email-job-execution-mode",
+        default="worker",
+        choices=("worker", "inline"),
+        help=(
+            "How queued email jobs run. The Docker self-hosted default is worker; "
+            "inline is only for legacy single-process deployments."
+        ),
+    )
+    parser.add_argument(
+        "--email-worker-poll-interval-seconds",
+        default=DEFAULT_EMAIL_WORKER_POLL_INTERVAL_SECONDS,
+        help="How often the Compose email-worker polls/processes jobs. Defaults to 30.",
+    )
+    parser.add_argument(
+        "--email-worker-max-jobs-per-cycle",
+        default=DEFAULT_EMAIL_WORKER_MAX_JOBS_PER_CYCLE,
+        help="Maximum queued email jobs processed per worker loop. Defaults to 1.",
     )
     parser.add_argument("--resend-api-key", help="Resend API key.")
     parser.add_argument("--resend-webhook-secret", help="Resend inbound webhook secret.")

@@ -60,8 +60,9 @@ export const useReportData = (params: UseReportDataParams) => {
           setReportData(result.report_data);
           setReportInfo({ id: result.id, name: result.report_name });
           
-          // Auto-preload PDFs for fast quote viewing (waits before hiding loading)
-          await preloadDocuments(reportId);
+          // Warm reference PDFs without delaying the report itself. Quote
+          // viewing falls back to on-demand loading while this runs.
+          void preloadDocuments(reportId);
           
         } else if (agentId) {
           // Fetch current report

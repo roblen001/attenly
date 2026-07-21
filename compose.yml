@@ -21,6 +21,28 @@ services:
       retries: 5
       start_period: 30s
 
+  email-worker:
+    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-backend:${ATTENLY_IMAGE_TAG:-open-sourcing}}
+    pull_policy: missing
+    init: true
+    command: ["python", "-m", "app.workers.email_worker"]
+    env_file:
+      - ${ATTENLY_ENV_FILE:-.env}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - attenly-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.workers.email_worker", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
   frontend:
     image: ${ATTENLY_FRONTEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-frontend:${ATTENLY_IMAGE_TAG:-open-sourcing}}
     pull_policy: missing

@@ -167,11 +167,14 @@ token with:
 (Get-Content .env | Where-Object { $_ -like "LOCAL_AUTH_TOKEN=*" }) -replace "LOCAL_AUTH_TOKEN=", ""
 ```
 
-The compose file stores SQLite data and uploaded files in the `attenly-data`
-Docker volume. The frontend container uses a same-origin `/api` proxy to the
-backend, so browser users only need the frontend URL. The open-source frontend
-container also self-hosts TinyMCE at `/tinymce/tinymce.min.js`; no Tiny Cloud
-API key is required for this Docker path.
+The compose file starts `frontend`, `backend`, and `email-worker`. The backend
+serves the interactive app, while `email-worker` handles long-running inbound
+email/report jobs so normal pages stay responsive. SQLite data and uploaded
+files live in the shared `attenly-data` Docker volume. The frontend container
+uses a same-origin `/api` proxy to the backend, so browser users only need the
+frontend URL. The open-source frontend container also self-hosts TinyMCE at
+`/tinymce/tinymce.min.js`; no Tiny Cloud API key is required for this Docker
+path.
 
 See [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) for model gateway, Microsoft
 Graph connector, local auth, and Docker volume guidance.
@@ -491,6 +494,8 @@ The backend also has an initial provider-safe runtime slice:
   processing routes.
 - `INBOUND_EMAIL_PROVIDER=microsoft_graph` polls a Microsoft 365 mailbox through
   Microsoft Graph and creates email jobs without Resend.
+- `EMAIL_JOB_EXECUTION_MODE=worker` makes the Compose `email-worker` service
+  process queued email jobs outside the web backend.
 - `VITE_AUTH_PROVIDER=local` lets the browser app use the same bearer token
   flow without Supabase Auth.
 - `VITE_AUTH_PROVIDER=external_jwt` lets users paste an externally issued JWT
@@ -668,6 +673,14 @@ SQLAlchemy profiles now have local tables for email aliases, verified senders,
 email jobs, and poll state. The background processor can claim and complete
 jobs through SQLAlchemy and filesystem-backed report persistence.
 
+In the Docker self-hosted profile, the `email-worker` service runs this work
+automatically. Use the internal route only as a manual nudge or for legacy
+single-process deployments. Watch live job progress with:
+
+```bash
+docker compose logs -f email-worker
+```
+
 To use Microsoft Graph inbound polling, configure:
 
 ```bash
@@ -694,17 +707,22 @@ The first command securely prompts for the secret. See
 [`docs/CONNECTORS.md`](docs/CONNECTORS.md) for test-tenant options, the required
 mailbox alias step, a live `Mail.Send` check, and the full acceptance test.
 
-Call the same cron endpoint:
+Compose runs the `email-worker` service automatically. It polls the configured
+mailbox, stores valid attachments through the configured storage provider,
+creates email jobs, and processes pending jobs outside the web backend.
+
+To request an immediate poll manually, call:
 
 ```text
 POST /internal/process-email-jobs
 Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 ```
 
-When Graph inbound is enabled, that endpoint first polls the configured mailbox,
-stores valid attachments through the configured storage provider, creates email
-jobs, and then processes pending jobs. Use `POST /internal/poll-inbound-email`
-with the same header to poll without processing queued jobs.
+With the default `EMAIL_JOB_EXECUTION_MODE=worker`, this route returns after
+polling; the worker then processes the accepted job. Set
+`EMAIL_JOB_EXECUTION_MODE=inline` only for a legacy deployment without the
+worker service. Use `POST /internal/poll-inbound-email` with the same header to
+poll without processing queued jobs.
 
 ## Security Notes
 

@@ -214,10 +214,11 @@ current image-size tradeoff.
 
 ## Microsoft Graph Fails
 
-Check the backend logs first:
+Check the backend and worker logs first:
 
 ```bash
 docker compose logs backend
+docker compose logs email-worker
 ```
 
 Common causes:
@@ -229,6 +230,7 @@ Common causes:
 - mailbox does not exist or the app cannot access it
 - the generated Attenly address was not added/routed as an alias to the mailbox
 - internal cron route was called without `X-Cron-Secret`
+- `email-worker` is not running, unhealthy, or has not loaded the updated `.env`
 
 Run the live preflight outside Docker to separate Microsoft configuration from
 container configuration:
@@ -246,6 +248,18 @@ For inbound polling, the route is:
 POST /internal/process-email-jobs
 Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 ```
+
+With Docker Compose and `EMAIL_JOB_EXECUTION_MODE=worker`, that route asks for
+an immediate poll and returns quickly. Job processing happens in
+`email-worker`. Watch progress with:
+
+```bash
+docker compose logs -f email-worker
+```
+
+If a saved report opens slowly while an emailed report is being generated,
+rebuild from the current source and confirm `email-worker` is healthy. The web
+backend should not be doing long email report jobs in worker mode.
 
 ## Data Disappeared
 

@@ -164,6 +164,25 @@ TEMPLATE_INGEST_PROVIDER = _normalized_env(
 OUTBOUND_EMAIL_PROVIDER = _normalized_env("OUTBOUND_EMAIL_PROVIDER", _outbound_email_provider_default())
 INBOUND_EMAIL_PROVIDER = _normalized_env("INBOUND_EMAIL_PROVIDER", _inbound_email_provider_default())
 
+# Email report generation is intentionally isolated from the FastAPI web
+# process in self-hosted deployments. ``inline`` remains available only as a
+# compatibility mode for deployments that still use an external cron request
+# to perform the work inside the backend container.
+EMAIL_JOB_EXECUTION_MODE = _normalized_env(
+    "EMAIL_JOB_EXECUTION_MODE",
+    "inline" if APP_PROFILE == "default" else "worker",
+)
+EMAIL_WORKER_POLL_INTERVAL_SECONDS = int(
+    os.getenv("EMAIL_WORKER_POLL_INTERVAL_SECONDS", "30")
+)
+EMAIL_WORKER_MAX_JOBS_PER_CYCLE = int(
+    os.getenv("EMAIL_WORKER_MAX_JOBS_PER_CYCLE", "1")
+)
+EMAIL_WORKER_HEARTBEAT_PATH = os.getenv(
+    "EMAIL_WORKER_HEARTBEAT_PATH",
+    "/tmp/attenly-email-worker.heartbeat",
+)
+
 # Planned provider-specific settings. These are exposed now so future adapter
 # branches can consume stable names without changing env examples again.
 OPENAI_COMPATIBLE_BASE_URL = os.getenv("OPENAI_COMPATIBLE_BASE_URL")
@@ -727,6 +746,14 @@ def validate_config():
         errors.append("GRAPH_POLL_LOOKBACK_SECONDS cannot be negative")
     if GRAPH_INITIAL_LOOKBACK_HOURS < 1:
         errors.append("GRAPH_INITIAL_LOOKBACK_HOURS must be at least 1")
+    if EMAIL_JOB_EXECUTION_MODE not in {"worker", "inline"}:
+        errors.append("EMAIL_JOB_EXECUTION_MODE must be 'worker' or 'inline'")
+    if EMAIL_WORKER_POLL_INTERVAL_SECONDS < 5:
+        errors.append("EMAIL_WORKER_POLL_INTERVAL_SECONDS must be at least 5")
+    if EMAIL_WORKER_MAX_JOBS_PER_CYCLE < 1:
+        errors.append("EMAIL_WORKER_MAX_JOBS_PER_CYCLE must be at least 1")
+    if EMAIL_WORKER_MAX_JOBS_PER_CYCLE > 10:
+        errors.append("EMAIL_WORKER_MAX_JOBS_PER_CYCLE should not exceed 10")
 
     if errors:
         raise ValueError("Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
@@ -839,6 +866,9 @@ def get_config_summary() -> dict:
             "graph_mailbox_configured": bool(GRAPH_MAILBOX),
             "graph_poll_batch_size": GRAPH_POLL_BATCH_SIZE,
             "graph_poll_lookback_seconds": GRAPH_POLL_LOOKBACK_SECONDS,
+            "job_execution_mode": EMAIL_JOB_EXECUTION_MODE,
+            "worker_poll_interval_seconds": EMAIL_WORKER_POLL_INTERVAL_SECONDS,
+            "worker_max_jobs_per_cycle": EMAIL_WORKER_MAX_JOBS_PER_CYCLE,
         },
         "quote_extraction": {
             "context_chars": QUOTE_CONTEXT_CHARS,

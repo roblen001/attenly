@@ -679,8 +679,22 @@ GRAPH_MAILBOX=attenly@company.com
 INTERNAL_CRON_SECRET=generate-a-long-random-secret
 ```
 
-The Graph app registration needs Microsoft Graph application mail read
-permission for the mailbox. Call the same cron endpoint:
+The Graph app registration needs Microsoft Graph **Application** permissions:
+`Mail.Read` for inbound processing and `Mail.Send` when outbound Graph email is
+enabled, followed by tenant admin consent. These are not Delegated permissions.
+If local Ollama models already work, add Graph without replacing those model
+settings:
+
+```bash
+python scripts/configure_microsoft_graph_env.py .env --graph-tenant-id YOUR_TENANT_ID --graph-client-id YOUR_CLIENT_ID --graph-mailbox attenly@YOUR_TENANT.onmicrosoft.com
+python scripts/check_microsoft_graph_connection.py .env
+```
+
+The first command securely prompts for the secret. See
+[`docs/CONNECTORS.md`](docs/CONNECTORS.md) for test-tenant options, the required
+mailbox alias step, a live `Mail.Send` check, and the full acceptance test.
+
+Call the same cron endpoint:
 
 ```text
 POST /internal/process-email-jobs

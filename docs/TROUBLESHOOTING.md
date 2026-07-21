@@ -223,10 +223,22 @@ docker compose logs backend
 Common causes:
 
 - tenant ID, client ID, client secret, or mailbox is wrong
-- Graph application permissions are missing
+- Graph **Application** permissions (`Mail.Read` and, for outbound email,
+  `Mail.Send`) are missing or were mistakenly added as Delegated permissions
 - tenant admin consent has not been granted
 - mailbox does not exist or the app cannot access it
+- the generated Attenly address was not added/routed as an alias to the mailbox
 - internal cron route was called without `X-Cron-Secret`
+
+Run the live preflight outside Docker to separate Microsoft configuration from
+container configuration:
+
+```bash
+python scripts/check_microsoft_graph_connection.py .env
+```
+
+Add `--send-test-to you@example.com` to make one real outbound request. The
+script never prints the client secret or access token.
 
 For inbound polling, the route is:
 

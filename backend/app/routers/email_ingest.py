@@ -31,6 +31,8 @@ def is_email_ingest_enabled() -> bool:
 def disabled_email_ingest_settings() -> dict:
     return {
         "endpoint": None,
+        "delivery_address": None,
+        "delivery_mode": None,
         "verified_senders": [],
         "usage_summary": {
             "jobs_last_24h": 0,
@@ -39,6 +41,34 @@ def disabled_email_ingest_settings() -> dict:
         "enabled_by_config": False,
         "provider": config.INBOUND_EMAIL_PROVIDER,
         "message": EMAIL_INGEST_DISABLED_MESSAGE,
+    }
+
+
+def with_delivery_config(settings: dict) -> dict:
+    """Add the address operators should give to email senders.
+
+    The generated endpoint remains the internal routing identity. A trusted
+    local-auth Microsoft Graph deployment has one workspace and already routes
+    the configured mailbox to that endpoint, so advertising the mailbox avoids
+    requiring an unnecessary Exchange alias for the one-workspace setup.
+    """
+    endpoint = settings.get("endpoint") or {}
+    generated_address = (endpoint.get("full_address") or "").strip().lower()
+    graph_mailbox = (config.GRAPH_MAILBOX or "").strip().lower()
+    uses_local_graph_mailbox = (
+        config.INBOUND_EMAIL_PROVIDER == "microsoft_graph"
+        and config.AUTH_PROVIDER == "local"
+        and bool(graph_mailbox)
+    )
+
+    return {
+        **settings,
+        "delivery_address": graph_mailbox if uses_local_graph_mailbox else generated_address or None,
+        "delivery_mode": (
+            "graph_mailbox"
+            if uses_local_graph_mailbox
+            else "generated_alias" if generated_address else None
+        ),
     }
 
 
@@ -97,6 +127,8 @@ class UsageSummary(BaseModel):
 class EmailIngestSettings(BaseModel):
     """User's email ingest settings."""
     endpoint: Optional[EmailIngestEndpoint] = None
+    delivery_address: Optional[str] = None
+    delivery_mode: Optional[str] = None
     verified_senders: List[VerifiedSenderResponse]
     usage_summary: UsageSummary
     enabled_by_config: bool = True
@@ -151,7 +183,7 @@ async def get_settings(current_user = Depends(get_current_user), jwt_token: str 
         settings = email_ingest_service.get_user_settings(jwt_token, user_id)
         
         # The service returns a dict that matches EmailIngestSettings schema exactly
-        return settings
+        return with_delivery_config(settings)
         
     except Exception as e:
         user_id = getattr(current_user, "id", "unknown")
@@ -182,7 +214,7 @@ async def enable_email_ingest(current_user = Depends(get_current_user), jwt_toke
         # Get full settings to return (now in correct format)
         settings = email_ingest_service.get_user_settings(jwt_token, user_id)
         
-        return settings
+        return with_delivery_config(settings)
         
     except HTTPException:
         raise

@@ -11,6 +11,8 @@ const disabledEmailSettings = (
   provider = 'none'
 ): EmailIngestSettingsType => ({
   endpoint: null,
+  delivery_address: null,
+  delivery_mode: null,
   verified_senders: [],
   usage_summary: {
     jobs_last_24h: 0,
@@ -101,7 +103,7 @@ export default function EmailIngestSettings() {
   };
 
   const handleDisable = async () => {
-    if (!window.confirm('Are you sure you want to disable email ingest? Your email alias will be preserved but will not accept new emails.')) {
+    if (!window.confirm('Are you sure you want to disable email ingest? Your routing settings will be preserved but will not accept new emails.')) {
       return;
     }
 
@@ -121,8 +123,9 @@ export default function EmailIngestSettings() {
   };
 
   const handleCopyEmail = () => {
-    if (settings?.endpoint?.full_address) {
-      navigator.clipboard.writeText(settings.endpoint.full_address);
+    const address = settings?.delivery_address || settings?.endpoint?.full_address;
+    if (address) {
+      navigator.clipboard.writeText(address);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     }
@@ -206,6 +209,8 @@ export default function EmailIngestSettings() {
   const hasEndpoint = Boolean(settings?.endpoint);
   const isEmailAvailable = settings?.enabled_by_config ?? true;
   const emailDisabledMessage = settings?.message || 'Email ingest is disabled by server configuration.';
+  const deliveryAddress = settings?.delivery_address || settings?.endpoint?.full_address || '';
+  const usesGraphMailboxDelivery = settings?.delivery_mode === 'graph_mailbox';
   const jobsRemaining = settings ? settings.usage_summary.rate_limit - settings.usage_summary.jobs_last_24h : 0;
 
   return (
@@ -248,13 +253,17 @@ export default function EmailIngestSettings() {
             <h2>Email Ingest {hasEndpoint && !isEnabled ? 'Disabled' : 'Not Enabled'}</h2>
             <p>
               {hasEndpoint && !isEnabled
-                ? 'Your email alias exists but is currently disabled. Enable it to start receiving emails.'
-                : 'Generate a unique email address to forward documents for automated processing.'}
+                ? 'Your email routing is currently disabled. Enable it to start receiving documents.'
+                : usesGraphMailboxDelivery
+                  ? 'Enable email ingest to process attachments delivered to your configured Microsoft 365 mailbox.'
+                  : 'Generate a unique email address to forward documents for automated processing.'}
             </p>
-            {hasEndpoint && !isEnabled && settings?.endpoint && (
+            {hasEndpoint && !isEnabled && deliveryAddress && (
               <div className="disabled-alias-info">
-                <p className="alias-label">Your Email Alias:</p>
-                <code>{settings.endpoint.full_address}</code>
+                <p className="alias-label">
+                  {usesGraphMailboxDelivery ? 'Microsoft 365 Mailbox:' : 'Your Email Alias:'}
+                </p>
+                <code>{deliveryAddress}</code>
               </div>
             )}
             <button
@@ -266,14 +275,17 @@ export default function EmailIngestSettings() {
             </button>
           </div>
 
-          <UsageInstructions />
+          <UsageInstructions
+            deliveryMode={settings?.delivery_mode}
+            deliveryAddress={deliveryAddress}
+          />
         </div>
       ) : (
         <div className="enabled-state">
-          {/* Email Alias Card */}
+          {/* Email delivery card */}
           <div className="settings-card">
             <div className="card-header-section">
-              <h2>Your Email Alias</h2>
+              <h2>{usesGraphMailboxDelivery ? 'Report Intake Mailbox' : 'Your Email Alias'}</h2>
               <button
                 onClick={handleDisable}
                 disabled={disabling}
@@ -283,7 +295,7 @@ export default function EmailIngestSettings() {
               </button>
             </div>
             <div className="email-alias-display">
-              <code className="email-address">{settings?.endpoint?.full_address}</code>
+              <code className="email-address">{deliveryAddress}</code>
               <button
                 onClick={handleCopyEmail}
                 className={`btn btn-copy ${copySuccess ? 'copied' : ''}`}
@@ -292,7 +304,9 @@ export default function EmailIngestSettings() {
               </button>
             </div>
             <p className="help-text">
-              Forward emails with attachments to this address. Emails must come from verified senders.
+              {usesGraphMailboxDelivery
+                ? 'Send attachments directly to this Microsoft 365 mailbox. Attenly monitors it through Microsoft Graph; no generated mailbox alias is required for this single-workspace deployment.'
+                : 'Forward emails with attachments to this address. Emails must come from verified senders.'}
             </p>
           </div>
 
@@ -362,7 +376,10 @@ export default function EmailIngestSettings() {
           />
 
           {/* Instructions */}
-          <UsageInstructions />
+          <UsageInstructions
+            deliveryMode={settings?.delivery_mode}
+            deliveryAddress={deliveryAddress}
+          />
         </div>
       )}
     </div>

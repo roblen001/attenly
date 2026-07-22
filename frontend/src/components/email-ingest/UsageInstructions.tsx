@@ -67,6 +67,11 @@ export default function UsageInstructions({
                   <strong>Microsoft Graph:</strong> This single-workspace setup uses the configured mailbox directly. You do not need to create the generated internal endpoint as a Microsoft 365 alias.
                 </p>
               )}
+              {usesGraphMailbox && (
+                <p className="note">
+                  <strong>Avoid delivery failures:</strong> Use the mailbox shown above. Sending to an internal <code>u_...</code> address that is not configured in Microsoft 365 will produce a &quot;recipient not found&quot; bounce before Attenly receives the message; it does not mean the Attenly containers are down.
+                </p>
+              )}
               <div className="requirements-box">
                 <h4>Supported File Types</h4>
                 <ul className="file-types-list">

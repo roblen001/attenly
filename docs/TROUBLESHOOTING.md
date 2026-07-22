@@ -228,7 +228,10 @@ Common causes:
   `Mail.Send`) are missing or were mistakenly added as Delegated permissions
 - tenant admin consent has not been granted
 - mailbox does not exist or the app cannot access it
-- the generated Attenly address was not added/routed as an alias to the mailbox
+- the sender used an address other than `GRAPH_MAILBOX` in a local-auth
+  single-workspace deployment
+- a multi-user deployment does not route generated addresses to the mailbox
+  while preserving the original recipient
 - internal cron route was called without `X-Cron-Secret`
 - `email-worker` is not running, unhealthy, or has not loaded the updated `.env`
 

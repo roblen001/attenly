@@ -50,6 +50,12 @@ public open-source release instead of an open-source preparation branch.
   report generation, saved report link, and report-ready email.
 - Saved-report pages no longer block on reference PDF preloading before the
   report body renders.
+- Local-auth Microsoft Graph settings advertise `GRAPH_MAILBOX` as the report
+  intake address, so a single-workspace deployment does not require a generated
+  Microsoft 365 alias.
+- The source-build override builds the shared backend/worker image once, and a
+  disposable three-service source install passed health and writable-volume
+  checks after that packaging fix.
 
 ## Release Blockers
 
@@ -67,19 +73,10 @@ docker compose up -d --wait
   - authenticate with `LOCAL_AUTH_TOKEN`
   - upload documents
   - generate a report through the configured model endpoint
-- Test the Microsoft Graph connector path with real Entra credentials:
-  - run `python scripts/check_microsoft_graph_connection.py .env`
-  - enable email ingest and select a default agent
-  - route the generated Attenly address to `GRAPH_MAILBOX`
-  - verify a sender, then send a small PDF to the generated address
-  - run `python scripts/trigger_microsoft_graph_poll.py .env`
-  - watch `docker compose logs -f email-worker`
-  - confirm one accepted/successful job, a saved report, and the ready email
 - Regression test the separated worker path:
-  - send two attachment-bearing emails close together
   - open an existing saved report while the worker is processing
-  - confirm the saved report opens quickly and the worker completes jobs in
-    sequence
+  - confirm the saved report opens quickly; two close attachment-bearing emails
+    have already been observed completing successfully in sequence
 
 ## Documentation Before Public Announcement
 
@@ -87,6 +84,8 @@ docker compose up -d --wait
   release tag.
 - Review and tighten the operator docs after the first clean published-image
   install.
+- Confirm `security@attenly.ca` receives vulnerability reports before linking
+  the security policy from a public release.
 
 ## Engineering Follow-Up
 

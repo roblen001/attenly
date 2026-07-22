@@ -210,6 +210,8 @@ export interface VerifiedSender {
 
 export interface EmailIngestSettings {
   endpoint: EmailIngestEndpoint | null;
+  delivery_address?: string | null;
+  delivery_mode?: 'graph_mailbox' | 'generated_alias' | null;
   verified_senders: VerifiedSender[];
   usage_summary: {
     jobs_last_24h: number;

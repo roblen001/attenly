@@ -5,7 +5,7 @@
 If you discover a security vulnerability in Attenly, please report it responsibly:
 
 ### How to Report
-- **Email**: Send details to security@attently.ca
+- **Email**: Send details to security@attenly.ca
 - **Subject Line**: "Security Vulnerability Report - [Brief Description]"
 - **Include**: 
   - Detailed description of the vulnerability
@@ -108,9 +108,9 @@ Attenly implements security measures consistent with:
 
 ## Contact
 
-For general security questions: security@attently.ca
-For vulnerability reports: security@attently.ca
-For privacy concerns: privacy@attently.ca
+For general security questions: security@attenly.ca
+For vulnerability reports: security@attenly.ca
+For privacy concerns: privacy@attenly.ca
 
 ---
 

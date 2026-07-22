@@ -148,6 +148,14 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local databases and database journals
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-*
+
 # Local AI assistant settings and scratch files
 .claude/
 .agents/

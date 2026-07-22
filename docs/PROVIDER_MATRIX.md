@@ -31,11 +31,11 @@ which parts are still adapter work.
 | Rich text editor | Self-hosted TinyMCE | `VITE_TINYMCE_MODE=self_hosted` | Default Docker frontend path. |
 | Rich text editor | Tiny Cloud | `VITE_TINYMCE_MODE=cloud` | Existing hosted frontend option. |
 
-## Recommended Pilot Profiles
+## Recommended Deployment Profiles
 
 | Goal | Starting File | Key Choices |
 | --- | --- | --- |
-| Fastest on-prem Docker pilot | `.env.example` | Local auth, SQLite, filesystem storage, OpenAI-compatible models, no email. |
+| Fastest on-prem Docker deployment | `.env.example` | Local auth, SQLite, filesystem storage, OpenAI-compatible models, no email. |
 | Local no-Supabase with Gemini | `.env.local.example` | Local auth, SQLAlchemy/SQLite, filesystem storage, Gemini, no email. |
 | Company model gateway | `.env.enterprise.example` | SQLAlchemy/SQLite, filesystem storage, OpenAI-compatible chat and embeddings. |
 | Existing hosted stack | `.env.default.example` | Supabase, Gemini, optional Resend. |
@@ -53,5 +53,5 @@ which parts are still adapter work.
   download.
 - Provider interfaces still need to be hardened so custom company logic can be
   added without touching deep application code.
-- The first public Compose profile targets the immutable `v1.0.0` image tag.
-  Create and publish that Git tag before announcing the release.
+- The default Compose profile pins the immutable `v1.0.0` image tag. Override
+  `ATTENLY_BACKEND_IMAGE` and `ATTENLY_FRONTEND_IMAGE` to use another release.

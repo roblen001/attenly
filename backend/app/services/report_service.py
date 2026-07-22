@@ -324,41 +324,6 @@ class ReportService:
         
         return populated_html
     
-    def generate_pdf_report(self, report_data: Dict[str, Any]) -> bytes:
-        """
-        Generate PDF from report data
-        
-        Args:
-            report_data: Complete report data structure
-            
-        Returns:
-            PDF bytes
-            
-        Note: This is a placeholder implementation. In production, you would use
-        a library like weasyprint, reportlab, or similar to generate PDFs from HTML.
-        """
-        
-        # TODO: Implement actual PDF generation
-        # For now, return placeholder
-        populated_html = self.populate_template(
-            report_data["template"]["html"],
-            report_data["answers"]
-        )
-        
-        # Placeholder PDF content
-        pdf_content = f"""PDF Report Generated
-        
-Agent: {report_data['template']['name']}
-Generated: {report_data['generated_at']}
-Questions: {len(report_data['answers'])}
-Documents: {report_data['document_context']['total_documents']}
-
-HTML Content:
-{populated_html}
-"""
-        
-        return pdf_content.encode('utf-8')
-    
     def _get_current_timestamp(self) -> str:
         """Get current timestamp in ISO format"""
         from datetime import datetime

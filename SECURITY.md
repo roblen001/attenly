@@ -2,9 +2,15 @@
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities privately to `security@attenly.ca` with
-the subject `Attenly security report`. Include the affected version, impact,
-reproduction steps, and a minimal proof of concept when possible.
+Please report suspected vulnerabilities through GitHub's private
+[Report a vulnerability](https://github.com/roblen001/attenly/security/advisories/new)
+form. Include the affected version, impact, reproduction steps, and a minimal
+proof of concept when possible.
+
+If the private reporting form is unavailable, open a public GitHub issue asking
+the maintainer to enable private vulnerability reporting. Do not include the
+vulnerability, proof of concept, credentials, or other sensitive details in
+that public issue.
 
 Please do not publish the issue before a fix or coordinated disclosure date is
 available, access data that is not yours, use social engineering, or run tests

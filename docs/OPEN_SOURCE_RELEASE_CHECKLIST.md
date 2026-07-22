@@ -99,8 +99,11 @@ docker compose up -d --wait
 
 - Review the operator docs after the first clean `v1.0.0` published-image
   install.
-- Confirm `security@attenly.ca` receives vulnerability reports before linking
-  the security policy from a public release.
+- Enable GitHub private vulnerability reporting under the repository's
+  **Settings > Advanced Security** page.
+- Confirm the repository's **Security > Report a vulnerability** form opens and
+  that the maintainer account receives security-advisory notifications before
+  the public announcement.
 
 ## Engineering Follow-Up
 

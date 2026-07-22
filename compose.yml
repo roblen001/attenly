@@ -2,7 +2,7 @@ name: attenly
 
 services:
   backend:
-    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-backend:${ATTENLY_IMAGE_TAG:-open-sourcing}}
+    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-backend:${ATTENLY_IMAGE_TAG:-v1.0.0}}
     pull_policy: missing
     init: true
     env_file:
@@ -22,7 +22,7 @@ services:
       start_period: 30s
 
   email-worker:
-    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-backend:${ATTENLY_IMAGE_TAG:-open-sourcing}}
+    image: ${ATTENLY_BACKEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-backend:${ATTENLY_IMAGE_TAG:-v1.0.0}}
     pull_policy: missing
     init: true
     command: ["python", "-m", "app.workers.email_worker"]
@@ -44,7 +44,7 @@ services:
       start_period: 15s
 
   frontend:
-    image: ${ATTENLY_FRONTEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-frontend:${ATTENLY_IMAGE_TAG:-open-sourcing}}
+    image: ${ATTENLY_FRONTEND_IMAGE:-ghcr.io/${ATTENLY_IMAGE_NAMESPACE:-roblen001}/attenly-frontend:${ATTENLY_IMAGE_TAG:-v1.0.0}}
     pull_policy: missing
     init: true
     environment:

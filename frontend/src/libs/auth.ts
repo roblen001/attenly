@@ -4,7 +4,6 @@ import {
   AUTH_PROVIDER,
   LOCAL_AUTH_DISPLAY_NAME,
   LOCAL_AUTH_EMAIL,
-  LOCAL_AUTH_TOKEN_PREFILL,
   LOCAL_AUTH_USER_ID,
 } from './configs';
 import { supabase } from './supabase';
@@ -55,7 +54,6 @@ type AuthenticatedUserResponse = {
 export const authProvider = AUTH_PROVIDER as AuthProvider;
 export const isLocalAuthProvider = authProvider === 'local';
 export const isTokenAuthProvider = authProvider === 'local' || authProvider === 'external_jwt';
-export const localAuthTokenPrefill = LOCAL_AUTH_TOKEN_PREFILL;
 
 const TOKEN_SESSION_KEY = authProvider === 'local'
   ? 'attenly:local-auth-session'

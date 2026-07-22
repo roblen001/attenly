@@ -377,7 +377,7 @@ async def handle_inbound_email(request: Request):
                     logger.error(f"Error processing attachment {attachment['filename']}: {e}")
                     skipped_attachments.append({
                         "filename": attachment["filename"],
-                        "reason": f"Download/upload error: {str(e)}"
+                        "reason": "Download or upload failed"
                     })
         
         if not stored_attachments:

@@ -39,15 +39,6 @@ interface AgentCreationStep {
   };
 }
 
-const L = {
-  p: '[CreateAgent]',
-  log: (...args: unknown[]) => console.log('[CreateAgent]', ...args),
-  group: (name: string) => console.group(`[CreateAgent] ${name}`),
-  end: () => console.groupEnd(),
-};
-
-const ids = (qs?: QuestionOut[]) => (qs ?? []).map(q => q.id);
-
 const CreateAgent: React.FC = () => {
   const navigate = useNavigate();
   const { agentId } = useParams<{ agentId?: string }>();
@@ -100,10 +91,6 @@ const CreateAgent: React.FC = () => {
           }
         });
 
-        console.log('Agent loaded for editing:', agent.name);
-        console.log('Template transformed for editing - placeholders restored:', mappedQuestions.length);
-        console.log('Edit mode: skipping directly to editor step');
-
       } catch (error) {
         console.error('Error fetching agent for editing:', error);
         alert('Failed to load agent for editing. Please try again.');
@@ -121,7 +108,6 @@ const CreateAgent: React.FC = () => {
     const handleBeforeUnload = async () => {
       try {
         await api('/agents/files/clear', { method: 'DELETE' });
-        console.log('Files cleared on leaving agent creation page');
       } catch (error) {
         console.error('Failed to clear files on exit:', error);
       }
@@ -138,27 +124,11 @@ const CreateAgent: React.FC = () => {
     newStep: 'upload' | 'template-selection' | 'editor' | 'naming',
     newData: Partial<AgentCreationStep['data']>
   ) => {
-    L.group('handleStepChange');
-    L.log('IN:', { newStep, newData });
     setCurrentStep(prev => {
-      const merged = {
+      return {
         step: newStep,
         data: { ...prev.data, ...newData }
       };
-      L.log('PREV:', {
-        step: prev.step,
-        reportTemplateLen: prev.data.reportTemplate?.length ?? 0,
-        questionsLen: prev.data.questions?.length ?? 0,
-        questionsIds: ids(prev.data.questions),
-      });
-      L.log('OUT:', {
-        step: merged.step,
-        reportTemplateLen: merged.data.reportTemplate?.length ?? 0,
-        questionsLen: merged.data.questions?.length ?? 0,
-        questionsIds: ids(merged.data.questions),
-      });
-      L.end();
-      return merged;
     });
   };
 
@@ -166,7 +136,6 @@ const CreateAgent: React.FC = () => {
     // Clear files when user explicitly cancels agent creation
     try {
       await api('/agents/files/clear', { method: 'DELETE' });
-      console.log('Files cleared on agent creation cancellation');
     } catch (error) {
       console.error('Failed to clear files on cancellation:', error);
       // Don't block navigation on cleanup failure
@@ -201,22 +170,6 @@ const CreateAgent: React.FC = () => {
         questions: cleanQuestions
       };
 
-      L.group(isEditMode ? 'handleUpdateAgent' : 'handleCreateAgent');
-      L.log('Original template length:', reportTemplate.length);
-      L.log('Final template length:', finalTemplate.length);
-      L.log('Has custom CSS:', !!reportTemplateCss);
-      L.log('Original questions:', questions.map(q => ({ id: q.id, placeholder: q.placeholder })));
-      L.log('Transformed questions:', cleanQuestions.map(q => ({ id: q.id, placeholder: q.placeholder })));
-      L.log('payload:', {
-        name: requestPayload.name,
-        descriptionLen: (requestPayload.description || '').length,
-        reportTemplateLen: requestPayload.report_template.length,
-        reportTemplateCssLen: requestPayload.report_template_css?.length ?? 0,
-        questionsLen: requestPayload.questions.length,
-        questionsIds: ids(requestPayload.questions),
-      });
-      L.end();
-
       // Use PUT for updates, POST for creation
       const endpoint = isEditMode ? `/agents/custom/${agentId}` : '/agents/create_custom_agent';
       const method = isEditMode ? 'PUT' : 'POST';
@@ -232,13 +185,11 @@ const CreateAgent: React.FC = () => {
         throw new Error(errorData.detail || `Failed to ${isEditMode ? 'update' : 'create'} custom agent`);
       }
 
-      const resultAgent = await response.json();
-      console.log(`Custom agent ${isEditMode ? 'updated' : 'created'} successfully:`, resultAgent);
+      await response.json();
 
       // Clear files after successful operation
       try {
         await api('/agents/files/clear', { method: 'DELETE' });
-        console.log(`Files cleared after successful agent ${isEditMode ? 'update' : 'creation'}`);
       } catch (error) {
         console.error(`Failed to clear files after agent ${isEditMode ? 'update' : 'creation'}:`, error);
         // Don't block success flow on cleanup failure
@@ -291,9 +242,6 @@ const CreateAgent: React.FC = () => {
             <FileUpload
               files={uploadedFiles}
               onFilesChange={(files) => {
-                L.group('onFilesChange');
-                L.log('files len=', files.length);
-                L.end();
                 setUploadedFiles(files);
               }}
             />
@@ -318,8 +266,7 @@ const CreateAgent: React.FC = () => {
           <TemplateSelectionStep
             onBack={() => handleStepChange('upload', {})}
             onSelectScratch={() => handleStepChange('editor', { initialTemplateHtml: '', reportTemplateCss: '' })}
-            onSelectTemplate={(htmlContent, cssContent, source) => {
-              console.log(`Template uploaded via ${source}, CSS length: ${cssContent.length}`);
+            onSelectTemplate={(htmlContent, cssContent) => {
               handleStepChange('editor', {
                 reportTemplate: htmlContent,
                 reportTemplateCss: cssContent,
@@ -344,21 +291,12 @@ const CreateAgent: React.FC = () => {
             initialTemplateHtml={currentStep.data.initialTemplateHtml}
             questions={currentStep.data.questions || []}
             onTemplateChange={(template) => {
-              L.group('onTemplateChange (parent)');
-              L.log('templateLen=', template?.length ?? 0);
-              L.end();
               handleStepChange('editor', { reportTemplate: template });
             }}
             onTemplateCssChange={(css) => {
-              L.group('onTemplateCssChange (parent)');
-              L.log('cssLen=', css?.length ?? 0);
-              L.end();
               handleStepChange('editor', { reportTemplateCss: css });
             }}
             onQuestionsChange={(questions) => {
-              L.group('onQuestionsChange (parent)');
-              L.log('questions len=', questions.length, 'ids=', ids(questions));
-              L.end();
               handleStepChange('editor', { questions });
             }}
             onBack={() => handleStepChange('template-selection', {})}
@@ -418,15 +356,6 @@ const CreateAgent: React.FC = () => {
         return null;
     }
   };
-
-  // Top-level watcher to see final merged state after any change
-  React.useEffect(() => {
-    L.group('currentStep changed');
-    L.log('step=', currentStep.step);
-    L.log('reportTemplateLen=', currentStep.data.reportTemplate?.length ?? 0);
-    L.log('questionsLen=', currentStep.data.questions?.length ?? 0, 'ids=', ids(currentStep.data.questions));
-    L.end();
-  }, [currentStep]);
 
   // Show loading state while fetching agent data for editing
   if (loadingAgent) {

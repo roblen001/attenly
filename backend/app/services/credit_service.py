@@ -2,19 +2,23 @@
 Credit Service
 
 Handles cost-based credit tracking for rate limiting users based on actual API usage costs.
-Integrates with Supabase for persistent storage and provides real-time credit status.
+Uses Supabase RPCs for the default profile and SQLAlchemy tables for local or
+enterprise profiles.
 """
 
 import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from app.client import supabase_client
 from app.config import (
     MODEL_PRICING,
     CREDITS_PER_CAD,
     DEFAULT_MONTHLY_LIMIT_CAD,
+    DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD,
+    DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD,
+    DATABASE_PROVIDER,
     WARNING_THRESHOLD_PERCENT,
     CRITICAL_THRESHOLD_PERCENT,
     SUPABASE_SERVICE_ROLE_KEY,
@@ -71,6 +75,11 @@ class CreditService:
 
     def __init__(self):
         self.supabase = supabase_client
+        if DATABASE_PROVIDER == "sqlalchemy":
+            self.service_client = None
+            logger.info("Credit service initialized with SQLAlchemy persistence")
+            return
+
         # Create a service role client for inserting usage logs
         try:
             from supabase import create_client
@@ -97,12 +106,11 @@ class CreditService:
         """
         pricing = MODEL_PRICING.get(model)
         if not pricing:
-            logger.warning(f"No pricing found for model {model}, using default")
-            # Default to cheapest model pricing
-            pricing = MODEL_PRICING.get("gemini-2.5-flash-lite", {
-                "input_per_million": 0.10,
-                "output_per_million": 0.40,
-            })
+            logger.warning("No pricing found for model %s; using configured default pricing", model)
+            pricing = {
+                "input_per_million": DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD,
+                "output_per_million": DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD,
+            }
 
         input_cost = (input_tokens / 1_000_000) * pricing["input_per_million"]
         output_cost = (output_tokens / 1_000_000) * pricing["output_per_million"]
@@ -130,6 +138,300 @@ class CreditService:
             return "warning"
         return "normal"
 
+    def _reset_date(self, today: date | None = None) -> date:
+        today = today or date.today()
+        if today.month == 12:
+            return date(today.year + 1, 1, 1)
+        return date(today.year, today.month + 1, 1)
+
+    def _billing_period_start(self, today: date | None = None) -> date:
+        today = today or date.today()
+        return date(today.year, today.month, 1)
+
+    def _warning_level_for_percentage(self, percentage: float) -> int:
+        if percentage >= 100:
+            return 3
+        if percentage >= CRITICAL_THRESHOLD_PERCENT:
+            return 2
+        if percentage >= WARNING_THRESHOLD_PERCENT:
+            return 1
+        return 0
+
+    def _message_for_warning(self, warning_level: str) -> Optional[str]:
+        if warning_level == "blocked":
+            return "You've reached your monthly credit limit. Credits will reset on the 1st of next month."
+        if warning_level == "critical":
+            return f"Warning: You've used over {CRITICAL_THRESHOLD_PERCENT}% of your monthly credits."
+        if warning_level == "warning":
+            return f"Note: You've used over {WARNING_THRESHOLD_PERCENT}% of your monthly credits."
+        return None
+
+    def _status_from_usage(
+        self,
+        cost_used_cad: float,
+        monthly_limit_cad: float,
+        days_until_reset: Optional[int] = None,
+    ) -> CreditStatus:
+        reset_date = self._reset_date()
+        if days_until_reset is None:
+            days_until_reset = (reset_date - date.today()).days
+
+        if monthly_limit_cad <= 0:
+            percentage = 100.0
+            warning_level = "blocked"
+        else:
+            percentage = (cost_used_cad / monthly_limit_cad) * 100
+            warning_level = self._warning_level_to_string(
+                self._warning_level_for_percentage(percentage)
+            )
+
+        credits_used = self.cad_to_credits(cost_used_cad)
+        credits_limit = self.cad_to_credits(monthly_limit_cad)
+        credits_remaining = max(0, credits_limit - credits_used)
+
+        return CreditStatus(
+            credits_remaining=credits_remaining,
+            credits_limit=credits_limit,
+            credits_used=credits_used,
+            percentage_used=min(percentage, 100.0),
+            warning_level=warning_level,
+            reset_date=reset_date,
+            days_until_reset=days_until_reset,
+            cost_used_cad=cost_used_cad,
+            monthly_limit_cad=monthly_limit_cad,
+        )
+
+    def _blocked_status(self) -> CreditStatus:
+        return self._status_from_usage(
+            cost_used_cad=DEFAULT_MONTHLY_LIMIT_CAD,
+            monthly_limit_cad=DEFAULT_MONTHLY_LIMIT_CAD,
+            days_until_reset=(self._reset_date() - date.today()).days,
+        )
+
+    def _uses_sqlalchemy(self) -> bool:
+        return DATABASE_PROVIDER == "sqlalchemy"
+
+    def _ensure_sqlalchemy_quota(self, session, user_id: str):
+        from app.models import UserQuota
+
+        period_start = self._billing_period_start()
+        quota = (
+            session.query(UserQuota)
+            .filter(UserQuota.user_id == str(user_id))
+            .with_for_update()
+            .first()
+        )
+
+        if not quota:
+            quota = UserQuota(
+                user_id=str(user_id),
+                monthly_limit_cad=DEFAULT_MONTHLY_LIMIT_CAD,
+                cost_used_cad=0,
+                billing_period_start=period_start,
+                plan="free",
+                last_warning_level=0,
+            )
+            session.add(quota)
+            session.flush()
+            return quota
+
+        if quota.billing_period_start < period_start:
+            quota.cost_used_cad = 0
+            quota.billing_period_start = period_start
+            quota.last_warning_level = 0
+            quota.updated_at = datetime.now(timezone.utc)
+            session.flush()
+
+        return quota
+
+    def _sqlalchemy_check_credits(self, user_id: str) -> CreditStatus:
+        try:
+            from app.db import SessionLocal
+
+            with SessionLocal() as session:
+                quota = self._ensure_sqlalchemy_quota(session, user_id)
+                status = self._status_from_usage(
+                    cost_used_cad=float(quota.cost_used_cad or 0),
+                    monthly_limit_cad=float(quota.monthly_limit_cad or 0),
+                )
+                session.commit()
+                return status
+        except Exception as exc:
+            logger.critical(
+                "SECURITY_ALERT: SQLAlchemy credit check failed closed for user %s. Error: %s",
+                user_id,
+                exc,
+            )
+            return self._blocked_status()
+
+    def _sqlalchemy_consume_credits(
+        self,
+        user_id: str,
+        cost_cad: float,
+        operation_type: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int = 0,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ConsumeResult:
+        try:
+            from app.db import SessionLocal
+            from app.models import UsageLog
+
+            cost_cad = max(0.0, float(cost_cad or 0))
+            with SessionLocal() as session:
+                quota = self._ensure_sqlalchemy_quota(session, user_id)
+                new_cost = float(quota.cost_used_cad or 0) + cost_cad
+                monthly_limit = float(quota.monthly_limit_cad or 0)
+                percentage = 100.0 if monthly_limit <= 0 else (new_cost / monthly_limit) * 100
+                warning_level = self._warning_level_for_percentage(percentage)
+
+                quota.cost_used_cad = new_cost
+                quota.updated_at = datetime.now(timezone.utc)
+                if warning_level > int(quota.last_warning_level or 0):
+                    quota.last_warning_level = warning_level
+
+                session.add(
+                    UsageLog(
+                        user_id=str(user_id),
+                        operation_type=operation_type,
+                        model_name=model,
+                        input_tokens=int(input_tokens or 0),
+                        output_tokens=int(output_tokens or 0),
+                        cost_cad=cost_cad,
+                        usage_metadata=metadata or {},
+                    )
+                )
+                session.commit()
+
+                warning_str = self._warning_level_to_string(warning_level)
+                status = self._status_from_usage(new_cost, monthly_limit)
+                return ConsumeResult(
+                    allowed=percentage < 100,
+                    credits_remaining=status.credits_remaining,
+                    warning_level=warning_str,
+                    message=self._message_for_warning(warning_str),
+                )
+        except Exception as exc:
+            logger.critical(
+                "SECURITY_ALERT: SQLAlchemy credit consumption failed closed for user %s. "
+                "Operation: %s, Cost: $%.6f CAD. Error: %s",
+                user_id,
+                operation_type,
+                cost_cad,
+                exc,
+            )
+            return ConsumeResult(
+                allowed=False,
+                credits_remaining=0,
+                warning_level="blocked",
+                message=self._message_for_warning("blocked"),
+            )
+
+    def _sqlalchemy_log_usage(
+        self,
+        user_id: str,
+        operation_type: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_cad: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        from app.db import SessionLocal
+        from app.models import UsageLog
+
+        with SessionLocal() as session:
+            session.add(
+                UsageLog(
+                    user_id=str(user_id),
+                    operation_type=operation_type,
+                    model_name=model,
+                    input_tokens=int(input_tokens or 0),
+                    output_tokens=int(output_tokens or 0),
+                    cost_cad=max(0.0, float(cost_cad or 0)),
+                    usage_metadata=metadata or {},
+                )
+            )
+            session.commit()
+
+    def _sqlalchemy_usage_summary(self, user_id: str, days: int = 30) -> list[UsageSummary]:
+        try:
+            from sqlalchemy import func
+            from app.db import SessionLocal
+            from app.models import UsageLog
+
+            start_at = datetime.now(timezone.utc) - timedelta(days=days)
+            with SessionLocal() as session:
+                rows = (
+                    session.query(
+                        UsageLog.operation_type,
+                        func.sum(UsageLog.cost_cad).label("total_cost_cad"),
+                        func.sum(UsageLog.input_tokens).label("total_input_tokens"),
+                        func.sum(UsageLog.output_tokens).label("total_output_tokens"),
+                        func.count(UsageLog.id).label("request_count"),
+                    )
+                    .filter(
+                        UsageLog.user_id == str(user_id),
+                        UsageLog.created_at >= start_at,
+                    )
+                    .group_by(UsageLog.operation_type)
+                    .order_by(UsageLog.operation_type)
+                    .all()
+                )
+
+            return [
+                UsageSummary(
+                    operation_type=row.operation_type,
+                    total_cost_cad=float(row.total_cost_cad or 0),
+                    total_credits=self.cad_to_credits(float(row.total_cost_cad or 0)),
+                    total_input_tokens=int(row.total_input_tokens or 0),
+                    total_output_tokens=int(row.total_output_tokens or 0),
+                    request_count=int(row.request_count or 0),
+                )
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.error("Failed to get SQLAlchemy usage summary for user %s: %s", user_id, exc)
+            return []
+
+    def _sqlalchemy_usage_history(self, user_id: str, days: int = 30) -> list[Dict[str, Any]]:
+        try:
+            from sqlalchemy import func
+            from app.db import SessionLocal
+            from app.models import UsageLog
+
+            start_at = datetime.now(timezone.utc) - timedelta(days=days)
+            usage_day = func.date(UsageLog.created_at)
+            with SessionLocal() as session:
+                rows = (
+                    session.query(
+                        usage_day.label("date"),
+                        func.sum(UsageLog.cost_cad).label("total_cost_cad"),
+                        func.count(UsageLog.id).label("request_count"),
+                    )
+                    .filter(
+                        UsageLog.user_id == str(user_id),
+                        UsageLog.created_at >= start_at,
+                    )
+                    .group_by(usage_day)
+                    .order_by(usage_day)
+                    .all()
+                )
+
+            return [
+                {
+                    "date": str(row.date),
+                    "total_cost_cad": float(row.total_cost_cad or 0),
+                    "total_credits": self.cad_to_credits(float(row.total_cost_cad or 0)),
+                    "request_count": int(row.request_count or 0),
+                }
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.error("Failed to get SQLAlchemy usage history for user %s: %s", user_id, exc)
+            return []
+
     async def check_credits(self, user_id: str) -> CreditStatus:
         """
         Check user's credit status without consuming any credits
@@ -140,6 +442,9 @@ class CreditService:
         Returns:
             CreditStatus with current usage information
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_check_credits(user_id)
+
         try:
             # Call the get_user_credits database function
             result = self.supabase.rpc(
@@ -249,6 +554,17 @@ class CreditService:
         Returns:
             ConsumeResult with status and remaining credits
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_consume_credits(
+                user_id=user_id,
+                cost_cad=cost_cad,
+                operation_type=operation_type,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                metadata=metadata,
+            )
+
         try:
             # Call the consume_cost database function
             result = self.supabase.rpc(
@@ -340,6 +656,18 @@ class CreditService:
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """Log usage to the usage_logs table"""
+        if self._uses_sqlalchemy():
+            self._sqlalchemy_log_usage(
+                user_id=user_id,
+                operation_type=operation_type,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_cad=cost_cad,
+                metadata=metadata,
+            )
+            return
+
         try:
             self.service_client.table("usage_logs").insert({
                 "user_id": user_id,
@@ -364,6 +692,9 @@ class CreditService:
         Returns:
             List of UsageSummary objects
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_usage_summary(user_id, days)
+
         try:
             result = self.supabase.rpc(
                 "get_usage_summary",
@@ -400,6 +731,9 @@ class CreditService:
         Returns:
             List of daily usage records
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_usage_history(user_id, days)
+
         try:
             result = self.supabase.rpc(
                 "get_usage_history",
@@ -432,6 +766,9 @@ class CreditService:
         """
         Synchronous version of check_credits for use in sync code.
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_check_credits(user_id)
+
         try:
             result = self.supabase.rpc(
                 "get_user_credits",
@@ -526,6 +863,17 @@ class CreditService:
         """
         Synchronous version of consume_credits for use in sync code.
         """
+        if self._uses_sqlalchemy():
+            return self._sqlalchemy_consume_credits(
+                user_id=user_id,
+                cost_cad=cost_cad,
+                operation_type=operation_type,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                metadata=metadata,
+            )
+
         try:
             result = self.supabase.rpc(
                 "consume_cost",
@@ -614,6 +962,18 @@ class CreditService:
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """Synchronous version of _log_usage"""
+        if self._uses_sqlalchemy():
+            self._sqlalchemy_log_usage(
+                user_id=user_id,
+                operation_type=operation_type,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_cad=cost_cad,
+                metadata=metadata,
+            )
+            return
+
         try:
             self.service_client.table("usage_logs").insert({
                 "user_id": user_id,

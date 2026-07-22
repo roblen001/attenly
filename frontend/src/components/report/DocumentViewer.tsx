@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Quote, DocumentBoundingBoxes, WordSpan } from "../../types";
 import { api } from "../../libs/https";
 import {
@@ -43,8 +43,8 @@ export default function PdfViewerWithHighlights({
   const [err, setErr] = useState<string | null>(null);
 
   // BBox support state
-  const [bboxData, setBboxData] = useState<DocumentBoundingBoxes | null>(null);
-  const [hasBboxSupport, setHasBboxSupport] = useState(false);
+  const [, setBboxData] = useState<DocumentBoundingBoxes | null>(null);
+  const [, setHasBboxSupport] = useState(false);
 
   // Per-run objects
   const runIdRef = useRef(0);
@@ -193,8 +193,7 @@ export default function PdfViewerWithHighlights({
 
   const convertHighlightToNormalizedBBox = (
     highlightEl: HTMLElement,
-    pageEl: HTMLElement,
-    canvas: HTMLCanvasElement
+    pageEl: HTMLElement
   ): number[] | null => {
     try {
       const pageRect = pageEl.getBoundingClientRect();
@@ -210,18 +209,6 @@ export default function PdfViewerWithHighlights({
       const y0Norm = relativeY / pageRect.height;
       const x1Norm = (relativeX + highlightRect.width) / pageRect.width;
       const y1Norm = (relativeY + highlightRect.height) / pageRect.height;
-      
-      // Log for debugging - verify normalized coordinates look reasonable
-      console.log('[PDF Highlight] Normalized bbox:', {
-        normalized: [x0Norm, y0Norm, x1Norm, y1Norm],
-        pageRect: { width: pageRect.width, height: pageRect.height },
-        highlightRect: { 
-          width: highlightRect.width, 
-          height: highlightRect.height,
-          left: relativeX,
-          top: relativeY
-        }
-      });
       
       return [x0Norm, y0Norm, x1Norm, y1Norm];
     } catch (e) {
@@ -247,7 +234,7 @@ export default function PdfViewerWithHighlights({
       
       if (pageEl && canvas) {
         // Convert highlight to normalized bbox and use same centering as OCR
-        const bbox = convertHighlightToNormalizedBBox(highlight, pageEl, canvas);
+        const bbox = convertHighlightToNormalizedBBox(highlight, pageEl);
         if (bbox) {
           scrollContainerToBBox(viewerContainer, pageEl, canvas, bbox);
           return true;
@@ -387,14 +374,12 @@ export default function PdfViewerWithHighlights({
       order.push(precisePage);
       if (precisePage + 1 <= np) order.push(precisePage + 1);
 
-      console.log(`🎯 Fuzzy search constrained to pages: ${order.join(', ')} (from precise_page hint: ${precisePage})`);
     } else {
       // Fallback: no precise page available, search main pages with reduced priority
       // Still limited compared to full document search
       for (let d = 0; d <= Math.min(2, np - 1); d++) {
         if (1 + d <= np) order.push(1 + d);
       }
-      console.log(`📄 Fuzzy search fallback - no precise page hint, limited to pages: ${order.join(', ')}`);
     }
 
     let best: { pageNum: number; score: number; snippet: string } | null = null;
@@ -411,13 +396,13 @@ export default function PdfViewerWithHighlights({
   };
 
   const teardown = async () => {
-    try { abortRef.current?.abort(); } catch {}
+    try { abortRef.current?.abort(); } catch { /* Best-effort teardown. */ }
     try {
       const lt = loadingTaskRef.current;
       loadingTaskRef.current = null;
       await lt?.destroy();
-    } catch {}
-    try { eventBusRef.current = null; } catch {}
+    } catch { /* Best-effort teardown. */ }
+    try { eventBusRef.current = null; } catch { /* Best-effort teardown. */ }
     viewerRef.current?.cleanup?.();
     viewerRef.current = null;
     findControllerRef.current = null;
@@ -649,7 +634,6 @@ export default function PdfViewerWithHighlights({
 
           if (hasBboxes && quote.word_spans) {
             // Use bbox rendering for OCR documents
-            console.log("Using bbox highlighting for OCR document");
 
             // Group word spans by page
             const spansByPage = new Map<number, WordSpan[]>();
@@ -691,7 +675,6 @@ export default function PdfViewerWithHighlights({
             }
           } else {
             // Fall back to text-based highlighting for native PDFs
-            console.log("Using text-based highlighting for native PDF");
 
             // (1) exact find with RAW quote
             if (qExact && qExact.length) {
@@ -780,13 +763,13 @@ export default function PdfViewerWithHighlights({
           bus.off("pagesloaded", undefined as any);
           bus.off("pagerendered", undefined as any);
         }
-      } catch {}
+      } catch { /* Best-effort teardown. */ }
       teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quote.document_id, reportId, reportType]);
 
-  const jumpToQuote = () => {
+  const jumpToQuote = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -827,7 +810,7 @@ export default function PdfViewerWithHighlights({
           const canvas = pageEl?.querySelector<HTMLCanvasElement>("canvas");
           
           if (pageEl && canvas) {
-            const bbox = convertHighlightToNormalizedBBox(highlight, pageEl, canvas);
+            const bbox = convertHighlightToNormalizedBBox(highlight, pageEl);
             if (bbox) {
               scrollContainerToBBox(container, pageEl, canvas, bbox);
             } else {
@@ -841,7 +824,7 @@ export default function PdfViewerWithHighlights({
         }, 120);
       }
     }
-  };
+  }, [quote.has_bounding_boxes, quote.word_spans, quoteTextRaw]);
 
   // keyboard shortcuts: J = jump, Esc = close
   useEffect(() => {
@@ -851,7 +834,7 @@ export default function PdfViewerWithHighlights({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, quoteTextRaw]);
+  }, [jumpToQuote, onClose]);
 
   return (
     <div className="document-viewer-overlay">

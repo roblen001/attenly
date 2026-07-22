@@ -188,7 +188,7 @@ const ReportContent: React.FC<ReportContentProps> = ({
           'gs'
         );
         
-        styledHTML = styledHTML.replace(answerIdPattern, (matchedSpan, capturedContent) => {
+        styledHTML = styledHTML.replace(answerIdPattern, (_matchedSpan, capturedContent) => {
           const answerWithPlain = answer as ReportAnswer & { answer_plain?: string };
           const plainText = answerWithPlain.answer_plain || answer.answer || '';
 

@@ -1,40 +1,58 @@
 """
 Template Ingest Service
 
-AI-powered template normalization using Gemini 2.5 Pro:
-- Converts uploaded templates (DOCX/PDF/HTML) into clean, structured HTML + CSS
-- Uses Gemini 2.5 Pro for high-quality normalization
-- Falls back to Mammoth for DOCX if Gemini fails
-- Sanitizes HTML and CSS for security
-- Returns blank template with default CSS as fallback
+Provider-aware template normalization:
+- Gemini handles high-quality multimodal template normalization.
+- OpenAI-compatible mode sends the original uploaded file to a multimodal model
+  through the configured OpenAI-compatible file-input API.
+- Basic mode handles simple DOCX/HTML conversion without AI.
+- Disabled mode lets local/enterprise deployments avoid a hard Gemini dependency.
+- Sanitizes HTML and CSS for security.
+- Returns an explicit error when AI cannot normalize a PDF template.
 """
 
+import base64
 import io
 import json
 import logging
-import os
 import re
-import tempfile
 from typing import Tuple, Optional, Set, Dict
-import google.generativeai as genai
-import mammoth
-import nh3
-import tinycss2
-from bs4 import BeautifulSoup
 
-from app.config import GEMINI_API_KEY, TEMPLATE_INGEST_MODEL_NAME
+import httpx
+
+from app.config import (
+    GEMINI_API_KEY,
+    OPENAI_COMPATIBLE_API_KEY,
+    OPENAI_COMPATIBLE_BASE_URL,
+    OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
+    TEMPLATE_INGEST_MODEL_NAME,
+    TEMPLATE_INGEST_PROVIDER,
+)
 from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 from app.schemas import TemplateIngestResponse
-from app.services.credit_service import get_credit_service
 
 logger = logging.getLogger(__name__)
 
+GEMINI_GENERATE_CONTENT_BASE_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models"
+)
+GEMINI_TEMPLATE_TIMEOUT_SECONDS = 300.0
+
 
 class TemplateIngestService:
-    """Service for AI-powered template normalization"""
+    """Service for provider-aware template normalization."""
+
+    RESPONSE_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "html_body": {"type": "string"},
+            "css": {"type": "string"},
+        },
+        "required": ["html_body", "css"],
+    }
     
-    # Gemini prompt for template normalization (from user specification)
-    GEMINI_PROMPT = """You are an expert document template normalizer for Attenly, a legal/enterprise document automation platform.
+    # Prompt for high-capability multimodal template normalization.
+    NORMALIZATION_PROMPT = """You are an expert document template normalizer for Attenly, a legal/enterprise document automation platform.
 
 You are given a single attached file TEMPLATE_FILE (DOCX, PDF, or HTML) that represents a report/template. Your job is to:
 
@@ -234,15 +252,36 @@ Finally, output only the JSON object:
 - Do NOT add any other keys.
 - Do NOT add any text before or after the JSON.
 """
+
+    RENDERED_IMAGE_PROMPT_SUFFIX = """
+
+--------------------------------
+RENDERED PAGE IMAGE INPUT
+--------------------------------
+
+You are receiving rendered page images from TEMPLATE_FILE because this endpoint
+accepts vision inputs rather than native file inputs. Treat the images as the
+source of truth. Preserve visual order, layout, headings, lists, tables, page
+breaks, and placeholders as faithfully as possible.
+"""
     
     def __init__(self):
-        """Initialize with Gemini 2.5 Pro client"""
-        if not GEMINI_API_KEY:
-            logger.warning("GEMINI_API_KEY not configured. Template ingestion will fail.")
-        
-        genai.configure(api_key=GEMINI_API_KEY)
+        """Initialize the configured template ingest provider."""
+        self.provider = TEMPLATE_INGEST_PROVIDER
         self.model_name = TEMPLATE_INGEST_MODEL_NAME
-        logger.info(f"TemplateIngestService initialized with model: {self.model_name}")
+
+        if self.provider == "gemini" and not GEMINI_API_KEY:
+            logger.warning("GEMINI_API_KEY not configured. Gemini template ingestion will fail.")
+        if self.provider == "openai_compatible" and not OPENAI_COMPATIBLE_BASE_URL:
+            logger.warning(
+                "OPENAI_COMPATIBLE_BASE_URL not configured. OpenAI-compatible template ingestion will fail."
+            )
+
+        logger.info(
+            "TemplateIngestService initialized with provider=%s model=%s",
+            self.provider,
+            self.model_name if self.provider in {"gemini", "openai_compatible"} else "n/a",
+        )
     
     def process_template_file(
         self,
@@ -264,7 +303,37 @@ Finally, output only the JSON object:
         warnings = []
         file_type = self._detect_file_type(filename)
 
-        logger.info(f"Processing template: {filename} (type: {file_type})")
+        logger.info(
+            "Processing template: %s (type=%s provider=%s)",
+            filename,
+            file_type,
+            self.provider,
+        )
+
+        if self.provider == "disabled":
+            return self._disabled_response()
+
+        if self.provider == "basic":
+            return self._process_with_basic_converter(content, file_type, filename, warnings)
+
+        if user_id and self.provider in {"gemini", "openai_compatible"}:
+            self._ensure_template_credits_available(user_id)
+
+        if self.provider == "openai_compatible":
+            return self._process_with_openai_compatible(content, file_type, filename, user_id, warnings)
+
+        if self.provider != "gemini":
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error=(
+                    f"Template ingest provider '{self.provider}' is not supported by this runtime. "
+                    "Use 'gemini', 'openai_compatible', 'basic', or 'disabled'."
+                ),
+                warnings=warnings,
+            )
 
         try:
             # Try Gemini normalization first
@@ -285,27 +354,21 @@ Finally, output only the JSON object:
                 if file_type == 'docx':
                     logger.warning(f"Gemini returned empty for {filename}, trying Mammoth fallback")
                     warnings.append("AI normalization returned empty, using basic DOCX conversion")
-                    html_body = self._fallback_to_mammoth(content)
-                    
-                    if html_body:
-                        return TemplateIngestResponse(
-                            success=True,
-                            html_body=html_body,
-                            css=DEFAULT_TEMPLATE_CSS,
-                            source="mammoth",
-                            warnings=warnings
-                        )
+                    return self._process_with_basic_converter(content, file_type, filename, warnings)
                 
-                # No valid output - return blank template
-                logger.warning(f"Could not process template {filename}, returning blank template")
-                warnings.append("Template could not be processed, using blank template")
-                html_body, css = self._create_blank_template()
+                # A blank fallback is misleading for PDFs: the editor would show a
+                # successful template that bears no relation to the uploaded file.
+                logger.warning("Could not process PDF template %s", filename)
                 return TemplateIngestResponse(
-                    success=True,
-                    html_body=html_body,
-                    css=css,
-                    source="blank",
-                    warnings=warnings
+                    success=False,
+                    html_body="",
+                    css="",
+                    source="error",
+                    error=(
+                        "Gemini could not convert the uploaded template. Verify the "
+                        "Gemini API key and template-ingest model, then try again."
+                    ),
+                    warnings=warnings,
                 )
                 
         except Exception as e:
@@ -316,16 +379,7 @@ Finally, output only the JSON object:
                 try:
                     logger.info(f"Attempting Mammoth fallback after error for {filename}")
                     warnings.append(f"AI normalization failed: {str(e)}. Using basic DOCX conversion.")
-                    html_body = self._fallback_to_mammoth(content)
-                    
-                    if html_body:
-                        return TemplateIngestResponse(
-                            success=True,
-                            html_body=html_body,
-                            css=DEFAULT_TEMPLATE_CSS,
-                            source="mammoth",
-                            warnings=warnings
-                        )
+                    return self._process_with_basic_converter(content, file_type, filename, warnings)
                 except Exception as fallback_error:
                     logger.error(f"Mammoth fallback also failed: {str(fallback_error)}")
             
@@ -350,6 +404,602 @@ Finally, output only the JSON object:
             return 'html'
         else:
             return 'unknown'
+
+    def _disabled_response(self) -> TemplateIngestResponse:
+        return TemplateIngestResponse(
+            success=False,
+            html_body="",
+            css="",
+            source="disabled",
+            error=(
+                "Template upload ingestion is disabled by server configuration. "
+                "Build templates directly in the editor, set TEMPLATE_INGEST_PROVIDER=basic "
+                "for simple DOCX/HTML conversion, or configure a high-capability multimodal "
+                "template ingest provider."
+            ),
+            warnings=[],
+        )
+
+    def _process_with_basic_converter(
+        self,
+        content: bytes,
+        file_type: str,
+        filename: str,
+        warnings: list[str],
+    ) -> TemplateIngestResponse:
+        """Process simple templates without AI."""
+        if file_type == "docx":
+            html_body = self._fallback_to_mammoth(content)
+            if html_body:
+                return TemplateIngestResponse(
+                    success=True,
+                    html_body=html_body,
+                    css=DEFAULT_TEMPLATE_CSS,
+                    source="mammoth",
+                    warnings=warnings,
+                )
+
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error="Basic DOCX template conversion failed.",
+                warnings=warnings,
+            )
+
+        if file_type == "html":
+            html_body = self._fallback_to_html(content)
+            if html_body:
+                return TemplateIngestResponse(
+                    success=True,
+                    html_body=html_body,
+                    css=DEFAULT_TEMPLATE_CSS,
+                    source="html",
+                    warnings=warnings,
+                )
+
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error="Basic HTML template conversion failed.",
+                warnings=warnings,
+            )
+
+        return TemplateIngestResponse(
+            success=False,
+            html_body="",
+            css="",
+            source="error",
+            error=(
+                f"Basic template ingestion cannot process '{filename}'. "
+                "PDF and layout-heavy template ingestion requires a high-capability "
+                "multimodal model provider."
+            ),
+            warnings=warnings,
+        )
+
+    def _normalize_with_openai_compatible(
+        self,
+        file_content: bytes,
+        file_type: str,
+        filename: str,
+        user_id: Optional[str],
+        warnings: list[str],
+    ) -> Tuple[str, str]:
+        """Normalize the uploaded file through OpenAI-compatible multimodal inputs."""
+        if not OPENAI_COMPATIBLE_BASE_URL:
+            raise ValueError("OPENAI_COMPATIBLE_BASE_URL is required for template ingestion")
+
+        attempts = [
+            (
+                "Responses file input",
+                lambda: self._normalize_with_openai_responses_file(file_content, file_type, filename, user_id),
+            ),
+            (
+                "Chat Completions file input",
+                lambda: self._normalize_with_openai_chat_file(file_content, file_type, filename, user_id),
+            ),
+            (
+                "Chat Completions image input",
+                lambda: self._normalize_with_openai_chat_images(file_content, file_type, filename, user_id, warnings),
+            ),
+        ]
+
+        rejected_shapes = []
+        for name, attempt in attempts:
+            try:
+                return attempt()
+            except Exception as exc:
+                if not self._is_openai_request_shape_rejection(exc):
+                    raise
+                rejected_shapes.append(f"{name}: {exc}")
+                logger.info("OpenAI-compatible template input shape rejected: %s", name)
+
+        raise ValueError(
+            "The configured OpenAI-compatible template ingest endpoint rejected all "
+            "supported multimodal request shapes. Tried original file input through "
+            "Responses, original file input through Chat Completions, and rendered "
+            f"page images through Chat Completions. Details: {'; '.join(rejected_shapes)}"
+        )
+
+    def _normalize_with_openai_responses_file(
+        self,
+        file_content: bytes,
+        file_type: str,
+        filename: str,
+        user_id: Optional[str],
+    ) -> Tuple[str, str]:
+        """Send the original uploaded file through the OpenAI Responses file-input shape."""
+        payload = {
+            "model": self.model_name,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_file",
+                            "filename": filename,
+                            "file_data": self._file_data_url(file_content, file_type),
+                        },
+                        {
+                            "type": "input_text",
+                            "text": self.NORMALIZATION_PROMPT,
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0,
+        }
+
+        data = self._post_openai_compatible_json("/responses", payload)
+        response_text = self._extract_responses_text(data)
+        self._track_template_credit_usage(
+            user_id=user_id,
+            filename=filename,
+            file_type=file_type,
+            usage=self._extract_openai_usage(data),
+        )
+        return self._parse_template_json(response_text)
+
+    def _normalize_with_openai_chat_images(
+        self,
+        file_content: bytes,
+        file_type: str,
+        filename: str,
+        user_id: Optional[str],
+        warnings: list[str],
+    ) -> Tuple[str, str]:
+        """Render pages to images for OpenAI-compatible vision chat endpoints."""
+        image_urls = self._render_file_to_image_data_urls(file_content, file_type, filename, warnings)
+        content_parts = [
+            {
+                "type": "text",
+                "text": (
+                    f"{self.NORMALIZATION_PROMPT}\n"
+                    f"{self.RENDERED_IMAGE_PROMPT_SUFFIX}\n\n"
+                    f"Filename: {filename}\nDetected file type: {file_type}"
+                ),
+            }
+        ]
+        content_parts.extend(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": image_url,
+                    "detail": "high",
+                },
+            }
+            for image_url in image_urls
+        )
+
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": content_parts}],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+
+        response_text, usage = self._call_openai_compatible_chat(payload)
+        logger.info(
+            "OpenAI-compatible chat-image template ingest usage for %s: prompt=%s completion=%s",
+            filename,
+            usage.get("prompt_tokens", 0),
+            usage.get("completion_tokens", 0),
+        )
+        self._track_template_credit_usage(
+            user_id=user_id,
+            filename=filename,
+            file_type=file_type,
+            usage=usage,
+        )
+        return self._parse_template_json(response_text)
+
+    def _normalize_with_openai_chat_file(
+        self,
+        file_content: bytes,
+        file_type: str,
+        filename: str,
+        user_id: Optional[str],
+    ) -> Tuple[str, str]:
+        """Send the original uploaded file through Chat Completions file content parts."""
+        payload = {
+            "model": self.model_name,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "file",
+                            "file": {
+                                "filename": filename,
+                                "file_data": self._file_data_url(file_content, file_type),
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": self.NORMALIZATION_PROMPT,
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+
+        response_text, usage = self._call_openai_compatible_chat(payload)
+        logger.info(
+            "OpenAI-compatible chat-file template ingest usage for %s: prompt=%s completion=%s",
+            filename,
+            usage.get("prompt_tokens", 0),
+            usage.get("completion_tokens", 0),
+        )
+        self._track_template_credit_usage(
+            user_id=user_id,
+            filename=filename,
+            file_type=file_type,
+            usage=usage,
+        )
+        return self._parse_template_json(response_text)
+
+    def _parse_template_json(self, response_text: str) -> Tuple[str, str]:
+        result = json.loads(self._clean_json_response(response_text))
+        html_body = result.get("html_body", "")
+        css = result.get("css", "")
+
+        if html_body and css:
+            html_body = self._sanitize_html(html_body)
+            css = self._sanitize_css(css)
+            logger.info("Successfully normalized template with OpenAI-compatible provider")
+            return html_body, css
+
+        return "", ""
+
+    def _render_file_to_image_data_urls(
+        self,
+        file_content: bytes,
+        file_type: str,
+        filename: str,
+        warnings: list[str],
+    ) -> list[str]:
+        """Render supported template uploads into page images for vision-only gateways."""
+        if file_type == "pdf":
+            return self._render_pdf_to_image_data_urls(file_content, filename)
+
+        if file_type == "html":
+            warnings.append(
+                "HTML template upload is being rendered to page images for the configured "
+                "vision model. Native file-input mode usually preserves source structure better."
+            )
+            pdf_content = self._html_to_pdf(file_content.decode("utf-8", errors="ignore"))
+            return self._render_pdf_to_image_data_urls(pdf_content, filename)
+
+        if file_type == "docx":
+            warnings.append(
+                "DOCX template upload is being converted to HTML and rendered to page images "
+                "for the configured vision model. Native file-input mode usually preserves DOCX "
+                "structure better."
+            )
+            html = self._docx_to_html(file_content)
+            pdf_content = self._html_to_pdf(html)
+            return self._render_pdf_to_image_data_urls(pdf_content, filename)
+
+        raise ValueError(f"Unsupported template file type for OpenAI-compatible image input: {file_type}")
+
+    def _docx_to_html(self, docx_content: bytes) -> str:
+        try:
+            import mammoth
+
+            result = mammoth.convert_to_html(io.BytesIO(docx_content))
+            html = result.value.strip()
+            if not html:
+                raise ValueError("DOCX conversion produced empty HTML")
+            return html
+        except Exception as exc:
+            raise ValueError(f"Failed to render DOCX template for vision input: {exc}") from exc
+
+    def _html_to_pdf(self, html: str) -> bytes:
+        try:
+            from weasyprint import HTML
+
+            return HTML(string=html).write_pdf()
+        except Exception as exc:
+            raise ValueError(f"Failed to render HTML template for vision input: {exc}") from exc
+
+    def _render_pdf_to_image_data_urls(self, pdf_content: bytes, filename: str) -> list[str]:
+        try:
+            import fitz
+
+            doc = fitz.open(stream=pdf_content, filetype="pdf")
+            try:
+                image_urls: list[str] = []
+                for page_index, page in enumerate(doc, start=1):
+                    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                    png_bytes = pixmap.tobytes("png")
+                    encoded = base64.b64encode(png_bytes).decode("ascii")
+                    image_urls.append(f"data:image/png;base64,{encoded}")
+                    if page_index >= 5:
+                        break
+                if not image_urls:
+                    raise ValueError("PDF did not contain renderable pages")
+                return image_urls
+            finally:
+                doc.close()
+        except Exception as exc:
+            raise ValueError(f"Failed to render {filename} for vision input: {exc}") from exc
+
+    def _mime_type_for_file_type(self, file_type: str) -> str:
+        mime_types = {
+            "pdf": "application/pdf",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "html": "text/html",
+        }
+        return mime_types.get(file_type, "application/octet-stream")
+
+    def _file_data_url(self, file_content: bytes, file_type: str) -> str:
+        encoded = base64.b64encode(file_content).decode("ascii")
+        return f"data:{self._mime_type_for_file_type(file_type)};base64,{encoded}"
+
+    def _openai_compatible_url(self, path: str) -> str:
+        base_url = OPENAI_COMPATIBLE_BASE_URL.rstrip("/")
+        for suffix in ("/chat/completions", "/responses"):
+            if base_url.endswith(suffix):
+                base_url = base_url[: -len(suffix)]
+                break
+        return f"{base_url}{path}"
+
+    def _openai_compatible_headers(self) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if OPENAI_COMPATIBLE_API_KEY:
+            headers["Authorization"] = f"Bearer {OPENAI_COMPATIBLE_API_KEY}"
+        return headers
+
+    def _post_openai_compatible_json(self, path: str, payload: dict) -> dict:
+        import httpx
+
+        with httpx.Client(timeout=OPENAI_COMPATIBLE_TIMEOUT_SECONDS) as client:
+            response = client.post(
+                self._openai_compatible_url(path),
+                headers=self._openai_compatible_headers(),
+                json=payload,
+            )
+            response.raise_for_status()
+
+        return response.json()
+
+    def _call_openai_compatible_chat(self, payload: dict) -> Tuple[str, Dict[str, int]]:
+        import httpx
+
+        with httpx.Client(timeout=OPENAI_COMPATIBLE_TIMEOUT_SECONDS) as client:
+            response = client.post(
+                self._openai_compatible_url("/chat/completions"),
+                headers=self._openai_compatible_headers(),
+                json=payload,
+            )
+
+            if response.status_code in {400, 422}:
+                logger.info(
+                    "OpenAI-compatible template provider rejected response_format; retrying without it"
+                )
+                fallback_payload = dict(payload)
+                fallback_payload.pop("response_format", None)
+                response = client.post(
+                    self._openai_compatible_url("/chat/completions"),
+                    headers=self._openai_compatible_headers(),
+                    json=fallback_payload,
+                )
+
+            response.raise_for_status()
+
+        data = response.json()
+        usage = data.get("usage") or {}
+        return self._extract_chat_text(data), {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+        }
+
+    def _extract_chat_text(self, data: dict) -> str:
+        choices = data.get("choices") or []
+        if not choices:
+            raise ValueError("OpenAI-compatible chat response did not include choices")
+
+        message = choices[0].get("message", {})
+        content = message.get("content") or choices[0].get("text") or ""
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "")
+                if isinstance(part, dict)
+                else str(part)
+                for part in content
+            )
+        if not content:
+            raise ValueError("OpenAI-compatible template response did not include content")
+
+        return str(content)
+
+    def _extract_responses_text(self, data: dict) -> str:
+        output_text = data.get("output_text")
+        if output_text:
+            return str(output_text)
+
+        text_parts: list[str] = []
+        for item in data.get("output") or []:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content") or []
+            if isinstance(content, dict):
+                content = [content]
+            for part in content:
+                if isinstance(part, str):
+                    text_parts.append(part)
+                elif isinstance(part, dict) and part.get("text"):
+                    text_parts.append(str(part["text"]))
+
+        if text_parts:
+            return "".join(text_parts)
+        if data.get("choices"):
+            return self._extract_chat_text(data)
+
+        raise ValueError("OpenAI-compatible Responses result did not include output text")
+
+    def _is_openai_request_shape_rejection(self, exc: Exception) -> bool:
+        """Return true when an endpoint rejects one multimodal request shape."""
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        return status_code in {400, 404, 405, 415, 422}
+
+    def _clean_json_response(self, response_text: str) -> str:
+        response_text = response_text.strip()
+        if response_text.startswith("```"):
+            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+            if match:
+                return match.group(1)
+            response_text = response_text.replace("```json", "").replace("```", "").strip()
+        return response_text
+
+    def _extract_openai_usage(self, data: dict) -> Dict[str, int]:
+        usage = data.get("usage") or {}
+        input_tokens = (
+            usage.get("prompt_tokens")
+            or usage.get("input_tokens")
+            or usage.get("total_input_tokens")
+            or 0
+        )
+        output_tokens = (
+            usage.get("completion_tokens")
+            or usage.get("output_tokens")
+            or usage.get("total_output_tokens")
+            or 0
+        )
+        return {
+            "prompt_tokens": int(input_tokens or 0),
+            "completion_tokens": int(output_tokens or 0),
+        }
+
+    def _ensure_template_credits_available(self, user_id: str) -> None:
+        from app.services.credit_service import CreditLimitExceeded, get_credit_service
+
+        credit_service = get_credit_service()
+        credit_status = credit_service.check_credits_sync(user_id)
+        if credit_status.warning_level == "blocked":
+            raise CreditLimitExceeded(credit_status)
+
+    def _track_template_credit_usage(
+        self,
+        user_id: Optional[str],
+        filename: str,
+        file_type: str,
+        usage: Dict[str, int],
+    ) -> None:
+        if not user_id:
+            return
+
+        try:
+            from app.services.credit_service import get_credit_service
+
+            credit_service = get_credit_service()
+            input_tokens = int(usage.get("prompt_tokens") or 0)
+            output_tokens = int(usage.get("completion_tokens") or 0)
+            cost_cad = credit_service.calculate_cost(self.model_name, input_tokens, output_tokens)
+
+            consume_result = credit_service.consume_credits_sync(
+                user_id=user_id,
+                cost_cad=cost_cad,
+                operation_type="llm_template",
+                model=self.model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                metadata={
+                    "filename": filename,
+                    "file_type": file_type,
+                    "provider": self.provider,
+                },
+            )
+
+            if not consume_result.allowed:
+                logger.warning("Template credit limit reached after processing for user %s", user_id)
+            logger.info(
+                "Template credit usage: %.6f CAD (%s in, %s out)",
+                cost_cad,
+                input_tokens,
+                output_tokens,
+            )
+        except Exception as exc:
+            logger.warning("Failed to track template credits: %s", exc)
+
+    def _process_with_openai_compatible(
+        self,
+        content: bytes,
+        file_type: str,
+        filename: str,
+        user_id: Optional[str],
+        warnings: list[str],
+    ) -> TemplateIngestResponse:
+        try:
+            html_body, css = self._normalize_with_openai_compatible(
+                content,
+                file_type,
+                filename,
+                user_id,
+                warnings,
+            )
+
+            if html_body and css:
+                return TemplateIngestResponse(
+                    success=True,
+                    html_body=html_body,
+                    css=css,
+                    source="openai_compatible",
+                    warnings=warnings,
+                )
+
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error=(
+                    "OpenAI-compatible template normalization returned empty output. "
+                    "Use a stronger multimodal template-ingest model or simplify the template."
+                ),
+                warnings=warnings,
+            )
+        except Exception as exc:
+            logger.error("OpenAI-compatible template ingestion failed: %s", exc, exc_info=True)
+            return TemplateIngestResponse(
+                success=False,
+                html_body="",
+                css="",
+                source="error",
+                error=(
+                    f"OpenAI-compatible template ingestion failed: {exc}. "
+                    "Configure a multimodal OpenAI-compatible model endpoint for smart template ingestion, "
+                    "or set TEMPLATE_INGEST_PROVIDER=basic for simple DOCX/HTML conversion."
+                ),
+                warnings=warnings,
+            )
     
     def _normalize_with_gemini(
         self,
@@ -359,7 +1009,7 @@ Finally, output only the JSON object:
         user_id: Optional[str] = None
     ) -> Tuple[str, str]:
         """
-        Call Gemini 2.5 Pro with strict prompt, return (html_body, css)
+        Call the configured Gemini model with strict prompt and inline file data.
 
         Args:
             file_content: File content as bytes
@@ -368,75 +1018,54 @@ Finally, output only the JSON object:
             user_id: Optional user ID for credit tracking
 
         Returns:
-            Tuple of (html_body, css) - empty strings if failed
+            Tuple of (html_body, css). Raises RuntimeError when Gemini fails.
         """
-        temp_file_path = None
         try:
-            model = genai.GenerativeModel(self.model_name)
-            
-            # Gemini's upload_file() requires a file path, not BytesIO
-            # Write content to temporary file
-            logger.info(f"Writing file content to temporary file: {filename}")
-            
-            # Determine file extension for temp file
-            file_extensions = {
-                'pdf': '.pdf',
-                'docx': '.docx',
-                'html': '.html'
+            mime_type = self._mime_type_for_file_type(file_type)
+            encoded_file = base64.b64encode(file_content).decode("ascii")
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inlineData": {
+                                    "mimeType": mime_type,
+                                    "data": encoded_file,
+                                }
+                            },
+                            {"text": self.NORMALIZATION_PROMPT},
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0.0,
+                    "responseMimeType": "application/json",
+                    "responseSchema": self.RESPONSE_SCHEMA,
+                },
             }
-            file_ext = file_extensions.get(file_type, '.tmp')
-            
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(mode='wb', suffix=file_ext, delete=False) as temp_file:
-                temp_file.write(file_content)
-                temp_file_path = temp_file.name
-            
-            logger.info("Temporary file created for Gemini processing")
-            
-            # Determine MIME type
-            mime_types = {
-                'pdf': 'application/pdf',
-                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'html': 'text/html'
-            }
-            mime_type = mime_types.get(file_type, 'application/octet-stream')
-            
-            # Upload file to Gemini using file path
-            logger.info(f"Uploading file to Gemini: {filename}")
-            uploaded_file = genai.upload_file(
-                temp_file_path,
-                mime_type=mime_type
+
+            logger.info("Calling Gemini %s for template normalization", self.model_name)
+            with httpx.Client(timeout=GEMINI_TEMPLATE_TIMEOUT_SECONDS) as client:
+                response = client.post(
+                    self._gemini_generate_content_url(),
+                    headers=self._gemini_headers(),
+                    json=payload,
+                )
+            self._raise_for_gemini_error(response)
+
+            response_data = response.json()
+            usage = response_data.get("usageMetadata") or {}
+            self._track_template_credit_usage(
+                user_id,
+                filename,
+                file_type,
+                {
+                    "prompt_tokens": int(usage.get("promptTokenCount") or 0),
+                    "completion_tokens": int(usage.get("candidatesTokenCount") or 0),
+                },
             )
-            
-            # Generate content with prompt
-            logger.info(f"Calling Gemini {self.model_name} for template normalization")
-            response = model.generate_content([self.GEMINI_PROMPT, uploaded_file])
 
-            # Track credit usage if user_id provided
-            if user_id and hasattr(response, 'usage_metadata') and response.usage_metadata:
-                try:
-                    credit_service = get_credit_service()
-                    input_tokens = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
-                    output_tokens = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-
-                    cost_cad = credit_service.calculate_cost(self.model_name, input_tokens, output_tokens)
-
-                    credit_service.consume_credits_sync(
-                        user_id=user_id,
-                        cost_cad=cost_cad,
-                        operation_type="llm_template",
-                        model=self.model_name,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        metadata={"filename": filename, "file_type": file_type}
-                    )
-
-                    logger.info(f"Template credit usage: {cost_cad:.6f} CAD ({input_tokens} in, {output_tokens} out)")
-                except Exception as e:
-                    logger.warning(f"Failed to track template credits: {e}")
-
-            # Parse response
-            response_text = response.text.strip()
+            response_text = self._gemini_response_text(response_data).strip()
             logger.debug(f"Gemini response: {response_text[:500]}...")
             
             # Try to parse JSON
@@ -468,19 +1097,80 @@ Finally, output only the JSON object:
                 return '', ''
                 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini JSON response: {str(e)}")
-            return '', ''
+            safe_error = "Gemini returned invalid JSON for the uploaded template."
+            logger.error("%s Parser detail: %s", safe_error, e)
+            raise RuntimeError(safe_error) from None
         except Exception as e:
-            logger.error(f"Gemini normalization failed: {str(e)}", exc_info=True)
-            return '', ''
-        finally:
-            # Clean up temporary file
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.unlink(temp_file_path)
-                    logger.debug("Temporary file deleted")
-                except Exception as e:
-                    logger.warning(f"Failed to delete temporary file: {str(e)}")
+            safe_error = self._safe_gemini_error_message(e)
+            logger.error("Gemini normalization failed: %s", safe_error)
+            raise RuntimeError(safe_error) from None
+
+    def _gemini_generate_content_url(self) -> str:
+        return f"{GEMINI_GENERATE_CONTENT_BASE_URL}/{self.model_name}:generateContent"
+
+    @staticmethod
+    def _gemini_headers() -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY or "",
+        }
+
+    @staticmethod
+    def _gemini_response_text(data: dict) -> str:
+        return "".join(
+            str(part.get("text", ""))
+            for candidate in data.get("candidates") or []
+            if isinstance(candidate, dict)
+            for part in (candidate.get("content") or {}).get("parts") or []
+            if isinstance(part, dict)
+        )
+
+    @staticmethod
+    def _raise_for_gemini_error(response: httpx.Response) -> None:
+        if response.is_success:
+            return
+
+        detail = ""
+        try:
+            detail = str((response.json().get("error") or {}).get("message") or "")
+        except (ValueError, AttributeError):
+            detail = response.text[:500]
+
+        if detail:
+            raise RuntimeError(f"Gemini request failed (HTTP {response.status_code}): {detail}")
+        raise RuntimeError(f"Gemini request failed (HTTP {response.status_code})")
+
+    @staticmethod
+    def _safe_gemini_error_message(error: Exception) -> str:
+        """Return an actionable Gemini error without leaking credentials."""
+        message = str(error)
+        if GEMINI_API_KEY:
+            message = message.replace(GEMINI_API_KEY, "[REDACTED]")
+        message = re.sub(
+            r"([?&]key=)[^&\s\"']+",
+            r"\1[REDACTED]",
+            message,
+            flags=re.IGNORECASE,
+        )
+
+        normalized = message.lower()
+        if "api_key_invalid" in normalized or "api key not valid" in normalized:
+            return (
+                "Gemini rejected the API key. Create a valid Gemini API key, update "
+                "GEMINI_API_KEY, and recreate the backend container."
+            )
+        if "permission_denied" in normalized or "403" in normalized:
+            return (
+                "Gemini denied this template request. Check the API key restrictions "
+                "and confirm the configured template-ingest model is enabled for its project."
+            )
+        if "not_found" in normalized or "404" in normalized:
+            return (
+                "Gemini could not find the configured template-ingest model. Check "
+                "TEMPLATE_INGEST_MODEL_NAME and recreate the backend container."
+            )
+
+        return f"Gemini template request failed: {message[:500]}"
     
     def _fallback_to_mammoth(self, docx_content: bytes) -> str:
         """
@@ -493,6 +1183,8 @@ Finally, output only the JSON object:
             HTML string (empty if failed)
         """
         try:
+            import mammoth
+
             logger.info("Using Mammoth for DOCX conversion")
             result = mammoth.convert_to_html(io.BytesIO(docx_content))
             html = result.value
@@ -508,6 +1200,43 @@ Finally, output only the JSON object:
             
         except Exception as e:
             logger.error(f"Mammoth conversion failed: {str(e)}")
+            return ''
+
+    def _fallback_to_html(self, html_content: bytes) -> str:
+        """
+        Basic HTML fallback processing, returns sanitized HTML only.
+
+        Args:
+            html_content: Raw HTML file content
+
+        Returns:
+            Sanitized HTML fragment wrapped in the standard template container
+        """
+        try:
+            from bs4 import BeautifulSoup
+
+            logger.info("Using basic HTML template conversion")
+            html = html_content.decode("utf-8", errors="ignore")
+            soup = BeautifulSoup(html, "html.parser")
+
+            for element in soup(["script", "style", "iframe", "object", "embed"]):
+                element.decompose()
+
+            source = soup.body if soup.body else soup
+            body_html = "".join(str(child) for child in source.contents).strip()
+
+            if not body_html:
+                return ""
+
+            if "attenly-template" not in body_html:
+                body_html = f'<div class="attenly-template report-wrapper">{body_html}</div>'
+
+            sanitized = self._sanitize_html(body_html)
+            logger.info("Successfully converted HTML with basic sanitizer")
+            return sanitized
+
+        except Exception as e:
+            logger.error(f"Basic HTML conversion failed: {str(e)}")
             return ''
     
     def _create_blank_template(self) -> Tuple[str, str]:
@@ -641,6 +1370,8 @@ Finally, output only the JSON object:
             return ""
 
         try:
+            import nh3
+
             # Preserve pagebreak comments before sanitization (nh3 strips comments)
             # Use case-insensitive replacement for variations
             preserved = re.sub(
@@ -751,12 +1482,14 @@ Finally, output only the JSON object:
             return ""
 
         try:
+            import tinycss2
+
             # Parse CSS using tinycss2
             rules = tinycss2.parse_stylesheet(css, skip_comments=True, skip_whitespace=True)
 
             safe_rules = []
             for rule in rules:
-                sanitized_rule = self._sanitize_css_rule(rule)
+                sanitized_rule = self._sanitize_css_rule(rule, tinycss2)
                 if sanitized_rule:
                     safe_rules.append(sanitized_rule)
 
@@ -767,7 +1500,7 @@ Finally, output only the JSON object:
             # Fail closed - return empty string, not original CSS
             return ""
 
-    def _sanitize_css_rule(self, rule) -> Optional[str]:
+    def _sanitize_css_rule(self, rule, tinycss2_module) -> Optional[str]:
         """
         Sanitize an individual CSS rule.
 
@@ -791,7 +1524,7 @@ Finally, output only the JSON object:
 
             # Allow safe at-rules
             if at_keyword in self.ALLOWED_CSS_AT_RULES:
-                return tinycss2.serialize([rule])
+                return tinycss2_module.serialize([rule])
 
             # Block unknown at-rules for safety
             logger.warning(f"Blocked unknown CSS at-rule: @{at_keyword}")
@@ -799,11 +1532,11 @@ Finally, output only the JSON object:
 
         elif rule.type == 'qualified-rule':
             # This is a regular CSS rule (selector { declarations })
-            return self._sanitize_css_qualified_rule(rule)
+            return self._sanitize_css_qualified_rule(rule, tinycss2_module)
 
         return None
 
-    def _sanitize_css_qualified_rule(self, rule) -> Optional[str]:
+    def _sanitize_css_qualified_rule(self, rule, tinycss2_module) -> Optional[str]:
         """
         Sanitize a qualified CSS rule (selector { properties }).
 
@@ -815,10 +1548,10 @@ Finally, output only the JSON object:
         """
         try:
             # Serialize selector
-            selector = tinycss2.serialize(rule.prelude).strip()
+            selector = tinycss2_module.serialize(rule.prelude).strip()
 
             # Parse and filter declarations
-            declarations = tinycss2.parse_declaration_list(rule.content)
+            declarations = tinycss2_module.parse_declaration_list(rule.content)
             safe_declarations = []
 
             for decl in declarations:
@@ -831,7 +1564,7 @@ Finally, output only the JSON object:
                         continue
 
                     # Serialize and check value
-                    value = tinycss2.serialize(decl.value).strip()
+                    value = tinycss2_module.serialize(decl.value).strip()
 
                     # Check for dangerous patterns in value
                     if self._css_value_is_safe(value):

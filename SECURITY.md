@@ -1,114 +1,87 @@
 # Security Policy
 
-## Reporting Security Vulnerabilities
+## Reporting a vulnerability
 
-If you discover a security vulnerability in Attenly, please report it responsibly:
+Please report suspected vulnerabilities through GitHub's private
+[Report a vulnerability](https://github.com/roblen001/attenly/security/advisories/new)
+form. Include the affected version, impact, reproduction steps, and a minimal
+proof of concept when possible.
 
-### How to Report
-- **Email**: Send details to security@attently.ca
-- **Subject Line**: "Security Vulnerability Report - [Brief Description]"
-- **Include**: 
-  - Detailed description of the vulnerability
-  - Steps to reproduce the issue
-  - Potential impact assessment
-  - Any suggested fixes (optional)
+If the private reporting form is unavailable, open a public GitHub issue asking
+the maintainer to enable private vulnerability reporting. Do not include the
+vulnerability, proof of concept, credentials, or other sensitive details in
+that public issue.
 
-### What to Expect
-- **Initial Response**: Within 24 hours of report
-- **Status Update**: Within 72 hours with preliminary assessment  
-- **Resolution Timeline**: Critical issues resolved within 7 days
-- **Credit**: Security researchers will be credited (unless anonymity requested)
+Please do not publish the issue before a fix or coordinated disclosure date is
+available, access data that is not yours, use social engineering, or run tests
+that could disrupt another person’s deployment.
 
-### Please Do Not
-- Publicly disclose the vulnerability before we've addressed it
-- Access or modify user data without explicit permission
-- Perform testing that could disrupt our services
-- Use social engineering against our team members
+We will acknowledge reports as soon as reasonably possible and keep the
+reporter informed while the issue is assessed. Response and remediation times
+depend on severity and maintainer availability; this project does not promise a
+fixed security-response SLA.
 
-## Supported Versions
+## Supported versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+Security fixes are made on the latest tagged `1.0.x` release. The
+`open-sourcing` branch is a development branch and may change before a tag is
+published. Older and untagged versions may need to upgrade before receiving a
+fix.
 
-## Security Best Practices
+## Current security model
 
-### For Developers
-- **Never commit secrets**: Use environment variables and `.env.example`
-- **API Key Rotation**: Rotate all API keys if compromised
-- **Input Validation**: Validate all user inputs on both client and server
-- **Dependencies**: Keep all dependencies updated to latest secure versions
-- **Authentication**: Use proper JWT validation for all protected routes
-- **HTTPS Only**: All production traffic must use HTTPS
-- **CORS Policy**: Restrict origins to known domains only
+- The default self-hosted profile uses one shared bearer token. It is suitable
+  for a trusted internal workspace, not public multi-user account management.
+- `external_jwt` validates configured issuer, audience, algorithm, and signing
+  material. Full browser OIDC redirect login is not implemented.
+- The Supabase profile uses Supabase authentication and row-level policies.
+- The default Compose stack publishes only the frontend port; Nginx proxies API
+  traffic to the private backend container.
+- Backend and worker containers run as a non-root user. Secrets are supplied at
+  runtime and excluded from Docker build contexts.
+- Uploads have size, extension, MIME, and basic content checks. Attenly does not
+  include a full antivirus engine; deploy malware scanning separately when
+  required.
+- HTML and CSS produced during template ingestion are sanitized before use.
+- Browser and API responses include baseline clickjacking, MIME-sniffing,
+  referrer, and content-security headers.
+- Application rate limiting is process-local. Use a reverse proxy, firewall, or
+  gateway for deployment-wide abuse controls.
 
-### For Users
-- **Strong Passwords**: Use unique, strong passwords for your account
-- **Document Security**: Be mindful of sensitive information in uploaded documents
-- **Network Security**: Use secure networks when accessing the application
-- **Regular Reviews**: Monitor your account for any unauthorized activity
+## Operator responsibilities
 
-## Security Architecture
+- Terminate TLS at a trusted reverse proxy and restrict access to intended
+  networks and users.
+- Generate long random local, cron, webhook, and JWT secrets. Rotate any secret
+  that may have been exposed.
+- Keep `.env` out of source control and prefer a platform secret manager for
+  production.
+- Back up and protect the Docker volume. Encryption at rest depends on the host
+  filesystem, database, and storage provider selected by the operator.
+- Review the data-handling terms of every configured model and connector.
+  Documents sent to a hosted provider leave the local deployment.
+- Keep Attenly images, the host OS, Docker, model gateways, and reverse proxies
+  patched.
+- Use a dedicated Microsoft 365 mailbox and grant only the documented Graph
+  permissions when enabling email ingestion.
+- Place antivirus/content-disarm controls at the mail, gateway, or storage
+  boundary if company policy requires them.
 
-### Authentication & Authorization
-- JWT-based authentication via Supabase
-- Row Level Security (RLS) policies for data isolation
-- User-specific vector store collections
-- Server-side session validation
+## Secret handling
 
-### Data Protection
-- Encryption at rest via Supabase
-- TLS encryption for all API communications
-- User data isolation at database and vector store levels
-- Automatic data cleanup and session management
+- Never put server secrets in `VITE_` variables; frontend configuration is
+  visible to browser users.
+- Never include API keys in bug reports, screenshots, Compose output, or logs.
+- `.env`, private keys, local databases, logs, and local assistant settings are
+  ignored or excluded from container build contexts.
+- If a secret was committed, deleting the line in a later commit is not enough:
+  rotate the secret immediately and remove it from Git history when necessary.
 
-### Infrastructure Security
-- **Security Headers**: Comprehensive Content Security Policy (CSP), HSTS, X-Frame-Options
-- **Request Size Limiting**: Application-level middleware with 50MB limits and intelligent filtering
-- **Rate Limiting**: Per IP and per user with SlowAPI and Redis token buckets
-- **Input Validation**: Multi-layer validation at request, file, and content levels
-- **File Security**: MIME validation, extension checks, content-based detection, malware scanning hooks
-- **CORS Policy**: Strict enforcement limited to trusted domains only
+## No compliance certification
 
-### Container Security
-- **Multi-stage Docker Build**: Optimized production images with security scanning
-- **Non-root Execution**: Application runs as dedicated `appuser` with minimal privileges
-- **Image Hardening**: Minimal base images with only required dependencies
-- **Secret Management**: No secrets in container images, environment-based configuration only
-- **Supply Chain Security**: All dependencies pinned to exact versions (==) for reproducible builds
-- **Build Optimization**: Comprehensive `.dockerignore` preventing sensitive files in images
+Attenly is not certified as SOC 2, HIPAA, GDPR, or any other compliance regime.
+Organizations are responsible for evaluating and configuring the complete
+deployment—including identity, network, models, storage, backups, retention,
+and monitoring—for their legal and regulatory obligations.
 
-### AI/ML Security
-- Prompt injection prevention
-- Input validation before LLM processing
-- Cost protection mechanisms
-- User quota enforcement
-- Vector store isolation per user
-
-## Incident Response
-
-In the event of a security incident:
-1. **Immediate Response**: Contain and assess the incident
-2. **User Notification**: Notify affected users within 24 hours
-3. **Remediation**: Deploy fixes and security updates
-4. **Documentation**: Document incident and lessons learned
-5. **Prevention**: Update security measures to prevent recurrence
-
-## Compliance
-
-Attenly implements security measures consistent with:
-- **OWASP Top 10** security guidelines
-- **GDPR** privacy requirements
-- **SOC 2 Type II** security standards (planned)
-- Industry best practices for AI/ML security
-
-## Contact
-
-For general security questions: security@attently.ca
-For vulnerability reports: security@attently.ca
-For privacy concerns: privacy@attently.ca
-
----
-
-*This security policy is reviewed and updated regularly. Last updated: October 2025*
+Last updated: July 2026.

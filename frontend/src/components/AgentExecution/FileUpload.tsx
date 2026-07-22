@@ -20,9 +20,8 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
       if (f?.abortController) {
         try {
           f.abortController.abort();
-        } catch (error) {
-          // Ignore abort errors - controller might already be aborted
-          console.debug('AbortController already aborted:', error);
+        } catch {
+          // Ignore abort errors - controller might already be aborted.
         }
       }
       return prev.filter(x => x.id !== fileId);
@@ -36,9 +35,8 @@ export default function FileUpload({ files, onFilesChange }: FileUploadProps) {
         if ((f.status === 'uploading' || f.status === 'queued') && f.abortController) {
           try {
             f.abortController.abort();
-          } catch (error) {
-            // Ignore abort errors - controller might already be aborted
-            console.debug('AbortController already aborted:', error);
+          } catch {
+            // Ignore abort errors - controller might already be aborted.
           }
         }
       });

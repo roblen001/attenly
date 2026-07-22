@@ -20,6 +20,7 @@ interface UseReportDataParams {
 }
 
 export const useReportData = (params: UseReportDataParams) => {
+  const { agentId, reportId } = params;
   const { loading: authLoading, session } = useAuth();
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,8 +31,6 @@ export const useReportData = (params: UseReportDataParams) => {
 
   useEffect(() => {
     const fetchReportData = async () => {
-      const { agentId, reportId } = params;
-      
       if (!agentId && !reportId) {
         setError('No agent ID or report ID provided');
         setLoading(false);
@@ -60,8 +59,9 @@ export const useReportData = (params: UseReportDataParams) => {
           setReportData(result.report_data);
           setReportInfo({ id: result.id, name: result.report_name });
           
-          // Auto-preload PDFs for fast quote viewing (waits before hiding loading)
-          await preloadDocuments(reportId);
+          // Warm reference PDFs without delaying the report itself. Quote
+          // viewing falls back to on-demand loading while this runs.
+          void preloadDocuments(reportId);
           
         } else if (agentId) {
           // Fetch current report
@@ -94,13 +94,12 @@ export const useReportData = (params: UseReportDataParams) => {
     };
 
     fetchReportData();
-  }, [params.agentId, params.reportId, authLoading, session]);
+  }, [agentId, reportId, authLoading, session]);
 
   // Preload documents for saved reports
   const preloadDocuments = async (reportId: string) => {
     try {
       setPreloadStatus('loading');
-      console.log(`[Preload] Starting PDF preload for report ${reportId}...`);
       
       const response = await api(`/agents/reports/saved/${reportId}/preload-documents`, {
         method: 'POST',
@@ -110,8 +109,7 @@ export const useReportData = (params: UseReportDataParams) => {
         throw new Error('Failed to preload documents');
       }
       
-      const result = await response.json();
-      console.log(`[Preload] Successfully preloaded ${result.documents_loaded} PDFs (${result.total_size_mb} MB)`);
+      await response.json();
       setPreloadStatus('complete');
       
     } catch (err) {
@@ -124,16 +122,16 @@ export const useReportData = (params: UseReportDataParams) => {
   // Cleanup: Unload preloaded documents when component unmounts (for saved reports)
   useEffect(() => {
     return () => {
-      if (reportType === 'saved' && params.reportId && preloadStatus === 'complete') {
+      if (reportType === 'saved' && reportId && preloadStatus === 'complete') {
         // Cleanup preloaded documents from memory
-        api(`/agents/reports/saved/${params.reportId}/unload-documents`, {
+        api(`/agents/reports/saved/${reportId}/unload-documents`, {
           method: 'DELETE',
         }).catch(() => {
           // Ignore errors - this is just cleanup
         });
       }
     };
-  }, [reportType, params.reportId, preloadStatus]);
+  }, [reportType, reportId, preloadStatus]);
 
   return {
     reportData,

@@ -18,6 +18,7 @@ from app.services.document_processor import DocumentProcessor
 from app.services.vector_store import vector_store_manager # In user-based storage, we use a global manager for vector store operations
 from app.services.report_service import report_service
 from app.services.pdf_generator import pdf_generator
+from app.services.credit_service import CreditLimitExceeded
 
 # Import performance monitoring
 from app.services.performance_monitor import get_performance_monitor, time_operation, timed_operation
@@ -515,8 +516,8 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
                 processing_results.append(processing_result)
                 
             except Exception as e:
-                error_message = str(e)
                 logging.error(f"Failed to process document {file.filename}: {e}")
+                error_message = "Document processing failed. Check the backend logs for details."
                 file_record["status"] = "failed"
                 file_record["error"] = error_message
                 
@@ -544,8 +545,8 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
             
         except Exception as e:
             # Handle any unexpected errors gracefully
-            error_message = f"Unexpected error: {str(e)}"
             logging.error(f"Unexpected error processing file {file.filename}: {e}")
+            error_message = "Unexpected file processing error. Check the backend logs for details."
             
             file_result = {
                 "id": str(uuid.uuid4()),
@@ -734,7 +735,7 @@ async def get_document_content(document_id: str, current_user = Depends(get_curr
         raise
     except Exception as e:
         logging.error(f"Failed to get content for document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve document content: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document content")
 
 @router.get("/documents/{document_id}/bboxes")
 async def get_document_bboxes(document_id: str, current_user = Depends(get_current_user)):
@@ -894,7 +895,10 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
         )
         
         if not report_result["success"]:
-            raise HTTPException(status_code=500, detail=f"Document processing failed: {report_result.get('error', 'Unknown error')}")
+            raise HTTPException(
+                status_code=500,
+                detail="Document processing failed. Check the backend logs and model configuration.",
+            )
         
         # Extract AI baseline IMMEDIATELY after generation (before any user edits)
         ai_baseline_answers = supabase_service._extract_baseline_answers(report_result["report_data"])
@@ -915,12 +919,14 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
             "message": "Document processing completed successfully with real LLM inference and cached for preview"
         }
         
+    except CreditLimitExceeded as e:
+        raise HTTPException(status_code=402, detail=e.message)
     except ValueError as e:
         # Handle service-level errors (including LLM unavailability)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logging.error(f"Failed to process documents with agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Document processing failed")
 
 
 @router.post("/{agent_id}/test-question")
@@ -1022,12 +1028,24 @@ async def test_single_question(
         llm_result = llm_service.process_agent_questions(questions_with_chunks, document_context, user_id=str(user_id))
         
         if not llm_result["success"]:
-            raise HTTPException(status_code=500, detail=f"LLM processing failed: {llm_result.get('error', 'Unknown error')}")
+            raise HTTPException(
+                status_code=500,
+                detail="Model processing failed. Check the backend logs and model configuration.",
+            )
         
         # Extract result for the test question
         question_result = llm_result["results"].get("{{Test Question}}")
         if not question_result:
             raise HTTPException(status_code=500, detail="No result returned for test question")
+        if question_result.get("error"):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "The model did not return a valid structured answer. "
+                    "Please retry the prompt. If this continues, verify that the selected "
+                    "model supports JSON structured output."
+                ),
+            )
         
         # Apply bbox matching if we have OCR documents with bounding boxes
         if bbox_data and question_result.get("source_chunks"):
@@ -1110,12 +1128,14 @@ async def test_single_question(
             }
         }
         
+    except CreditLimitExceeded as e:
+        raise HTTPException(status_code=402, detail=e.message)
     except ValueError as e:
         # Handle LLM service errors
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logging.error(f"Failed to test question: {e}")
-        raise HTTPException(status_code=500, detail=f"Question testing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Question testing failed")
 
 
 @router.get("/{agent_id}/report")
@@ -1164,7 +1184,7 @@ async def get_agent_report(agent_id: str, request: Request, current_user = Depen
         
     except Exception as e:
         logging.error(f"Failed to retrieve cached report for agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve cached report: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve cached report")
 
 
 @router.get("/{agent_id}/pdf")
@@ -1227,7 +1247,7 @@ async def download_agent_report_pdf(
 
     except Exception as e:
         logging.error(f"Failed to generate PDF from cached data for agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="PDF generation failed")
 
 
 @router.put("/reports/{agent_id}/cache")
@@ -1350,7 +1370,7 @@ async def save_current_report(
         
     except Exception as e:
         logging.error(f"Failed to save report: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save report: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to save report")
 
 @router.get("/reports/saved", response_model=List[SavedReportOut])
 async def list_saved_reports(
@@ -1487,27 +1507,12 @@ async def preload_saved_report_documents(
     access_token, refresh_token = auth_tokens
     
     try:
-        # Get document IDs from the report
-        user_client = supabase_service._create_user_client(access_token)
-        
-        # Verify report ownership
-        report_result = user_client.table("saved_reports")\
-            .select("id")\
-            .eq("id", report_id)\
-            .eq("user_id", user_id)\
-            .single()\
-            .execute()
-        
-        if not report_result.data:
+        if not supabase_service.get_saved_report(access_token, user_id, report_id):
             raise HTTPException(status_code=404, detail="Report not found")
-        
-        # Get all documents for this report that have PDF storage paths
-        docs_result = user_client.table("saved_report_documents")\
-            .select("document_id, storage_path, filename, metadata")\
-            .eq("report_id", report_id)\
-            .execute()
-        
-        if not docs_result.data:
+
+        docs_data = supabase_service.get_saved_report_documents(access_token, user_id, report_id)
+
+        if not docs_data:
             return {
                 "success": True,
                 "documents_loaded": 0,
@@ -1522,15 +1527,11 @@ async def preload_saved_report_documents(
         if report_id not in preloaded_reports_cache[user_id]:
             preloaded_reports_cache[user_id][report_id] = {}
         
-        # Fetch PDFs from Storage
-        from app.services.supabase_storage_service import get_storage_service
-        storage_service = get_storage_service()
-        
         loaded_count = 0
         total_size = 0
         skipped_count = 0
         
-        for doc in docs_result.data:
+        for doc in docs_data:
             document_id = doc["document_id"]
             storage_path = doc.get("storage_path")
             
@@ -1546,12 +1547,12 @@ async def preload_saved_report_documents(
                 continue
             
             try:
-                # Download PDF from Storage
-                pdf_bytes = storage_service.download_document(
-                    access_token=access_token,
-                    refresh_token=refresh_token,
+                pdf_bytes = supabase_service.download_saved_document_pdf(
+                    access_token,
                     user_id=user_id,
-                    storage_path=storage_path
+                    report_id=report_id,
+                    document_id=document_id,
+                    refresh_token=refresh_token,
                 )
                 
                 if pdf_bytes:
@@ -1591,7 +1592,7 @@ async def preload_saved_report_documents(
         raise
     except Exception as e:
         logging.error(f"Failed to preload documents for report {report_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to preload documents: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to preload documents")
 
 
 @router.delete("/reports/saved/{report_id}/unload-documents")
@@ -1655,32 +1656,12 @@ async def get_saved_document_bboxes(
     user_id = current_user.id
     
     try:
-        # Get document metadata from saved report
-        user_client = supabase_service._create_user_client(jwt_token)
-        
-        # Verify report ownership
-        report_result = user_client.table("saved_reports")\
-            .select("id")\
-            .eq("id", report_id)\
-            .eq("user_id", user_id)\
-            .single()\
-            .execute()
-        
-        if not report_result.data:
-            raise HTTPException(status_code=404, detail="Report not found")
-        
-        # Get document metadata (which includes bounding boxes if available)
-        doc_result = user_client.table("saved_report_documents")\
-            .select("document_id, filename, metadata")\
-            .eq("report_id", report_id)\
-            .eq("document_id", document_id)\
-            .single()\
-            .execute()
-        
-        if not doc_result.data:
+        doc_data = supabase_service.get_saved_document_metadata(jwt_token, user_id, report_id, document_id)
+
+        if not doc_data:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        metadata = doc_result.data.get("metadata", {})
+        metadata = doc_data.get("metadata", {})
         
         # Check if this document has bounding boxes (stored in metadata)
         if "bounding_boxes" not in metadata:
@@ -1695,7 +1676,7 @@ async def get_saved_document_bboxes(
         
         return {
             "document_id": document_id,
-            "filename": doc_result.data.get("filename", "Unknown"),
+            "filename": doc_data.get("filename", "Unknown"),
             "bounding_boxes": bbox_data
         }
         
@@ -1761,75 +1742,94 @@ async def get_saved_document_file(
             headers={**headers, "Content-Length": str(total_size)}
         )
     
-    # FALLBACK: Not in cache, use Storage with signed URL redirect
+    # FALLBACK: Not in cache, use configured document storage
     try:
-        # Get document metadata to check for Storage path
-        user_client = supabase_service._create_user_client(jwt_token)
-        
-        # Verify report ownership
-        report_result = user_client.table("saved_reports")\
-            .select("id")\
-            .eq("id", report_id)\
-            .eq("user_id", user_id)\
-            .single()\
-            .execute()
-        
-        if not report_result.data:
-            raise HTTPException(status_code=404, detail="Report not found")
-        
-        # Get document Storage metadata
-        doc_result = user_client.table("saved_report_documents")\
-            .select("storage_path, content_hash, filename")\
-            .eq("report_id", report_id)\
-            .eq("document_id", document_id)\
-            .single()\
-            .execute()
-        
-        if not doc_result.data:
+        doc_data = supabase_service.get_saved_document_metadata(jwt_token, user_id, report_id, document_id)
+
+        if not doc_data:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        storage_path = doc_result.data.get("storage_path")
+        storage_path = doc_data.get("storage_path")
         
         # Check if document has Storage path (new documents)
         if storage_path:
-            # Generate signed URL and redirect
-            from app.services.supabase_storage_service import get_storage_service
             from app.config import STORAGE_SIGNED_URL_EXPIRY_SECONDS
-            
-            storage_service = get_storage_service()
-            
+
             try:
-                signed_url = storage_service.get_signed_url(
-                    access_token=jwt_token,
-                    refresh_token="",
+                signed_url = supabase_service.get_saved_document_signed_url(
+                    jwt_token,
                     user_id=user_id,
-                    storage_path=storage_path,
+                    report_id=report_id,
+                    document_id=document_id,
+                    refresh_token="",
                     expiry_seconds=STORAGE_SIGNED_URL_EXPIRY_SECONDS
                 )
-                
-                # Add content-hash as ETag for caching if available
-                headers = {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Expose-Headers": "ETag"
-                }
-                
-                content_hash = doc_result.data.get("content_hash")
-                if content_hash:
-                    headers["ETag"] = f'"{content_hash[:16]}"'
-                
-                # Redirect to signed URL (307 preserves method and body)
-                logging.info(f"Redirecting to signed URL for document {document_id}")
-                return RedirectResponse(
-                    url=signed_url,
-                    status_code=307,
-                    headers=headers
+
+                if signed_url:
+                    # Add content-hash as ETag for caching if available
+                    headers = {
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Expose-Headers": "ETag"
+                    }
+
+                    content_hash = doc_data.get("content_hash")
+                    if content_hash:
+                        headers["ETag"] = f'"{content_hash[:16]}"'
+
+                    # Redirect to signed URL (307 preserves method and body)
+                    logging.info(f"Redirecting to signed URL for document {document_id}")
+                    return RedirectResponse(
+                        url=signed_url,
+                        status_code=307,
+                        headers=headers
+                    )
+
+                pdf_bytes = supabase_service.download_saved_document_pdf(
+                    jwt_token,
+                    user_id=user_id,
+                    report_id=report_id,
+                    document_id=document_id,
+                    refresh_token="",
                 )
-                
+                if not pdf_bytes:
+                    raise ValueError("Document storage path exists but no PDF bytes were returned")
+
+                total_size = len(pdf_bytes)
+                headers = {
+                    "Content-Type": "application/pdf",
+                    "Accept-Ranges": "bytes",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges"
+                }
+
+                range_header = request.headers.get("Range")
+                if range_header and (match := re.match(r"bytes=(\d+)-(\d*)", range_header)):
+                    start = int(match.group(1))
+                    end = int(match.group(2)) if match.group(2) else total_size - 1
+                    end = min(end, total_size - 1)
+
+                    return Response(
+                        content=pdf_bytes[start:end+1],
+                        status_code=206,
+                        media_type="application/pdf",
+                        headers={
+                            **headers,
+                            "Content-Range": f"bytes {start}-{end}/{total_size}",
+                            "Content-Length": str(end - start + 1)
+                        }
+                    )
+
+                return Response(
+                    content=pdf_bytes,
+                    media_type="application/pdf",
+                    headers={**headers, "Content-Length": str(total_size)}
+                )
+
             except Exception as storage_error:
-                logging.error(f"Failed to get signed URL for {document_id}: {storage_error}")
+                logging.error(f"Failed to get document file for {document_id}: {storage_error}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to generate secure access URL for document"
+                    detail="Failed to retrieve document file"
                 )
         
         # No Storage path - likely OCR document
@@ -1995,6 +1995,48 @@ async def download_saved_report_pdf(
 
 # Template Upload Endpoint
 
+@router.get("/template/capabilities")
+async def get_template_ingest_capabilities(current_user = Depends(get_current_user)):
+    """Return configured template-ingest capability for the current deployment."""
+    from app import config
+
+    provider = config.TEMPLATE_INGEST_PROVIDER
+    enabled = provider != "disabled"
+
+    messages = {
+        "disabled": (
+            "Template upload is disabled by this deployment. Build templates directly "
+            "in the editor or ask an administrator to enable a template-ingest provider."
+        ),
+        "basic": (
+            "Template upload is using basic DOCX/HTML conversion. Complex PDFs and "
+            "layout-heavy templates require a smart model provider."
+        ),
+        "gemini": (
+            "Template upload is using Gemini for smart multimodal template ingestion."
+        ),
+        "openai_compatible": (
+            "Template upload is using OpenAI-compatible multimodal file input. "
+            "Use a strong model for complex layouts."
+        ),
+    }
+
+    return {
+        "enabled": enabled,
+        "provider": provider,
+        "model_name": (
+            config.TEMPLATE_INGEST_MODEL_NAME
+            if provider in {"gemini", "openai_compatible"}
+            else None
+        ),
+        "supports_pdf": provider in {"gemini", "openai_compatible"},
+        "supports_docx": provider in {"gemini", "openai_compatible", "basic"},
+        "supports_html": provider in {"gemini", "openai_compatible", "basic"},
+        "requires_smart_model": provider in {"gemini", "openai_compatible"},
+        "message": messages.get(provider, "Template upload provider is not supported by this runtime."),
+    }
+
+
 @router.post("/template/upload")
 async def upload_template(
     file: UploadFile = File(...),
@@ -2054,6 +2096,32 @@ async def upload_template(
         ingest_service = TemplateIngestService()
 
         result = ingest_service.process_template_file(content, file.filename, user_id=str(user_id))
+
+        if result.source == "disabled":
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": result.success,
+                    "html_body": result.html_body,
+                    "css": result.css,
+                    "source": result.source,
+                    "error": result.error,
+                    "warnings": result.warnings,
+                },
+            )
+
+        if not result.success:
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "success": False,
+                    "html_body": "",
+                    "css": "",
+                    "source": result.source,
+                    "error": result.error or "Template processing failed.",
+                    "warnings": result.warnings,
+                },
+            )
         
         # Return result
         return {
@@ -2065,6 +2133,18 @@ async def upload_template(
             "warnings": result.warnings
         }
         
+    except CreditLimitExceeded as e:
+        return JSONResponse(
+            status_code=402,
+            content={
+                "success": False,
+                "html_body": "",
+                "css": "",
+                "source": "error",
+                "error": e.message,
+                "warnings": [],
+            },
+        )
     except Exception as e:
         logging.error(f"Template upload failed: {str(e)}", exc_info=True)
         return JSONResponse(
@@ -2074,7 +2154,7 @@ async def upload_template(
                 "html_body": "",
                 "css": "",
                 "source": "error",
-                "error": f"Template processing failed: {str(e)}",
+                "error": "Template processing failed. Check the backend logs for details.",
                 "warnings": []
             }
         )
@@ -2145,7 +2225,7 @@ async def create_custom_agent(
         
     except Exception as e:
         logging.error(f"Failed to create custom agent: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create custom agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create custom agent")
 
 @router.get("/list_user_custom_agents", response_model=List[CustomAgentOut])
 async def list_user_custom_agents(
@@ -2257,7 +2337,7 @@ async def update_custom_agent(
         raise
     except Exception as e:
         logging.error(f"Failed to update custom agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update custom agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update custom agent")
 
 @router.delete("/custom/{agent_id}")
 async def delete_custom_agent(
@@ -2283,7 +2363,7 @@ async def delete_custom_agent(
         raise
     except Exception as e:
         logging.error(f"Failed to delete custom agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete custom agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete custom agent")
 
 @router.get("/{agent_id}", response_model=Agent)
 def get_agent_by_id(agent_id: str, current_user = Depends(get_current_user), jwt_token: str = Depends(extract_jwt_token)):
@@ -2316,7 +2396,7 @@ async def get_performance_report(current_user = Depends(get_current_user)):
         logging.error(f"Failed to generate performance report: {e}")
         return {
             "available": False,
-            "error": str(e)
+            "error": "Failed to generate performance report"
         }
 
 @router.post("/performance/export")
@@ -2340,4 +2420,4 @@ async def export_performance_metrics(current_user = Depends(get_current_user)):
         
     except Exception as e:
         logging.error(f"Failed to export performance metrics: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to export metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to export metrics")

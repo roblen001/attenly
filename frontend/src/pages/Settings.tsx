@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../libs/https';
 import type { EmailIngestSettings as EmailIngestSettingsType, Agent } from '../types';
@@ -9,6 +9,47 @@ import UsageInstructions from '../components/email-ingest/UsageInstructions';
 import './Settings.css';
 
 type SettingsTab = 'credits' | 'email';
+
+type VerificationNotice = {
+  type: 'success' | 'error';
+  message: string;
+};
+
+const verificationNotices: Record<string, VerificationNotice> = {
+  success: {
+    type: 'success',
+    message: 'Email address verified. This sender can now submit documents to Attenly.',
+  },
+  invalid: {
+    type: 'error',
+    message: 'This verification link is invalid, expired, or already used. Request a new link from Verified Senders if needed.',
+  },
+  disabled: {
+    type: 'error',
+    message: 'Email ingest is disabled on this Attenly deployment.',
+  },
+  failed: {
+    type: 'error',
+    message: 'We could not verify this email address. Request a new verification link and try again.',
+  },
+};
+
+const disabledEmailSettings = (
+  message = 'Email ingest is disabled by server configuration.',
+  provider = 'none'
+): EmailIngestSettingsType => ({
+  endpoint: null,
+  delivery_address: null,
+  delivery_mode: null,
+  verified_senders: [],
+  usage_summary: {
+    jobs_last_24h: 0,
+    rate_limit: 0,
+  },
+  enabled_by_config: false,
+  provider,
+  message,
+});
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -30,6 +71,24 @@ export default function Settings() {
   const [disabling, setDisabling] = useState(false);
   const [updatingAgent, setUpdatingAgent] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState<VerificationNotice | null>(null);
+
+  // Turn the public email-link callback into a clear in-app result, then remove
+  // the callback parameter so refreshing the page does not repeat the message.
+  useEffect(() => {
+    const verificationResult = searchParams.get('sender_verification');
+    if (!verificationResult) return;
+
+    setActiveTab('email');
+    setVerificationNotice(
+      verificationNotices[verificationResult] || verificationNotices.failed
+    );
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', 'email');
+    nextParams.delete('sender_verification');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Update URL when tab changes
   const handleTabChange = (tab: SettingsTab) => {
@@ -57,8 +116,14 @@ export default function Settings() {
       setEmailLoading(true);
       setEmailError(null);
       const response = await api('/email-ingest/settings', { method: 'GET' });
+      if (response.status === 503) {
+        const data = await response.json().catch(() => null);
+        setEmailSettings(disabledEmailSettings(data?.detail));
+        return;
+      }
       if (!response.ok) {
-        throw new Error('Failed to fetch email ingest settings');
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.detail || 'Failed to fetch email ingest settings');
       }
       const data: EmailIngestSettingsType = await response.json();
       setEmailSettings(data);
@@ -86,6 +151,11 @@ export default function Settings() {
   };
 
   const handleEnable = async () => {
+    if (emailSettings?.enabled_by_config === false) {
+      setEmailError(emailSettings.message || 'Email ingest is disabled by server configuration.');
+      return;
+    }
+
     try {
       setEnabling(true);
       setEmailError(null);
@@ -102,7 +172,7 @@ export default function Settings() {
   };
 
   const handleDisable = async () => {
-    if (!window.confirm('Are you sure you want to disable email ingest? Your email alias will be preserved but will not accept new emails.')) {
+    if (!window.confirm('Are you sure you want to disable email ingest? Your routing settings will be preserved but will not accept new emails.')) {
       return;
     }
 
@@ -122,8 +192,9 @@ export default function Settings() {
   };
 
   const handleCopyEmail = () => {
-    if (emailSettings?.endpoint?.full_address) {
-      navigator.clipboard.writeText(emailSettings.endpoint.full_address);
+    const address = emailSettings?.delivery_address || emailSettings?.endpoint?.full_address;
+    if (address) {
+      navigator.clipboard.writeText(address);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     }
@@ -150,7 +221,11 @@ export default function Settings() {
   };
 
   const isEmailEnabled = emailSettings?.endpoint?.is_active ?? false;
-  const hasEndpoint = emailSettings?.endpoint !== null;
+  const hasEndpoint = Boolean(emailSettings?.endpoint);
+  const isEmailAvailable = emailSettings?.enabled_by_config ?? true;
+  const emailDisabledMessage = emailSettings?.message || 'Email ingest is disabled by server configuration.';
+  const deliveryAddress = emailSettings?.delivery_address || emailSettings?.endpoint?.full_address || '';
+  const usesGraphMailboxDelivery = emailSettings?.delivery_mode === 'graph_mailbox';
 
   return (
     <div className="settings-page">
@@ -235,6 +310,25 @@ export default function Settings() {
       {/* Email Ingest Tab */}
       {activeTab === 'email' && (
         <div className="settings-content">
+          {verificationNotice && (
+            <div
+              className={`verification-banner ${verificationNotice.type}`}
+              role={verificationNotice.type === 'success' ? 'status' : 'alert'}
+            >
+              <span className="verification-icon">
+                {verificationNotice.type === 'success' ? '\u2713' : '!'}
+              </span>
+              <span>{verificationNotice.message}</span>
+              <button
+                onClick={() => setVerificationNotice(null)}
+                className="close-verification"
+                aria-label="Dismiss verification message"
+              >
+                x
+              </button>
+            </div>
+          )}
+
           {emailError && (
             <div className="error-banner">
               <span className="error-icon">!</span>
@@ -248,6 +342,14 @@ export default function Settings() {
               <div className="spinner"></div>
               <p>Loading email settings...</p>
             </div>
+          ) : !isEmailAvailable ? (
+            <div className="disabled-state">
+              <div className="disabled-card">
+                <div className="disabled-icon">@</div>
+                <h2>Email Ingest Unavailable</h2>
+                <p>{emailDisabledMessage}</p>
+              </div>
+            </div>
           ) : !hasEndpoint || !isEmailEnabled ? (
             <div className="disabled-state">
               <div className="disabled-card">
@@ -255,13 +357,17 @@ export default function Settings() {
                 <h2>Email Ingest {hasEndpoint && !isEmailEnabled ? 'Disabled' : 'Not Enabled'}</h2>
                 <p>
                   {hasEndpoint && !isEmailEnabled
-                    ? 'Your email alias exists but is currently disabled. Enable it to start receiving emails.'
-                    : 'Generate a unique email address to forward documents for automated processing.'}
+                    ? 'Your email routing is currently disabled. Enable it to start receiving documents.'
+                    : usesGraphMailboxDelivery
+                      ? 'Enable email ingest to process attachments delivered to your configured Microsoft 365 mailbox.'
+                      : 'Generate a unique email address to forward documents for automated processing.'}
                 </p>
-                {hasEndpoint && !isEmailEnabled && emailSettings?.endpoint && (
+                {hasEndpoint && !isEmailEnabled && deliveryAddress && (
                   <div className="disabled-alias-info">
-                    <p className="alias-label">Your Email Alias:</p>
-                    <code>{emailSettings.endpoint.full_address}</code>
+                    <p className="alias-label">
+                      {usesGraphMailboxDelivery ? 'Microsoft 365 Mailbox:' : 'Your Email Alias:'}
+                    </p>
+                    <code>{deliveryAddress}</code>
                   </div>
                 )}
                 <button
@@ -273,14 +379,17 @@ export default function Settings() {
                 </button>
               </div>
 
-              <UsageInstructions />
+              <UsageInstructions
+                deliveryMode={emailSettings?.delivery_mode}
+                deliveryAddress={deliveryAddress}
+              />
             </div>
           ) : (
             <div className="enabled-state">
-              {/* Email Alias Card */}
+              {/* Email delivery card */}
               <div className="settings-card">
                 <div className="card-header-section">
-                  <h2>Your Email Alias</h2>
+                  <h2>{usesGraphMailboxDelivery ? 'Report Intake Mailbox' : 'Your Email Alias'}</h2>
                   <button
                     onClick={handleDisable}
                     disabled={disabling}
@@ -290,7 +399,7 @@ export default function Settings() {
                   </button>
                 </div>
                 <div className="email-alias-display">
-                  <code className="email-address">{emailSettings?.endpoint?.full_address}</code>
+                  <code className="email-address">{deliveryAddress}</code>
                   <button
                     onClick={handleCopyEmail}
                     className={`btn btn-copy ${copySuccess ? 'copied' : ''}`}
@@ -299,7 +408,9 @@ export default function Settings() {
                   </button>
                 </div>
                 <p className="help-text">
-                  Forward emails with attachments to this address. Emails must come from verified senders.
+                  {usesGraphMailboxDelivery
+                    ? 'Send attachments directly to this Microsoft 365 mailbox. Attenly monitors it through Microsoft Graph; no generated mailbox alias is required for this single-workspace deployment.'
+                    : 'Forward emails with attachments to this address. Emails must come from verified senders.'}
                 </p>
               </div>
 
@@ -343,7 +454,10 @@ export default function Settings() {
               />
 
               {/* Instructions */}
-              <UsageInstructions />
+              <UsageInstructions
+                deliveryMode={emailSettings?.delivery_mode}
+                deliveryAddress={deliveryAddress}
+              />
             </div>
           )}
         </div>

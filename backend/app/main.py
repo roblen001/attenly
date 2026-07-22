@@ -6,9 +6,15 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.db import Base, engine
-from app.routers import auth, agents, webhooks, internal, email_ingest, credits
+from app.routers import auth, agents, email_ingest, credits
 from app.routes import health
-from app.config import validate_config, get_config_summary
+from app.config import (
+    DATABASE_AUTO_CREATE_TABLES,
+    DATABASE_PROVIDER,
+    INBOUND_EMAIL_PROVIDER,
+    validate_config,
+    get_config_summary,
+)
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.correlation_id import CorrelationIDMiddleware
 from app.middleware.request_size import RequestSizeLimitMiddleware, get_request_size_limit
@@ -43,9 +49,11 @@ except ValueError as e:
     logger.error(f"Configuration validation failed: {e}")
     sys.exit(1)
 
-# Create database tables (development only)
-if os.getenv("ENV") != "production":
-    logger.info("Creating database tables for development")
+# Create SQLAlchemy tables for development and SQLite/open-source profiles.
+if os.getenv("ENV") != "production" or (
+    DATABASE_PROVIDER == "sqlalchemy" and DATABASE_AUTO_CREATE_TABLES
+):
+    logger.info("Creating SQLAlchemy database tables")
     Base.metadata.create_all(bind=engine)
 
 # CORS configuration 
@@ -124,8 +132,17 @@ app.include_router(auth.router, prefix="/auth", tags=["authentication"])
 app.include_router(agents.router, tags=["agents"])
 app.include_router(email_ingest.router, tags=["email-ingest"])
 app.include_router(credits.router, tags=["credits"])
-app.include_router(webhooks.router, tags=["webhooks"])
-app.include_router(internal.router, tags=["internal"])
+
+if INBOUND_EMAIL_PROVIDER == "none":
+    logger.info("Inbound email is disabled; webhook and email-job routers are not mounted")
+else:
+    from app.routers import internal
+
+    if INBOUND_EMAIL_PROVIDER == "resend":
+        from app.routers import webhooks
+
+        app.include_router(webhooks.router, tags=["webhooks"])
+    app.include_router(internal.router, tags=["internal"])
 
 if __name__ == "__main__":
     import uvicorn

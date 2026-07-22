@@ -3,19 +3,16 @@ LLM Service
 
 Provides AI-powered data extraction from document chunks.
 Optimized for cost-efficient RAG processing with batch inferencing.
-Uses Gemini 2.5 Flash-Lite for maximum cost efficiency.
-
-TODO: generalize later to support multiple LLM providers/models
-TODO: add custom embeddings so we don't need to use chromas default embeddings (I am thinking of using voyager)
+Supports Gemini and OpenAI-compatible chat completion providers.
 """
 
 import logging
-import os
-from typing import List, Dict, Any, Optional, Union, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
+import httpx
 from app.schemas import QuestionOut, AnswerType
 from app.services.performance_monitor import time_operation, get_performance_monitor
 from app.services.bbox_matcher import BBoxMatcher
@@ -25,8 +22,10 @@ from app.config import (
     GEMINI_API_KEY,
     LLM_MAX_CONTEXT_TOKENS_PER_QUESTION,
     LLM_TEMPERATURE,
-    LLM_THINKING_BUDGET,
-    LLM_RESPONSE_FORMAT,
+    LLM_PROVIDER,
+    OPENAI_COMPATIBLE_BASE_URL,
+    OPENAI_COMPATIBLE_API_KEY,
+    OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
     VECTOR_SEARCH_MAX_SOURCE_QUOTES,
     QUOTE_CONTEXT_CHARS,
     MAX_QUOTE_LENGTH,
@@ -37,6 +36,11 @@ from app.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+GEMINI_GENERATE_CONTENT_BASE_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models"
+)
+GEMINI_REQUEST_TIMEOUT_SECONDS = 300.0
 
 
 class AnswerQuality(Enum):
@@ -52,32 +56,186 @@ class LLMService:
     
     def __init__(self):
         self.model_name = LLM_MODEL_NAME
-        self.api_key = GEMINI_API_KEY
+        self.provider = LLM_PROVIDER
+        self.api_key = GEMINI_API_KEY if self.provider == "gemini" else OPENAI_COMPATIBLE_API_KEY
+        self.base_url = OPENAI_COMPATIBLE_BASE_URL
         self.available = False
         self.client = None
-        
+
         try:
-            import google.generativeai as genai
-            
-            if not self.api_key:
-                logger.warning("GEMINI_API_KEY not found in environment variables")
-                raise ValueError("Gemini API key not configured")
-            
-            # Configure the API key
-            genai.configure(api_key=self.api_key)
-            
-            # Initialize the model
-            self.model = genai.GenerativeModel(self.model_name)
-            self.available = True
-            
-            # Store genai for later use
-            self.genai = genai
-            
-            logger.info(f"Initialized cost-optimized LLM service with model: {self.model_name}")
+            if self.provider == "gemini":
+                if not self.api_key:
+                    logger.warning("GEMINI_API_KEY not found in environment variables")
+                    raise ValueError("Gemini API key not configured")
+
+                self.model = None
+                self.genai = None
+                self.available = True
+                logger.info("Initialized Gemini LLM service with model: %s", self.model_name)
+            elif self.provider == "openai_compatible":
+                if not self.base_url:
+                    raise ValueError("OPENAI_COMPATIBLE_BASE_URL is required")
+                self.model = None
+                self.genai = None
+                self.available = True
+                logger.info(
+                    "Initialized OpenAI-compatible LLM service with model: %s at %s",
+                    self.model_name,
+                    self.base_url,
+                )
+            else:
+                raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini LLM service: {e}")
+            logger.error("Failed to initialize %s LLM service: %s", self.provider, e)
             self.client = None
+
+    @staticmethod
+    def _clean_json_response(response_text: str) -> str:
+        """Normalize common JSON-only model output wrappers."""
+        text = response_text.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+        return text
+
+    def _openai_compatible_url(self, path: str) -> str:
+        base_url = (self.base_url or "").rstrip("/")
+        if base_url.endswith("/chat/completions") and path == "/chat/completions":
+            return base_url
+        return f"{base_url}{path}"
+
+    def _openai_compatible_headers(self) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _gemini_generate_content_url(self) -> str:
+        return f"{GEMINI_GENERATE_CONTENT_BASE_URL}/{self.model_name}:generateContent"
+
+    def _gemini_headers(self) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+
+    @staticmethod
+    def _gemini_response_text(data: Dict[str, Any]) -> str:
+        return "".join(
+            str(part.get("text", ""))
+            for candidate in data.get("candidates") or []
+            if isinstance(candidate, dict)
+            for part in (candidate.get("content") or {}).get("parts") or []
+            if isinstance(part, dict)
+        )
+
+    @staticmethod
+    def _raise_for_gemini_error(response: httpx.Response) -> None:
+        if response.is_success:
+            return
+
+        detail = ""
+        try:
+            detail = str((response.json().get("error") or {}).get("message") or "")
+        except (ValueError, AttributeError):
+            detail = response.text[:500]
+
+        if detail:
+            raise RuntimeError(f"Gemini request failed (HTTP {response.status_code}): {detail}")
+        raise RuntimeError(f"Gemini request failed (HTTP {response.status_code})")
+
+    def _generate_json_text_sync(
+        self,
+        prompt: str,
+        *,
+        temperature: float,
+        response_schema: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[str, Dict[str, int]]:
+        """Generate JSON text using the selected LLM provider."""
+        if self.provider == "gemini":
+            generation_config_kwargs: Dict[str, Any] = {
+                "temperature": temperature,
+                "responseMimeType": "application/json",
+            }
+            if response_schema:
+                generation_config_kwargs["responseSchema"] = response_schema
+
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": generation_config_kwargs,
+            }
+            with httpx.Client(timeout=GEMINI_REQUEST_TIMEOUT_SECONDS) as client:
+                response = client.post(
+                    self._gemini_generate_content_url(),
+                    headers=self._gemini_headers(),
+                    json=payload,
+                )
+            self._raise_for_gemini_error(response)
+            data = response.json()
+            response_text = self._gemini_response_text(data)
+            if not response_text:
+                return "", {"input_tokens": 0, "output_tokens": 0}
+
+            usage = data.get("usageMetadata") or {}
+            token_usage = {
+                "input_tokens": int(usage.get("promptTokenCount") or 0),
+                "output_tokens": int(usage.get("candidatesTokenCount") or 0),
+            }
+            return response_text, token_usage
+
+        if self.provider == "openai_compatible":
+            payload = {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+                "response_format": {"type": "json_object"},
+            }
+            url = self._openai_compatible_url("/chat/completions")
+            timeout = httpx.Timeout(float(OPENAI_COMPATIBLE_TIMEOUT_SECONDS))
+
+            with httpx.Client(timeout=timeout) as client:
+                response = client.post(
+                    url,
+                    headers=self._openai_compatible_headers(),
+                    json=payload,
+                )
+                if response.status_code in (400, 404, 422):
+                    # Some OpenAI-compatible gateways do not implement
+                    # response_format. Retry with the prompt-only contract.
+                    payload.pop("response_format", None)
+                    response = client.post(
+                        url,
+                        headers=self._openai_compatible_headers(),
+                        json=payload,
+                    )
+                response.raise_for_status()
+
+            data = response.json()
+            choices = data.get("choices") or []
+            if not choices:
+                return "", {"input_tokens": 0, "output_tokens": 0}
+
+            message = choices[0].get("message") or {}
+            content = message.get("content") or choices[0].get("text") or ""
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "")
+                    for part in content
+                    if isinstance(part, dict)
+                )
+            usage = data.get("usage") or {}
+            token_usage = {
+                "input_tokens": usage.get("prompt_tokens", 0) or 0,
+                "output_tokens": usage.get("completion_tokens", 0) or 0,
+            }
+            return content, token_usage
+
+        raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
     def _execute_parallel(
         self,
@@ -181,7 +339,10 @@ class LLMService:
             raise ValueError("No questions with chunks provided for processing")
 
         if not self.available:
-            raise ValueError("LLM service is not available. Please ensure GEMINI_API_KEY is configured and the service is properly initialized.")
+            raise ValueError(
+                "LLM service is not available. Please check the selected "
+                "LLM_PROVIDER configuration."
+            )
 
         # Check credit limit before processing (if user_id provided)
         credit_service = get_credit_service()
@@ -246,28 +407,28 @@ class LLMService:
         )
         
         try:
-            # Configure for cost optimization and structured output
-            config = self.types.GenerateContentConfig(
-                # Use configurable thinking budget
-                thinking_config=self.types.ThinkingConfig(thinking_budget=LLM_THINKING_BUDGET),
-                # Use structured JSON output for consistent parsing
-                response_mime_type=LLM_RESPONSE_FORMAT,
-                response_schema=self._create_batch_response_schema(agent_questions),
+            # Single API call for all questions - maximum cost efficiency
+            response_text, _token_usage = self._generate_json_text_sync(
+                batch_prompt,
                 temperature=LLM_TEMPERATURE,
             )
+
+            if not response_text:
+                raise ValueError("Empty response from LLM model")
             
-            # Single API call for all questions - maximum cost efficiency
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=batch_prompt,
-                config=config
-            )
-            
-            if not response or not response.text:
-                raise ValueError("Empty response from Gemini model")
-            
-            # Parse the batch JSON response
-            batch_results = self._parse_batch_response(response.text, agent_questions, relevant_chunks)
+            response_data = json.loads(self._clean_json_response(response_text))
+            batch_results = {}
+            for question in agent_questions:
+                answer = response_data.get(question.placeholder, "Not found")
+                batch_results[question.placeholder] = {
+                    "answer": answer,
+                    "source_chunks": self._get_source_chunks_for_question(
+                        relevant_chunks,
+                        str(answer),
+                        question.prompt,
+                    ),
+                    "word_count": self._calculate_word_count(answer),
+                }
             
             logger.info(f"Successfully processed {len(agent_questions)} questions in single batch request")
             return batch_results
@@ -435,10 +596,7 @@ INSTRUCTIONS:
 """
 
     def _create_batch_response_schema_from_questions_with_chunks(self, questions_with_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Create JSON schema for structured batch response from questions with chunks - simplified for compatibility"""
-        
-        # For the older API, we'll use a simpler approach without schema validation
-        # This ensures compatibility with google-generativeai 0.8.2
+        """Create a future batch schema hook; per-question calls currently provide schemas."""
         return {}
 
     def _parse_batch_response_with_individual_contexts(self, response_text: str,
@@ -447,7 +605,7 @@ INSTRUCTIONS:
         """Parse batch JSON response for questions with individual contexts"""
         try:
             # Parse JSON response
-            batch_data = json.loads(response_text)
+            batch_data = json.loads(self._clean_json_response(response_text))
 
             results = {}
 
@@ -579,7 +737,7 @@ INSTRUCTIONS:
                                 context_text: str, document_context: Dict) -> str:
         """Create a structured prompt for data extraction"""
         
-        return f"""You are an expert data extraction AI analyzing insurance documents. Extract specific information based on the question provided.
+        return f"""You are an expert data extraction AI analyzing enterprise documents. Extract specific information based on the question provided.
 
 DOCUMENT CONTEXT:
 {context_text}
@@ -732,6 +890,35 @@ ANSWER:"""
 
         return f'"{question.placeholder}": "string value"'
 
+    def _get_response_json_schema(self, question: QuestionOut) -> Dict[str, Any]:
+        """Build the concrete JSON schema used for a single-question response."""
+        if question.answer_type == AnswerType.LIST:
+            answer_schema: Dict[str, Any] = {
+                "type": "array",
+                "items": {"type": "string"},
+            }
+        elif question.answer_type == AnswerType.TABLE and question.columns:
+            column_properties = {
+                column.key: {"type": "string"}
+                for column in question.columns
+            }
+            answer_schema = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": column_properties,
+                    "required": list(column_properties),
+                },
+            }
+        else:
+            answer_schema = {"type": "string"}
+
+        return {
+            "type": "object",
+            "properties": {question.placeholder: answer_schema},
+            "required": [question.placeholder],
+        }
+
     def _create_single_question_prompt(self, question: QuestionOut,
                                        relevant_chunks: List[Dict],
                                        document_context: Dict) -> str:
@@ -794,24 +981,19 @@ Respond with valid JSON only."""
         question = question_item['question']
         relevant_chunks = question_item['relevant_chunks']
         placeholder = question.placeholder
+        token_usage = {"input_tokens": 0, "output_tokens": 0}
 
         try:
             # Create focused prompt for this single question
             prompt = self._create_single_question_prompt(question, relevant_chunks, document_context)
 
-            # Configure generation parameters
-            generation_config = self.genai.types.GenerationConfig(
-                temperature=LLM_TEMPERATURE,
-                response_mime_type="application/json"
-            )
-
-            # Make synchronous API call
-            response = self.model.generate_content(
+            response_text, token_usage = self._generate_json_text_sync(
                 prompt,
-                generation_config=generation_config
+                temperature=LLM_TEMPERATURE,
+                response_schema=self._get_response_json_schema(question),
             )
 
-            if not response or not response.text:
+            if not response_text:
                 logger.warning(f"Empty response for question {placeholder}")
                 return (placeholder, {
                     "answer": "No response from LLM",
@@ -821,14 +1003,8 @@ Respond with valid JSON only."""
                     "token_usage": {"input_tokens": 0, "output_tokens": 0}
                 })
 
-            # Extract token usage from response for credit tracking
-            token_usage = {"input_tokens": 0, "output_tokens": 0}
-            if hasattr(response, 'usage_metadata') and response.usage_metadata:
-                token_usage["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0) or 0
-                token_usage["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0) or 0
-
             # Parse the JSON response
-            response_data = json.loads(response.text)
+            response_data = json.loads(self._clean_json_response(response_text))
 
             # Extract the answer (it should be keyed by placeholder)
             if placeholder in response_data:
@@ -853,7 +1029,7 @@ Respond with valid JSON only."""
                 "source_chunks": [],
                 "word_count": 0,
                 "error": f"Failed to parse response: {str(e)}",
-                "token_usage": {"input_tokens": 0, "output_tokens": 0}
+                "token_usage": token_usage
             })
         except Exception as e:
             logger.warning(f"Error processing question {placeholder}: {e}")
@@ -1191,7 +1367,7 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
         """
         
         try:
-            quote_data = json.loads(response)
+            quote_data = json.loads(self._clean_json_response(response))
             
             if not isinstance(quote_data, list):
                 logger.warning("Quote extraction response is not a list, returning empty quotes")
@@ -1394,24 +1570,17 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
             # Create quote extraction prompt
             quote_prompt = self._create_quote_extraction_prompt(answer, relevant_chunks, question_prompt)
             
-            # Configure for quote extraction (use JSON output)
-            generation_config = self.genai.types.GenerationConfig(
-                temperature=0.0,  # Low temperature for consistent extraction
-                response_mime_type="application/json"
-            )
-            
-            # Make LLM call for quote extraction
-            response = self.model.generate_content(
+            response_text, _token_usage = self._generate_json_text_sync(
                 quote_prompt,
-                generation_config=generation_config
+                temperature=0.0,
             )
-            
-            if not response or not response.text:
+
+            if not response_text:
                 logger.warning("Empty response from quote extraction LLM call")
                 return []
             
             # Parse the quote extraction response
-            precise_quotes = self._parse_quote_extraction_response(response.text, relevant_chunks)
+            precise_quotes = self._parse_quote_extraction_response(response_text, relevant_chunks)
             
             # Enhance quotes with bounding box word spans if available
             if bbox_data:
@@ -1539,20 +1708,16 @@ Return EMPTY ARRAY [] if no exact supporting text exists. Never approximate or f
         # Create focused prompt for this single extraction
         prompt = self._create_single_quote_extraction_prompt(answer, relevant_chunks, question_prompt)
 
-        # Configure for quote extraction
-        generation_config = self.genai.types.GenerationConfig(
+        response_text, _token_usage = self._generate_json_text_sync(
+            prompt,
             temperature=0.0,
-            response_mime_type="application/json"
         )
 
-        # Make synchronous API call
-        response = self.model.generate_content(prompt, generation_config=generation_config)
-
-        if not response or not response.text:
+        if not response_text:
             return []
 
         # Parse response and enhance with bbox data
-        quotes = self._parse_single_quote_response(response.text, relevant_chunks, bbox_data)
+        quotes = self._parse_single_quote_response(response_text, relevant_chunks, bbox_data)
         return quotes
 
     def _create_single_quote_extraction_prompt(self, answer: str, chunks: List[Dict], question: str) -> str:
@@ -1636,7 +1801,7 @@ Return EMPTY ARRAY [] if no exact supporting text exists."""
             List of processed quote dictionaries
         """
         try:
-            quote_data = json.loads(response_text)
+            quote_data = json.loads(self._clean_json_response(response_text))
 
             if not isinstance(quote_data, list):
                 return []
@@ -1824,7 +1989,7 @@ Return valid JSON only."""
         """
 
         try:
-            batch_data = json.loads(response_text)
+            batch_data = json.loads(self._clean_json_response(response_text))
 
             if not isinstance(batch_data, dict):
                 logger.warning("Batch quote response is not a dict, returning empty quotes")
@@ -1963,7 +2128,9 @@ Return valid JSON only."""
             "available": self.available,
             "model": self.model_name if self.available else None,
             "api_key_configured": bool(self.api_key),
-            "service_type": "Gemini 2.5 Flash-Lite"
+            "provider": self.provider,
+            "service_type": self.provider,
+            "base_url_configured": bool(self.base_url) if self.provider == "openai_compatible" else None,
         }
 
 

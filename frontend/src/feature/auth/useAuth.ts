@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../../libs/supabase';
-import type { Session } from '@supabase/supabase-js';
+import { authClient, type AppSession } from '../../libs/auth';
 
 const urlHasRecovery = () => {
   const q = new URLSearchParams(window.location.search);
@@ -8,7 +7,7 @@ const urlHasRecovery = () => {
 };
 
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AppSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(
     urlHasRecovery() || localStorage.getItem('auth:recovery') === '1'
@@ -24,7 +23,7 @@ export function useAuth() {
     let mounted = true;
 
     // Seed session
-    supabase.auth.getSession().then(({ data, error }) => {
+    authClient.getSession().then(({ data, error }) => {
       if (error) console.warn('Initial session retrieval error:', error);
       if (!mounted) return;
       setSession(data.session);
@@ -32,7 +31,7 @@ export function useAuth() {
     });
 
     // Subscribe once
-    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
+    const { data: sub } = authClient.onAuthStateChange((event, sess) => {
       if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
       if (event === 'SIGNED_OUT') setIsPasswordRecovery(false);
 
@@ -56,11 +55,14 @@ export function useAuth() {
   );
 
   const signIn = (email: string, password: string) =>
-    supabase.auth.signInWithPassword({ email, password });
+    authClient.signInWithPassword({ email, password });
+
+  const signInWithToken = (token: string) =>
+    authClient.signInWithToken(token);
 
   const signOut = async () => {
     setLoading(true);
-    await supabase.auth.signOut();
+    await authClient.signOut();
     setIsPasswordRecovery(false);
   };
 
@@ -73,6 +75,7 @@ export function useAuth() {
     isAuthenticated,
     isPasswordRecovery,
     signIn,
+    signInWithToken,
     signOut,
     clearRecovery,
   };

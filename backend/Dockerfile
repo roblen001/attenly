@@ -19,12 +19,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 # Build wheels for requirements AND their transitive deps (no --no-deps)
-RUN python -m pip install --upgrade pip setuptools wheel && \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    PIP_NO_CACHE_DIR=0 python -m pip install --upgrade pip setuptools wheel && \
+    PIP_NO_CACHE_DIR=0 pip wheel \
+      pip==26.1.2 setuptools==83.0.0 wheel==0.47.0 -w /wheels && \
+    PIP_NO_CACHE_DIR=0 \
     pip wheel -r requirements.txt -w /wheels
 
 # --- Runtime stage ---
 FROM python:3.11-slim-bookworm AS runtime
 WORKDIR /app
+ARG ATTENLY_PRECACHE_DOCTR_MODELS=true
 
 # Conservative threading to avoid OOM; you can tune later
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -51,34 +56,42 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ---- Install Python deps from prebuilt wheels as root (offline) ----
 COPY --from=builder /wheels /wheels
 COPY requirements.txt .
-RUN pip install --no-index --find-links /wheels -r requirements.txt && \
+RUN pip install --no-index --find-links /wheels \
+      pip==26.1.2 setuptools==83.0.0 wheel==0.47.0 \
+      -r requirements.txt && \
     rm -rf /wheels
 
-# ---- Pre-download DocTR models during build (as root) ----
+# Fail the image build if the pinned WeasyPrint/PyDyf pair cannot render a PDF.
+RUN python -c "from weasyprint import HTML; pdf = HTML(string='<p>PDF smoke test</p>').write_pdf(presentational_hints=True, optimize_images=True); assert pdf.startswith(b'%PDF-'), 'WeasyPrint did not produce a PDF'"
+
+# ---- Optionally pre-download DocTR models during build (as root) ----
 # Use smallest/fastest CPU pair:
 #   det_arch='db_mobilenet_v3_large'
 #   reco_arch='crnn_mobilenet_v3_small'
 RUN mkdir -p /cache/attenly/doctr && \
-    DOCTR_CACHE_DIR=/cache/attenly/doctr \
-    OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TORCH_NUM_THREADS=1 \
-    CUDA_VISIBLE_DEVICES="" \
-    python -c "\
+    if [ "$ATTENLY_PRECACHE_DOCTR_MODELS" = "true" ]; then \
+      DOCTR_CACHE_DIR=/cache/attenly/doctr \
+      OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 TORCH_NUM_THREADS=1 \
+      CUDA_VISIBLE_DEVICES="" \
+      python -c "\
 import os; \
 os.environ['CUDA_VISIBLE_DEVICES']=''; \
 os.environ['DOCTR_CACHE_DIR']='/cache/attenly/doctr'; \
 from doctr.models import ocr_predictor; \
 print('Pre-caching DocTR models (small/fast)...'); \
 _ = ocr_predictor(det_arch='db_mobilenet_v3_large', reco_arch='crnn_mobilenet_v3_small', pretrained=True); \
-print('DocTR models cached successfully');"
+print('DocTR models cached successfully');"; \
+    else \
+      echo "Skipping DocTR model pre-cache; models will be downloaded on first OCR use."; \
+    fi
 
 # ---- Create non-root user and writable cache AFTER deps are installed ----
 RUN useradd -u 10001 -m appuser \
- && mkdir -p /cache/attenly \
- && chown -R appuser:appuser /cache /app
+ && mkdir -p /cache/attenly /data/storage \
+ && chown -R appuser:appuser /cache /data /app
 
-# Copy app source (after deps to maximize cache)
-COPY . .
-RUN chown -R appuser:appuser /app
+# Copy app source with the runtime owner (after deps to maximize cache)
+COPY --chown=appuser:appuser . .
 
 USER appuser
 

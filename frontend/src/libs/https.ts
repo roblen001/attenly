@@ -1,9 +1,9 @@
 import { API_BASE_URL } from "./configs";
-import { supabase } from "./supabase";
+import { authClient, isLocalAuthProvider, isTokenAuthProvider, storeAuthError } from "./auth";
 
 interface ApiOptions extends RequestInit {
   nonCritical?: boolean; // If true, 401 errors won't sign out the user
-  timeout?: number; // Request timeout in milliseconds (default: 30000)
+  timeout?: number; // Request timeout in milliseconds (default: 600000)
   retries?: number; // Number of retries for GET requests (default: 2)
 }
 
@@ -16,7 +16,7 @@ export async function api(path: string, init: ApiOptions = {}) {
   const maxRetries = 3;
   
   while (retryCount < maxRetries && !session) {
-    const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+    const { data: { session: currentSession }, error } = await authClient.getSession();
     
     if (error) {
       console.warn(`Session retrieval error (attempt ${retryCount + 1}):`, error);
@@ -46,7 +46,7 @@ export async function api(path: string, init: ApiOptions = {}) {
   // Add Authorization header if user is authenticated
   if (session?.access_token) {
     (headers as Record<string, string>).Authorization = `Bearer ${session.access_token}`;
-    // Add refresh token for Storage operations (required by supabase-py set_session)
+    // Include a refresh token when the selected backend auth/storage adapter needs it.
     if (session?.refresh_token) {
       (headers as Record<string, string>)['X-Refresh-Token'] = session.refresh_token;
     }
@@ -107,6 +107,19 @@ export async function api(path: string, init: ApiOptions = {}) {
   
   // Handle authentication errors
   if (res.status === 401) {
+    let backendDetail = '';
+    try {
+      const body = await res.json() as { detail?: unknown };
+      backendDetail = typeof body.detail === 'string' ? body.detail : '';
+    } catch {
+      // Fall back to the user-facing message below.
+    }
+    const authError = isLocalAuthProvider
+      ? 'Your access token is invalid or no longer accepted. Enter the current deployment access token.'
+      : isTokenAuthProvider
+      ? 'Your identity token is invalid or no longer accepted. Enter a current identity token.'
+      : backendDetail || 'Your session is no longer valid. Please sign in again.';
+
     console.error('Authentication failed for API call:', {
       path,
       nonCritical,
@@ -119,16 +132,17 @@ export async function api(path: string, init: ApiOptions = {}) {
     // For non-critical API calls, don't sign out the user
     if (nonCritical) {
       console.warn('Non-critical API call failed with 401, not signing out user');
-      throw new Error('Authentication failed for non-critical API call');
+      throw new Error(authError);
     }
     
     // For critical API calls, sign out user and redirect
     const currentPath = window.location.pathname;
     if (currentPath !== '/login' && currentPath !== '/') {
-      console.log('Signing out user and redirecting to login due to 401 error');
       
+      storeAuthError(authError);
+
       // Sign out the user and clear session
-      await supabase.auth.signOut();
+      await authClient.signOut();
       
       // Redirect to login page
       window.location.href = '/login';
@@ -137,7 +151,7 @@ export async function api(path: string, init: ApiOptions = {}) {
     }
     
     // Throw error with clear message
-    throw new Error('Authentication failed. Please log in again.');
+    throw new Error(authError);
   }
   if (!res.ok)
     throw new Error(`${res.status} ${await res.text().catch(() => "")}`);

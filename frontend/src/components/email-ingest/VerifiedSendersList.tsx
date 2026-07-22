@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { VerifiedSender } from '../../types';
 import { api } from '../../libs/https';
 import AddSenderModal from './AddSenderModal';

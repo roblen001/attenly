@@ -50,9 +50,20 @@ export interface TemplateIngestResponse {
   success: boolean;
   html_body: string;
   css: string;
-  source: 'gemini' | 'mammoth_fallback' | 'error';
+  source: 'gemini' | 'openai_compatible' | 'mammoth' | 'html' | 'blank' | 'disabled' | 'error';
   error?: string;
   warnings: string[];
+}
+
+export interface TemplateIngestCapabilities {
+  enabled: boolean;
+  provider: 'disabled' | 'basic' | 'gemini' | 'openai_compatible' | string;
+  model_name?: string | null;
+  supports_pdf: boolean;
+  supports_docx: boolean;
+  supports_html: boolean;
+  requires_smart_model: boolean;
+  message: string;
 }
 
 export interface WordSpan {
@@ -199,11 +210,16 @@ export interface VerifiedSender {
 
 export interface EmailIngestSettings {
   endpoint: EmailIngestEndpoint | null;
+  delivery_address?: string | null;
+  delivery_mode?: 'graph_mailbox' | 'generated_alias' | null;
   verified_senders: VerifiedSender[];
   usage_summary: {
     jobs_last_24h: number;
     rate_limit: number;
   };
+  enabled_by_config?: boolean;
+  provider?: string;
+  message?: string | null;
 }
 
 // Credit/Usage Types

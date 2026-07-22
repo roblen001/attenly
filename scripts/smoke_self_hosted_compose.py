@@ -28,6 +28,21 @@ from typing import Iterable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL_BASE_URL = "http://host.docker.internal:9/v1"
 DEFAULT_FRONTEND_PORT = "5174"
+DISPOSABLE_PROJECT_PATTERN = re.compile(
+    r"^attenly-smoke(?:-[a-z0-9][a-z0-9_-]*)?$"
+)
+
+
+def disposable_project_name(value: str) -> str:
+    """Accept only Compose project names reserved for disposable smoke stacks."""
+    project_name = value.strip()
+    if len(project_name) > 63 or not DISPOSABLE_PROJECT_PATTERN.fullmatch(project_name):
+        raise argparse.ArgumentTypeError(
+            "smoke project names must be 'attenly-smoke' or start with "
+            "'attenly-smoke-' and contain only lowercase letters, numbers, "
+            "hyphens, or underscores"
+        )
+    return project_name
 
 
 def run(
@@ -211,7 +226,15 @@ def print_failure_context(env_path: Path, project_name: str, command_env: dict[s
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project-name", default="attenly-smoke")
+    parser.add_argument(
+        "--project-name",
+        type=disposable_project_name,
+        default=f"attenly-smoke-{os.getpid()}",
+        help=(
+            "Disposable Compose project name. It must use the attenly-smoke "
+            "namespace because the test removes its volume during cleanup."
+        ),
+    )
     parser.add_argument(
         "--frontend-port",
         default=DEFAULT_FRONTEND_PORT,

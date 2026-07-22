@@ -40,6 +40,9 @@ jobs:
       - name: Preflight Docker self-hosted env
         run: python scripts/check_self_hosted_env.py .github/env/self-hosted-docker.env
 
+      - name: Test release helper safety
+        run: python -m unittest discover -s scripts/tests -p "test_*.py"
+
       - name: Smoke external JWT auth
         run: python scripts/smoke_external_jwt_auth.py
 

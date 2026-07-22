@@ -181,8 +181,13 @@ TEMPLATE_INGEST_PROVIDER=basic
 Configure any custom endpoint with the initializer:
 
 ```bash
-python scripts/init_self_hosted_env.py --provider openai_compatible --model-base-url https://models.company.internal/v1 --model-api-key replace-with-gateway-token --llm-model company-chat-model --embedding-model company-embedding-model --embedding-dimensions 768
+python scripts/init_self_hosted_env.py --provider openai_compatible --model-base-url https://models.company.internal/v1 --llm-model company-chat-model --embedding-model company-embedding-model --embedding-dimensions 768
 ```
+
+If the gateway requires authentication, set `OPENAI_COMPATIBLE_API_KEY` in the
+generated `.env` using your normal secret-management process. Do not put a real
+gateway token in a shell command because it may be retained in history or
+process listings.
 
 Add `--template-ingest-provider openai_compatible --template-ingest-model
 company-multimodal-model` only when the gateway supports the multimodal contract

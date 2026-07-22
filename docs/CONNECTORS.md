@@ -99,13 +99,16 @@ Generate a Graph-ready `.env` for both outbound email and inbound mailbox
 polling:
 
 ```bash
-python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-mailbox attenly@company.com
 ```
 
-This generates `LOCAL_AUTH_TOKEN` and `INTERNAL_CRON_SECRET`. Use
+The initializer securely prompts for `GRAPH_CLIENT_SECRET` without echoing it,
+then generates `LOCAL_AUTH_TOKEN` and `INTERNAL_CRON_SECRET`. Use
 `--outbound-email-provider` and `--inbound-email-provider` instead of
 `--email-provider` when you only want one direction enabled. Replace the
-`replace-with-*` values before running the command.
+`replace-with-*` values before running the command. Passing secrets as command
+arguments is supported for automation but can expose them in shell history and
+process listings.
 
 Equivalent outbound email settings:
 
@@ -231,7 +234,10 @@ longer provide Attenly with an alias after Exchange normalizes it.
    python scripts/trigger_microsoft_graph_poll.py .env
    ```
 
-9. Watch `docker compose logs -f email-worker`. Confirm the Graph summary shows
+   The default localhost URL may use HTTP. If you pass an external `--api-url`,
+   it must use HTTPS so `INTERNAL_CRON_SECRET` is not sent in plaintext.
+
+8. Watch `docker compose logs -f email-worker`. Confirm the Graph summary shows
    one accepted message and the worker logs show one successful job. Confirm
    the report appears in Attenly and the sender receives the report-ready
    email.
@@ -264,8 +270,10 @@ mailbox polling.
 You can also generate a Resend-enabled env file:
 
 ```bash
-python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider resend --resend-api-key replace-with-resend-key --resend-webhook-secret replace-with-webhook-secret
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider resend
 ```
+
+The initializer securely prompts for the Resend API key and webhook secret.
 
 ## Current Connector Gaps
 

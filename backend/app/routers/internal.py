@@ -5,12 +5,17 @@ Endpoints for internal use (cron jobs, admin tasks, etc.)
 These endpoints use header-based authentication, not JWT.
 """
 
+import asyncio
 import logging
+import secrets
 from fastapi import APIRouter, Request, HTTPException, status, Header
 from fastapi.responses import JSONResponse
 
-from app.config import INTERNAL_CRON_SECRET
-from app.services.email_job_service import get_email_job_service
+from app.config import (
+    EMAIL_JOB_EXECUTION_MODE,
+    INBOUND_EMAIL_PROVIDER,
+    INTERNAL_CRON_SECRET,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +49,7 @@ def verify_cron_secret(x_cron_secret: str = Header(None)) -> bool:
             detail="Internal configuration error"
         )
     
-    if x_cron_secret != expected_secret:
+    if not secrets.compare_digest(x_cron_secret, expected_secret):
         logger.warning("Invalid cron secret provided")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -54,16 +59,27 @@ def verify_cron_secret(x_cron_secret: str = Header(None)) -> bool:
     return True
 
 
+def poll_inbound_email_if_configured() -> dict | None:
+    if INBOUND_EMAIL_PROVIDER != "microsoft_graph":
+        return None
+
+    from app.services.microsoft_graph_inbound_service import get_microsoft_graph_inbound_poller
+
+    return get_microsoft_graph_inbound_poller().poll_messages()
+
+
 @router.post("/internal/process-email-jobs")
 async def process_email_jobs(
     request: Request,
     x_cron_secret: str = Header(None, alias="X-Cron-Secret")
 ):
     """
-    Process pending email jobs (called by cron scheduler).
+    Poll inbound email and optionally process jobs in legacy inline mode.
     
-    This endpoint is designed to be called every 1-2 minutes by an external cron service.
-    It processes up to 10 pending jobs per invocation to avoid long-running requests.
+    Compose deployments use the dedicated email-worker container, so this route
+    only performs an immediate mailbox poll and returns. Set
+    EMAIL_JOB_EXECUTION_MODE=inline only for a legacy deployment that has no
+    separate worker process.
     
     Security: Requires X-Cron-Secret header matching INTERNAL_CRON_SECRET env var.
     
@@ -78,7 +94,27 @@ async def process_email_jobs(
     logger.info("Cron endpoint triggered - processing email jobs")
     
     try:
-        # Get email job service
+        # Graph polling uses a synchronous HTTP client. Run it in a thread so a
+        # slow provider response cannot block the FastAPI event loop.
+        inbound_poll = await asyncio.to_thread(poll_inbound_email_if_configured)
+
+        if EMAIL_JOB_EXECUTION_MODE == "worker":
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content={
+                    "success": True,
+                    "message": (
+                        "Inbound email poll complete. Queued jobs will be processed "
+                        "by the dedicated email worker."
+                    ),
+                    "execution_mode": EMAIL_JOB_EXECUTION_MODE,
+                    "inbound_poll": inbound_poll,
+                },
+            )
+
+        # Compatibility path for deployments that intentionally have no worker.
+        from app.services.email_job_service import get_email_job_service
+
         email_job_service = get_email_job_service()
         
         # Process up to 10 jobs
@@ -98,6 +134,8 @@ async def process_email_jobs(
             content={
                 "success": True,
                 "message": "Email job processing complete",
+                "execution_mode": EMAIL_JOB_EXECUTION_MODE,
+                "inbound_poll": inbound_poll,
                 "summary": result
             }
         )
@@ -109,8 +147,48 @@ async def process_email_jobs(
             content={
                 "success": False,
                 "error": "Internal processing error",
-                "message": str(e)
+                "message": "Email processing failed. Check the server logs for details."
             }
+        )
+
+
+@router.post("/internal/poll-inbound-email")
+async def poll_inbound_email(
+    request: Request,
+    x_cron_secret: str = Header(None, alias="X-Cron-Secret")
+):
+    """Poll configured inbound email provider without processing queued jobs."""
+    verify_cron_secret(x_cron_secret)
+
+    if INBOUND_EMAIL_PROVIDER != "microsoft_graph":
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "message": "No polling provider configured",
+                "provider": INBOUND_EMAIL_PROVIDER,
+            },
+        )
+
+    try:
+        result = await asyncio.to_thread(poll_inbound_email_if_configured)
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "success": True,
+                "message": "Inbound email polling complete",
+                "summary": result,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Error polling inbound email: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "success": False,
+                "error": "Inbound polling error",
+                "message": "Inbound polling failed. Check the server logs for details.",
+            },
         )
 
 
@@ -128,6 +206,7 @@ async def internal_health_check(x_cron_secret: str = Header(None, alias="X-Cron-
         content={
             "status": "healthy",
             "service": "email-job-processor",
+            "execution_mode": EMAIL_JOB_EXECUTION_MODE,
             "message": "Internal API is operational"
         }
     )

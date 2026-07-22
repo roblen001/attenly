@@ -2,6 +2,12 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { Editor } from '@tinymce/tinymce-react';
 import type { Question, Quote } from '../../types';
+import {
+  TINYMCE_API_KEY,
+  TINYMCE_LICENSE_KEY,
+  TINYMCE_MODE,
+  TINYMCE_SCRIPT_SRC
+} from '../../libs/configs';
 import AITestingModal from './AITestingModal';
 import './EditorStep.css';
 
@@ -39,6 +45,11 @@ const TINYMCE_TOOLBAR = [
 
 const EXTENDED_VALID_ELEMENTS =
   "a[class|data-question-id|href|role|tabindex|aria-label|contenteditable],sup[class|data-quote-index],div[class|data-mce-type]";
+
+const TINYMCE_LOAD_PROPS =
+  TINYMCE_MODE === 'self_hosted'
+    ? { tinymceScriptSrc: TINYMCE_SCRIPT_SRC }
+    : { apiKey: TINYMCE_API_KEY };
 
 /**
  * Convert <!-- pagebreak --> HTML comments to visible div elements for TinyMCE editing.
@@ -204,12 +215,6 @@ const EditorStep: React.FC<EditorStepProps> = ({
     setIsAIModalOpen(true);
   };
 
-  const handleEditQuestion = (question: Question) => {
-    rememberCaret(); // Save cursor position before opening modal
-    setEditingQuestion(question);
-    setIsAIModalOpen(true);
-  };
-
   const escapeHtml = (text: string) => {
     return text.replace(/[&<>"']/g, (c) => ({
       '&': '&amp;',
@@ -227,7 +232,7 @@ const EditorStep: React.FC<EditorStepProps> = ({
       try {
         action();
         editor.selection.setRng(selection);
-      } catch (e) {
+      } catch {
         // Selection restore failed, run action without restore
         action();
       }
@@ -452,7 +457,7 @@ const EditorStep: React.FC<EditorStepProps> = ({
       image_advtab: true,
       importcss_append: true,
       file_picker_types: 'image',
-      file_picker_callback: (callback: any, value: any, meta: any) => {
+      file_picker_callback: (callback: any, _value: any, meta: any) => {
         if (meta.filetype === 'image') {
           const input = document.createElement('input');
           input.setAttribute('type', 'file');
@@ -471,7 +476,8 @@ const EditorStep: React.FC<EditorStepProps> = ({
           input.click();
         }
       },
-      templates: [DEFAULT_TEMPLATE]
+      templates: [DEFAULT_TEMPLATE],
+      ...(TINYMCE_LICENSE_KEY ? { license_key: TINYMCE_LICENSE_KEY } : {})
     }),
     [reportTemplateCss, onQuestionsChange, onTemplateChange]
   );
@@ -498,9 +504,9 @@ const EditorStep: React.FC<EditorStepProps> = ({
 
       <div className="editor-container">
         <Editor
-          apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
+          {...TINYMCE_LOAD_PROPS}
           id="attenly-editor"
-          onInit={(evt, editor) => {
+          onInit={(_evt, editor) => {
             editorRef.current = editor;
             // Priority: reportTemplate (existing/edited) > initialTemplateHtml (from DOCX) > empty
             const contentToLoad = reportTemplate || initialTemplateHtml || '';

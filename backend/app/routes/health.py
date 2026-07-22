@@ -1,19 +1,21 @@
 """Health check endpoints for monitoring and load balancer integration."""
-from fastapi import APIRouter, status, Depends
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, status
+from fastapi.responses import JSONResponse, Response
 from app.limits.slowapi import limiter, get_rate_limit
-from app.limits.redis_bucket import get_token_bucket
 from app.client import supabase_client
 import logging
 import time
 import os
+import tempfile
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_PROCESS_START_MONOTONIC = time.monotonic()
 
 @router.get("/health")
 @limiter.limit(get_rate_limit("health"))
-async def health_check(request):
+async def health_check(request: Request):
     """
     Basic health check endpoint for load balancers.
     
@@ -34,13 +36,13 @@ async def health_check(request):
 
 @router.get("/ready")
 @limiter.limit(get_rate_limit("health"))
-async def readiness_check(request):
+async def readiness_check(request: Request):
     """
     Comprehensive readiness check that validates all external dependencies.
     
     This endpoint checks:
-    - Supabase database connectivity
-    - Redis connectivity (if configured)
+    - Selected database provider connectivity
+    - Persistent filesystem writability for local storage
     - Configuration validity
     
     Returns 503 if any dependency is unavailable.
@@ -48,42 +50,67 @@ async def readiness_check(request):
     start_time = time.time()
     checks = {
         "database": {"status": "unknown", "response_time": None},
-        "redis": {"status": "unknown", "response_time": None},
+        "storage": {"status": "unknown"},
         "configuration": {"status": "unknown"}
     }
     
     overall_status = "healthy"
     status_code = status.HTTP_200_OK
     
-    # Check Supabase database
+    # Check selected database
     try:
+        from app import config
+
         db_start = time.time()
-        # Simple query to test database connectivity
-        result = supabase_client.table("agents").select("id").limit(1).execute()
+        if config.DATABASE_PROVIDER == "supabase":
+            if supabase_client is None:
+                raise RuntimeError("Supabase client is not configured")
+            supabase_client.table("agents").select("id").limit(1).execute()
+        elif config.DATABASE_PROVIDER == "sqlalchemy":
+            from sqlalchemy import text
+            from app.db import engine
+
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        else:
+            raise RuntimeError(f"Unsupported database provider: {config.DATABASE_PROVIDER}")
+
         checks["database"]["status"] = "healthy"
         checks["database"]["response_time"] = round((time.time() - db_start) * 1000, 2)
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         checks["database"]["status"] = "unhealthy"
-        checks["database"]["error"] = str(e)
+        checks["database"]["error"] = "Database readiness check failed"
         overall_status = "unhealthy"
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    
-    # Check Redis (optional - fail gracefully if not configured)
+
+    # The local self-hosted profile must be able to write to its persistent
+    # Docker volume before it is considered ready.
     try:
-        redis_start = time.time()
-        token_bucket = get_token_bucket()
-        if token_bucket.redis_client:
-            token_bucket.redis_client.ping()
-            checks["redis"]["status"] = "healthy"
-            checks["redis"]["response_time"] = round((time.time() - redis_start) * 1000, 2)
+        from app import config
+
+        if config.STORAGE_PROVIDER == "filesystem":
+            storage_root = Path(config.FILESYSTEM_STORAGE_PATH).expanduser().resolve()
+            storage_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                prefix=".attenly-readiness-",
+                dir=storage_root,
+            ) as probe:
+                probe.write(b"ready")
+                probe.flush()
+            checks["storage"]["status"] = "healthy"
+            checks["storage"]["provider"] = "filesystem"
         else:
-            checks["redis"]["status"] = "not_configured"
+            # External storage is exercised by application operations. Readiness
+            # validates its configuration without creating user data.
+            checks["storage"]["status"] = "configured"
+            checks["storage"]["provider"] = config.STORAGE_PROVIDER
     except Exception as e:
-        logger.warning(f"Redis health check failed: {e}")
-        checks["redis"]["status"] = "unhealthy"
-        checks["redis"]["error"] = str(e)
-        # Redis failure doesn't make the service unhealthy (fail gracefully)
+        logger.error(f"Storage readiness check failed: {e}")
+        checks["storage"]["status"] = "unhealthy"
+        checks["storage"]["error"] = "Storage readiness check failed"
+        overall_status = "unhealthy"
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     
     # Check configuration
     try:
@@ -93,7 +120,7 @@ async def readiness_check(request):
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         checks["configuration"]["status"] = "unhealthy"
-        checks["configuration"]["error"] = str(e)
+        checks["configuration"]["error"] = "Configuration readiness check failed"
         overall_status = "unhealthy"
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     
@@ -114,21 +141,20 @@ async def readiness_check(request):
 
 @router.get("/metrics")
 @limiter.limit(get_rate_limit("health"))
-async def metrics_endpoint(request):
-    """
-    Basic metrics endpoint in Prometheus format.
-    
-    This is a placeholder for future metrics integration.
-    In production, you might use proper monitoring tools like DataDog or New Relic.
-    """
+async def metrics_endpoint(request: Request):
+    """Return basic process metrics in Prometheus text format."""
+    uptime_seconds = max(0.0, time.monotonic() - _PROCESS_START_MONOTONIC)
     metrics = [
-        "# HELP attently_health_check Health check status",
-        "# TYPE attently_health_check gauge",
-        "attently_health_check{service=\"attenly-api\",version=\"1.0.0\"} 1",
+        "# HELP attenly_health_check Process health status.",
+        "# TYPE attenly_health_check gauge",
+        "attenly_health_check{service=\"attenly-api\",version=\"1.0.0\"} 1",
         "",
-        "# HELP attently_uptime_seconds Service uptime in seconds",
-        "# TYPE attently_uptime_seconds counter",
-        f"attently_uptime_seconds {int(time.time())}",
+        "# HELP attenly_uptime_seconds Process uptime in seconds.",
+        "# TYPE attenly_uptime_seconds gauge",
+        f"attenly_uptime_seconds {uptime_seconds:.3f}",
     ]
-    
-    return "\n".join(metrics)
+
+    return Response(
+        content="\n".join(metrics) + "\n",
+        media_type="text/plain; version=0.0.4",
+    )

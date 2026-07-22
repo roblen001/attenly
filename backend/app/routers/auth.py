@@ -1,8 +1,8 @@
 # app/routers/auth.py
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from app.core.deps import get_current_user
 from fastapi import Depends
-import supabase
+from app.client import supabase_client
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -18,6 +18,8 @@ async def get_current_user_info(current_user = Depends(get_current_user)):
 
 @router.get("/users")
 async def get_users():
-    response = supabase.table("users").select("*").execute()
-    return response.data
+    if supabase_client is None:
+        raise HTTPException(status_code=503, detail="Supabase client is not configured")
 
+    response = supabase_client.table("users").select("*").execute()
+    return response.data

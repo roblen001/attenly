@@ -3,10 +3,93 @@ Centralized Configuration for Attenly Backend (updated for small, fast docTR def
 """
 
 import os
-from typing import List
+from typing import Dict, List, Set
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# =============================================================================
+# APPLICATION PROFILE CONFIGURATION
+# =============================================================================
+
+def _normalized_env(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        value = default
+    return value.strip().lower().replace("-", "_")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+APP_PROFILE = _normalized_env("APP_PROFILE", "default")
+
+KNOWN_APP_PROFILES: Set[str] = {"default", "local", "enterprise"}
+SUPPORTED_RUNTIME_PROFILES: Set[str] = {"default", "local", "enterprise"}
+
+PROFILE_PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
+    "default": {
+        "auth": "supabase",
+        "database": "supabase",
+        "storage": "supabase",
+        "llm": "gemini",
+        "embedding": "gemini",
+        "template_ingest": "gemini",
+    },
+    "local": {
+        "auth": "local",
+        "database": "sqlalchemy",
+        "storage": "filesystem",
+        "llm": "gemini",
+        "embedding": "gemini",
+        "template_ingest": "gemini",
+    },
+    "enterprise": {
+        "auth": "local",
+        "database": "sqlalchemy",
+        "storage": "filesystem",
+        "llm": "openai_compatible",
+        "embedding": "openai_compatible",
+        "template_ingest": "disabled",
+    },
+}
+
+
+ALLOWED_PROVIDER_VALUES: Dict[str, Set[str]] = {
+    "auth": {"supabase", "local", "oidc", "external_jwt"},
+    "database": {"supabase", "sqlalchemy"},
+    "storage": {"supabase", "filesystem", "s3", "azure_blob"},
+    "llm": {"gemini", "openai", "azure_openai", "openai_compatible", "none"},
+    "embedding": {"gemini", "openai", "openai_compatible", "local", "none"},
+    "template_ingest": {"disabled", "gemini", "basic", "openai_compatible"},
+    "outbound_email": {"none", "resend", "smtp", "microsoft_graph"},
+    "inbound_email": {"none", "resend", "generic_webhook", "microsoft_graph"},
+}
+
+
+CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
+    "auth": {"supabase", "local", "external_jwt"},
+    "database": {"supabase", "sqlalchemy"},
+    "storage": {"supabase", "filesystem"},
+    "llm": {"gemini", "openai_compatible"},
+    "embedding": {"gemini", "openai_compatible"},
+    "template_ingest": {"disabled", "gemini", "basic", "openai_compatible"},
+    "outbound_email": {"none", "resend", "microsoft_graph"},
+    "inbound_email": {"none", "resend", "microsoft_graph"},
+}
+
+
+def _profile_default(provider_name: str) -> str:
+    profile_defaults = PROFILE_PROVIDER_DEFAULTS.get(
+        APP_PROFILE,
+        PROFILE_PROVIDER_DEFAULTS["default"],
+    )
+    return profile_defaults[provider_name]
+
 
 # =============================================================================
 # AUTHENTICATION & EXTERNAL SERVICES
@@ -19,6 +102,29 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+# Local authentication is intended for internal deployments behind an
+# organization-controlled boundary. It accepts one configured bearer token and
+# maps it to a single application user.
+LOCAL_AUTH_TOKEN = os.getenv("LOCAL_AUTH_TOKEN")
+LOCAL_AUTH_USER_ID = os.getenv("LOCAL_AUTH_USER_ID", "local-admin")
+LOCAL_AUTH_EMAIL = os.getenv("LOCAL_AUTH_EMAIL", "local-admin@example.com")
+LOCAL_AUTH_DISPLAY_NAME = os.getenv("LOCAL_AUTH_DISPLAY_NAME", "Local Admin")
+
+# External JWT authentication is intended for enterprise deployments where an
+# existing IdP, reverse proxy, or API gateway issues bearer tokens.
+EXTERNAL_JWT_SECRET = os.getenv("EXTERNAL_JWT_SECRET")
+EXTERNAL_JWT_JWKS_URL = os.getenv("EXTERNAL_JWT_JWKS_URL")
+EXTERNAL_JWT_ALGORITHM = os.getenv(
+    "EXTERNAL_JWT_ALGORITHM",
+    "RS256" if EXTERNAL_JWT_JWKS_URL else "HS256",
+).strip().upper()
+EXTERNAL_JWT_ISSUER = os.getenv("EXTERNAL_JWT_ISSUER")
+EXTERNAL_JWT_AUDIENCE = os.getenv("EXTERNAL_JWT_AUDIENCE")
+EXTERNAL_JWT_USER_ID_CLAIM = os.getenv("EXTERNAL_JWT_USER_ID_CLAIM", "sub")
+EXTERNAL_JWT_EMAIL_CLAIM = os.getenv("EXTERNAL_JWT_EMAIL_CLAIM", "email")
+EXTERNAL_JWT_NAME_CLAIM = os.getenv("EXTERNAL_JWT_NAME_CLAIM", "name")
+EXTERNAL_JWT_REQUIRE_EXP = _env_bool("EXTERNAL_JWT_REQUIRE_EXP", True)
+
 # =============================================================================
 # EMAIL SERVICE CONFIGURATION
 # =============================================================================
@@ -26,6 +132,72 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Email provider (Resend)
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 RESEND_WEBHOOK_SECRET = os.getenv("RESEND_WEBHOOK_SECRET")
+
+
+def _template_ingest_provider_default() -> str:
+    if GEMINI_API_KEY or APP_PROFILE == "default":
+        return "gemini"
+    return "disabled"
+
+
+def _outbound_email_provider_default() -> str:
+    if RESEND_API_KEY:
+        return "resend"
+    return "none"
+
+
+def _inbound_email_provider_default() -> str:
+    if RESEND_WEBHOOK_SECRET:
+        return "resend"
+    return "none"
+
+
+AUTH_PROVIDER = _normalized_env("AUTH_PROVIDER", _profile_default("auth"))
+DATABASE_PROVIDER = _normalized_env("DATABASE_PROVIDER", _profile_default("database"))
+STORAGE_PROVIDER = _normalized_env("STORAGE_PROVIDER", _profile_default("storage"))
+LLM_PROVIDER = _normalized_env("LLM_PROVIDER", _profile_default("llm"))
+EMBEDDING_PROVIDER = _normalized_env("EMBEDDING_PROVIDER", _profile_default("embedding"))
+TEMPLATE_INGEST_PROVIDER = _normalized_env(
+    "TEMPLATE_INGEST_PROVIDER",
+    _template_ingest_provider_default(),
+)
+OUTBOUND_EMAIL_PROVIDER = _normalized_env("OUTBOUND_EMAIL_PROVIDER", _outbound_email_provider_default())
+INBOUND_EMAIL_PROVIDER = _normalized_env("INBOUND_EMAIL_PROVIDER", _inbound_email_provider_default())
+
+# Email report generation is intentionally isolated from the FastAPI web
+# process in self-hosted deployments. ``inline`` remains available only as a
+# compatibility mode for deployments that still use an external cron request
+# to perform the work inside the backend container.
+EMAIL_JOB_EXECUTION_MODE = _normalized_env(
+    "EMAIL_JOB_EXECUTION_MODE",
+    "inline" if APP_PROFILE == "default" else "worker",
+)
+EMAIL_WORKER_POLL_INTERVAL_SECONDS = int(
+    os.getenv("EMAIL_WORKER_POLL_INTERVAL_SECONDS", "30")
+)
+EMAIL_WORKER_MAX_JOBS_PER_CYCLE = int(
+    os.getenv("EMAIL_WORKER_MAX_JOBS_PER_CYCLE", "1")
+)
+EMAIL_WORKER_HEARTBEAT_PATH = os.getenv(
+    "EMAIL_WORKER_HEARTBEAT_PATH",
+    "/tmp/attenly-email-worker.heartbeat",
+)
+
+# Planned provider-specific settings. These are exposed now so future adapter
+# branches can consume stable names without changing env examples again.
+OPENAI_COMPATIBLE_BASE_URL = os.getenv("OPENAI_COMPATIBLE_BASE_URL")
+OPENAI_COMPATIBLE_API_KEY = os.getenv("OPENAI_COMPATIBLE_API_KEY")
+OPENAI_COMPATIBLE_TIMEOUT_SECONDS = int(os.getenv("OPENAI_COMPATIBLE_TIMEOUT_SECONDS", "300"))
+
+GRAPH_TENANT_ID = os.getenv("GRAPH_TENANT_ID")
+GRAPH_CLIENT_ID = os.getenv("GRAPH_CLIENT_ID")
+GRAPH_CLIENT_SECRET = os.getenv("GRAPH_CLIENT_SECRET")
+GRAPH_MAILBOX = os.getenv("GRAPH_MAILBOX")
+GRAPH_POLL_BATCH_SIZE = int(os.getenv("GRAPH_POLL_BATCH_SIZE", "10"))
+GRAPH_POLL_LOOKBACK_SECONDS = int(os.getenv("GRAPH_POLL_LOOKBACK_SECONDS", "300"))
+GRAPH_INITIAL_LOOKBACK_HOURS = int(os.getenv("GRAPH_INITIAL_LOOKBACK_HOURS", "24"))
+
+FILESYSTEM_STORAGE_PATH = os.getenv("STORAGE_PATH", "/data/storage")
 
 # Internal authentication (for cron endpoints)
 INTERNAL_CRON_SECRET = os.getenv("INTERNAL_CRON_SECRET")
@@ -37,7 +209,13 @@ EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", f"noreply@{EMAIL_FROM_DOMAI
 
 # Application URL (for links in emails)
 APP_URL = os.getenv("APP_URL", "https://app.attenly.ca")
-API_URL = os.getenv("API_URL", "https://api.attenly.ca")
+# PUBLIC_API_URL is the browser-reachable API prefix used in email links. Keep
+# API_URL as a compatibility fallback for existing hosted deployments.
+PUBLIC_API_URL = os.getenv(
+    "PUBLIC_API_URL",
+    os.getenv("API_URL", "https://api.attenly.ca"),
+).rstrip("/")
+API_URL = PUBLIC_API_URL
 
 # Email feature limits (optional - have sensible defaults)
 EMAIL_RATE_LIMIT_JOBS_PER_DAY = int(os.getenv("EMAIL_RATE_LIMIT_JOBS_PER_DAY", "20"))
@@ -69,19 +247,26 @@ STORAGE_MAX_FILE_SIZE_MB = int(os.getenv("STORAGE_MAX_FILE_SIZE_MB", "100"))
 # LLM SERVICE CONFIGURATION
 # =============================================================================
 
-LLM_MODEL_NAME = "gemini-2.5-flash-lite"
-TEMPLATE_INGEST_MODEL_NAME = "gemini-2.5-pro"  # For template normalization (higher quality)
-LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = 4000
-LLM_TEMPERATURE = 0.0
-LLM_THINKING_BUDGET = 0
-LLM_RESPONSE_FORMAT = "application/json"
+LLM_MODEL_NAME = os.getenv("LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-3.5-flash"))
+TEMPLATE_INGEST_MODEL_NAME = os.getenv(
+    "TEMPLATE_INGEST_MODEL",
+    os.getenv("TEMPLATE_INGEST_MODEL_NAME", "gemini-3.5-flash"),
+)
+LLM_MAX_CONTEXT_TOKENS_PER_QUESTION = int(os.getenv("LLM_MAX_CONTEXT_TOKENS_PER_QUESTION", "4000"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+LLM_THINKING_BUDGET = int(os.getenv("LLM_THINKING_BUDGET", "0"))
+LLM_RESPONSE_FORMAT = os.getenv("LLM_RESPONSE_FORMAT", "application/json")
 
 # =============================================================================
-# MODEL PRICING (CAD per 1M tokens) - Updated: 2025-01
+# MODEL PRICING (CAD per 1M tokens) - Updated: 2026-07
 # Based on Google Gemini pricing, converted to CAD (~1.35x USD)
 # =============================================================================
 
 MODEL_PRICING = {
+    "gemini-3.5-flash": {
+        "input_per_million": 2.03,   # CAD per 1M input tokens
+        "output_per_million": 12.15, # CAD per 1M output tokens, including thinking tokens
+    },
     "gemini-2.5-flash-lite": {
         "input_per_million": 0.10,   # CAD per 1M input tokens
         "output_per_million": 0.40,  # CAD per 1M output tokens
@@ -94,11 +279,21 @@ MODEL_PRICING = {
         "input_per_million": 0.015,  # CAD per 1M tokens (no output tokens)
         "output_per_million": 0.00,
     },
+    "gemini-embedding-2": {
+        "input_per_million": 0.27,   # CAD per 1M text input tokens
+        "output_per_million": 0.00,
+    },
 }
 
 # Credit display settings
 CREDITS_PER_CAD = 100  # 1 CAD = 100 credits (so $50 CAD = 5000 credits)
 DEFAULT_MONTHLY_LIMIT_CAD = float(os.getenv("DEFAULT_MONTHLY_LIMIT_CAD", "15.00"))
+DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD = float(
+    os.getenv("DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD", "0.10")
+)
+DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD = float(
+    os.getenv("DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD", "0.40")
+)
 WARNING_THRESHOLD_PERCENT = 70  # Show warning at 70% usage
 CRITICAL_THRESHOLD_PERCENT = 90  # Show critical warning at 90% usage
 
@@ -106,18 +301,22 @@ CRITICAL_THRESHOLD_PERCENT = 90  # Show critical warning at 90% usage
 # VECTOR SEARCH CONFIGURATION
 # =============================================================================
 
-VECTOR_SEARCH_TOP_K_PER_QUESTION = 10
-VECTOR_SEARCH_MAX_SOURCE_QUOTES = 3
+VECTOR_SEARCH_TOP_K_PER_QUESTION = int(os.getenv("VECTOR_SEARCH_TOP_K_PER_QUESTION", "10"))
+VECTOR_SEARCH_MAX_SOURCE_QUOTES = int(os.getenv("VECTOR_SEARCH_MAX_SOURCE_QUOTES", "3"))
 
 # =============================================================================
 # EMBEDDING GENERATION CONFIGURATION
 # =============================================================================
 
-EMBEDDING_BATCH_SIZE = 100
-EMBEDDING_MAX_RETRIES = 1
-EMBEDDING_TIMEOUT_SECONDS = 30
-EMBEDDING_MODEL_NAME = "gemini-embedding-001"
-EMBEDDING_MAX_CONCURRENT_BATCHES = 1
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
+EMBEDDING_MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "1"))
+EMBEDDING_TIMEOUT_SECONDS = int(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "30"))
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL_NAME", "gemini-embedding-2"))
+EMBEDDING_MAX_CONCURRENT_BATCHES = int(os.getenv("EMBEDDING_MAX_CONCURRENT_BATCHES", "1"))
+EMBEDDING_DIMENSIONS = int(os.getenv(
+    "EMBEDDING_DIMENSIONS",
+    "1536" if EMBEDDING_PROVIDER == "openai_compatible" else "768",
+))
 
 # =============================================================================
 # INTELLIGENT QUOTE EXTRACTION CONFIGURATION (needed by llm_service)
@@ -221,24 +420,28 @@ OCR_TORCH_NUM_THREADS = int(os.getenv("OCR_TORCH_NUM_THREADS", "1"))
 # DATABASE CONFIGURATION
 # =============================================================================
 
-DATABASE_URL = "sqlite:///./app.db"
-DATABASE_ECHO = False
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+DATABASE_ECHO = _env_bool("DATABASE_ECHO", False)
+DATABASE_AUTO_CREATE_TABLES = _env_bool(
+    "DATABASE_AUTO_CREATE_TABLES",
+    DATABASE_PROVIDER == "sqlalchemy" and DATABASE_URL.startswith("sqlite"),
+)
 
 # =============================================================================
 # DEVELOPMENT & DEBUGGING
 # =============================================================================
 
-ENVIRONMENT = "development"
-DEBUG_MODE = False
+ENVIRONMENT = os.getenv("ENV", "development")
+DEBUG_MODE = _env_bool("DEBUG_MODE", False)
 
-LOG_LEVEL = "INFO"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # =============================================================================
 # PERFORMANCE & OPTIMIZATION
 # =============================================================================
 
-MAX_CONCURRENT_UPLOADS = 2
+MAX_CONCURRENT_UPLOADS = int(os.getenv("MAX_CONCURRENT_UPLOADS", "2"))
 MAX_CONCURRENT_LLM_REQUESTS = int(os.getenv("MAX_CONCURRENT_LLM_REQUESTS", "10"))
 MAX_CONCURRENT_QUOTE_EXTRACTIONS = int(os.getenv("MAX_CONCURRENT_QUOTE_EXTRACTIONS", "10"))
 
@@ -249,18 +452,171 @@ CACHE_TTL_SECONDS = 3600
 # VALIDATION FUNCTIONS
 # =============================================================================
 
+_PLACEHOLDER_MARKERS = ("replace-with", "your_", "your-", "change-me")
+
+
+def _is_placeholder(value: str | None) -> bool:
+    normalized = (value or "").strip().lower()
+    return any(marker in normalized for marker in _PLACEHOLDER_MARKERS)
+
+def _validate_profile_and_providers(errors: List[str]) -> None:
+    if APP_PROFILE not in KNOWN_APP_PROFILES:
+        errors.append(
+            f"APP_PROFILE must be one of {sorted(KNOWN_APP_PROFILES)}; got '{APP_PROFILE}'"
+        )
+        return
+
+    if APP_PROFILE not in SUPPORTED_RUNTIME_PROFILES:
+        errors.append(
+            f"APP_PROFILE='{APP_PROFILE}' is documented for future provider work but is not "
+            "runtime-supported yet. Use APP_PROFILE='default' for this release."
+        )
+
+    selected_providers = {
+        "auth": AUTH_PROVIDER,
+        "database": DATABASE_PROVIDER,
+        "storage": STORAGE_PROVIDER,
+        "llm": LLM_PROVIDER,
+        "embedding": EMBEDDING_PROVIDER,
+        "template_ingest": TEMPLATE_INGEST_PROVIDER,
+        "outbound_email": OUTBOUND_EMAIL_PROVIDER,
+        "inbound_email": INBOUND_EMAIL_PROVIDER,
+    }
+
+    for provider_name, selected_value in selected_providers.items():
+        allowed_values = ALLOWED_PROVIDER_VALUES[provider_name]
+        if selected_value not in allowed_values:
+            errors.append(
+                f"{provider_name.upper()}_PROVIDER must be one of {sorted(allowed_values)}; "
+                f"got '{selected_value}'"
+            )
+            continue
+
+        runtime_values = CURRENT_RUNTIME_PROVIDERS[provider_name]
+        if selected_value not in runtime_values:
+            errors.append(
+                f"{provider_name.upper()}_PROVIDER='{selected_value}' is recognized but not "
+                f"implemented in the current runtime. Supported now: {sorted(runtime_values)}."
+            )
+
+    if OUTBOUND_EMAIL_PROVIDER == "resend" and not RESEND_API_KEY:
+        errors.append("RESEND_API_KEY is required when OUTBOUND_EMAIL_PROVIDER='resend'")
+    if INBOUND_EMAIL_PROVIDER == "resend":
+        if not RESEND_API_KEY:
+            errors.append("RESEND_API_KEY is required when INBOUND_EMAIL_PROVIDER='resend'")
+        if not RESEND_WEBHOOK_SECRET:
+            errors.append("RESEND_WEBHOOK_SECRET is required when INBOUND_EMAIL_PROVIDER='resend'")
+
+    if AUTH_PROVIDER == "local" and not LOCAL_AUTH_TOKEN:
+        errors.append("LOCAL_AUTH_TOKEN is required when AUTH_PROVIDER='local'")
+
+    if AUTH_PROVIDER == "local" and _is_placeholder(LOCAL_AUTH_TOKEN):
+        errors.append(
+            "LOCAL_AUTH_TOKEN still contains an example placeholder; replace it "
+            "with a long random token"
+        )
+
+    if LLM_PROVIDER == "openai_compatible" and _is_placeholder(LLM_MODEL_NAME):
+        errors.append(
+            "LLM_MODEL still contains an example placeholder; set the chat model "
+            "served by OPENAI_COMPATIBLE_BASE_URL"
+        )
+
+    if EMBEDDING_PROVIDER == "openai_compatible" and _is_placeholder(EMBEDDING_MODEL_NAME):
+        errors.append(
+            "EMBEDDING_MODEL still contains an example placeholder; set the embedding "
+            "model served by OPENAI_COMPATIBLE_BASE_URL"
+        )
+
+    if AUTH_PROVIDER == "external_jwt":
+        if not EXTERNAL_JWT_SECRET and not EXTERNAL_JWT_JWKS_URL:
+            errors.append(
+                "EXTERNAL_JWT_SECRET or EXTERNAL_JWT_JWKS_URL is required when "
+                "AUTH_PROVIDER='external_jwt'"
+            )
+        if EXTERNAL_JWT_SECRET and EXTERNAL_JWT_JWKS_URL:
+            errors.append(
+                "Set either EXTERNAL_JWT_SECRET or EXTERNAL_JWT_JWKS_URL, not both"
+            )
+        if EXTERNAL_JWT_SECRET and not EXTERNAL_JWT_ALGORITHM.startswith("HS"):
+            errors.append("EXTERNAL_JWT_SECRET requires an HMAC algorithm such as HS256")
+        if EXTERNAL_JWT_JWKS_URL and EXTERNAL_JWT_ALGORITHM.startswith("HS"):
+            errors.append("EXTERNAL_JWT_JWKS_URL requires an asymmetric algorithm such as RS256")
+        if not EXTERNAL_JWT_USER_ID_CLAIM:
+            errors.append("EXTERNAL_JWT_USER_ID_CLAIM cannot be blank")
+
+    if AUTH_PROVIDER != "supabase" and (
+        DATABASE_PROVIDER == "supabase" or STORAGE_PROVIDER == "supabase"
+    ):
+        errors.append(
+            "Supabase database/storage require AUTH_PROVIDER='supabase' in the "
+            "current runtime because user-scoped operations rely on Supabase JWTs. "
+            "Use DATABASE_PROVIDER='sqlalchemy' and STORAGE_PROVIDER='filesystem' "
+            "with local or external_jwt auth."
+        )
+
+    if OUTBOUND_EMAIL_PROVIDER == "microsoft_graph" or INBOUND_EMAIL_PROVIDER == "microsoft_graph":
+        missing_graph = [
+            name
+            for name, value in {
+                "GRAPH_TENANT_ID": GRAPH_TENANT_ID,
+                "GRAPH_CLIENT_ID": GRAPH_CLIENT_ID,
+                "GRAPH_CLIENT_SECRET": GRAPH_CLIENT_SECRET,
+                "GRAPH_MAILBOX": GRAPH_MAILBOX,
+            }.items()
+            if not value
+        ]
+        if missing_graph:
+            errors.append(
+                "Microsoft Graph email requires: "
+                + ", ".join(missing_graph)
+            )
+
+
 def validate_config():
     errors = []
 
-    # Required env
-    if not SUPABASE_URL:
+    _validate_profile_and_providers(errors)
+
+    # Required env for currently implemented providers
+    uses_supabase = any(
+        provider == "supabase"
+        for provider in (AUTH_PROVIDER, DATABASE_PROVIDER, STORAGE_PROVIDER)
+    )
+    if uses_supabase and not SUPABASE_URL:
         errors.append("SUPABASE_URL is required")
-    if not SUPABASE_KEY:
+    if uses_supabase and not SUPABASE_KEY:
         errors.append("SUPABASE_KEY is required")
-    if not SUPABASE_ANON_KEY:
+    if uses_supabase and not SUPABASE_ANON_KEY:
         errors.append("SUPABASE_ANON_KEY is required for user operations")
-    if not GEMINI_API_KEY:
-        errors.append("GEMINI_API_KEY is required for LLM functionality")
+
+    uses_gemini = (
+        LLM_PROVIDER == "gemini"
+        or EMBEDDING_PROVIDER == "gemini"
+        or TEMPLATE_INGEST_PROVIDER == "gemini"
+    )
+    if uses_gemini and not GEMINI_API_KEY:
+        errors.append(
+            "GEMINI_API_KEY is required when using Gemini LLM, embedding, or template ingest providers"
+        )
+
+    uses_openai_compatible = (
+        LLM_PROVIDER == "openai_compatible"
+        or EMBEDDING_PROVIDER == "openai_compatible"
+        or TEMPLATE_INGEST_PROVIDER == "openai_compatible"
+    )
+    if uses_openai_compatible and not OPENAI_COMPATIBLE_BASE_URL:
+        errors.append(
+            "OPENAI_COMPATIBLE_BASE_URL is required when using OpenAI-compatible "
+            "LLM, embedding, or template ingest providers"
+        )
+    if uses_openai_compatible and _is_placeholder(OPENAI_COMPATIBLE_BASE_URL):
+        errors.append(
+            "OPENAI_COMPATIBLE_BASE_URL still contains an example placeholder; "
+            "set the URL of the model endpoint"
+        )
+    if uses_openai_compatible and OPENAI_COMPATIBLE_TIMEOUT_SECONDS < 1:
+        errors.append("OPENAI_COMPATIBLE_TIMEOUT_SECONDS must be at least 1")
 
     # LLM ranges
     if LLM_MAX_CONTEXT_TOKENS_PER_QUESTION < 1000:
@@ -295,6 +651,14 @@ def validate_config():
     # Files
     if MAX_FILE_SIZE_MB < 1:
         errors.append("MAX_FILE_SIZE_MB must be at least 1")
+
+    # Usage limits
+    if DEFAULT_MONTHLY_LIMIT_CAD < 0:
+        errors.append("DEFAULT_MONTHLY_LIMIT_CAD must be non-negative")
+    if DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD < 0:
+        errors.append("DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD must be non-negative")
+    if DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD < 0:
+        errors.append("DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD must be non-negative")
 
     # OCR
     if OCR_MAX_PAGES_PER_REQUEST < 1:
@@ -374,6 +738,22 @@ def validate_config():
         errors.append("EMAIL_VERIFICATION_EXPIRY_HOURS must be at least 1")
     if EMAIL_VERIFICATION_EXPIRY_HOURS > 168:  # 7 days
         errors.append("EMAIL_VERIFICATION_EXPIRY_HOURS should not exceed 168 (7 days)")
+    if GRAPH_POLL_BATCH_SIZE < 1:
+        errors.append("GRAPH_POLL_BATCH_SIZE must be at least 1")
+    if GRAPH_POLL_BATCH_SIZE > 100:
+        errors.append("GRAPH_POLL_BATCH_SIZE should not exceed 100")
+    if GRAPH_POLL_LOOKBACK_SECONDS < 0:
+        errors.append("GRAPH_POLL_LOOKBACK_SECONDS cannot be negative")
+    if GRAPH_INITIAL_LOOKBACK_HOURS < 1:
+        errors.append("GRAPH_INITIAL_LOOKBACK_HOURS must be at least 1")
+    if EMAIL_JOB_EXECUTION_MODE not in {"worker", "inline"}:
+        errors.append("EMAIL_JOB_EXECUTION_MODE must be 'worker' or 'inline'")
+    if EMAIL_WORKER_POLL_INTERVAL_SECONDS < 5:
+        errors.append("EMAIL_WORKER_POLL_INTERVAL_SECONDS must be at least 5")
+    if EMAIL_WORKER_MAX_JOBS_PER_CYCLE < 1:
+        errors.append("EMAIL_WORKER_MAX_JOBS_PER_CYCLE must be at least 1")
+    if EMAIL_WORKER_MAX_JOBS_PER_CYCLE > 10:
+        errors.append("EMAIL_WORKER_MAX_JOBS_PER_CYCLE should not exceed 10")
 
     if errors:
         raise ValueError("Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
@@ -384,13 +764,56 @@ def validate_config():
 
 def get_config_summary() -> dict:
     return {
+        "profile": {
+            "app_profile": APP_PROFILE,
+            "runtime_supported": APP_PROFILE in SUPPORTED_RUNTIME_PROFILES,
+            "providers": {
+                "auth": AUTH_PROVIDER,
+                "database": DATABASE_PROVIDER,
+                "storage": STORAGE_PROVIDER,
+                "llm": LLM_PROVIDER,
+                "embedding": EMBEDDING_PROVIDER,
+                "template_ingest": TEMPLATE_INGEST_PROVIDER,
+                "outbound_email": OUTBOUND_EMAIL_PROVIDER,
+                "inbound_email": INBOUND_EMAIL_PROVIDER,
+            },
+        },
         "environment": ENVIRONMENT,
         "debug_mode": DEBUG_MODE,
+        "auth": {
+            "provider": AUTH_PROVIDER,
+            "local_auth_token_configured": bool(LOCAL_AUTH_TOKEN),
+            "local_auth_user_id": LOCAL_AUTH_USER_ID if AUTH_PROVIDER == "local" else None,
+            "external_jwt_secret_configured": bool(EXTERNAL_JWT_SECRET),
+            "external_jwt_jwks_url_configured": bool(EXTERNAL_JWT_JWKS_URL),
+            "external_jwt_algorithm": EXTERNAL_JWT_ALGORITHM if AUTH_PROVIDER == "external_jwt" else None,
+            "external_jwt_issuer_configured": bool(EXTERNAL_JWT_ISSUER),
+            "external_jwt_audience_configured": bool(EXTERNAL_JWT_AUDIENCE),
+        },
         "llm": {
             "model_name": LLM_MODEL_NAME,
+            "provider": LLM_PROVIDER,
             "max_context_tokens_per_question": LLM_MAX_CONTEXT_TOKENS_PER_QUESTION,
             "temperature": LLM_TEMPERATURE,
-            "api_key_configured": bool(GEMINI_API_KEY)
+            "gemini_api_key_configured": bool(GEMINI_API_KEY),
+            "openai_compatible_base_url_configured": bool(OPENAI_COMPATIBLE_BASE_URL),
+            "openai_compatible_api_key_configured": bool(OPENAI_COMPATIBLE_API_KEY),
+            "openai_compatible_timeout_seconds": OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
+        },
+        "embedding": {
+            "provider": EMBEDDING_PROVIDER,
+            "model_name": EMBEDDING_MODEL_NAME,
+            "dimensions": EMBEDDING_DIMENSIONS,
+        },
+        "template_ingest": {
+            "provider": TEMPLATE_INGEST_PROVIDER,
+            "model_name": (
+                TEMPLATE_INGEST_MODEL_NAME
+                if TEMPLATE_INGEST_PROVIDER in {"gemini", "openai_compatible"}
+                else None
+            ),
+            "requires_multimodal_model": TEMPLATE_INGEST_PROVIDER in {"gemini", "openai_compatible"},
+            "runtime_enabled": TEMPLATE_INGEST_PROVIDER != "disabled",
         },
         "vector_search": {
             "top_k_per_question": VECTOR_SEARCH_TOP_K_PER_QUESTION,
@@ -407,8 +830,46 @@ def get_config_summary() -> dict:
             "supported_types": SUPPORTED_FILE_TYPES,
             "pdf_max_pages": PDF_MAX_PAGES
         },
-        "database": {"url_configured": bool(DATABASE_URL), "echo": DATABASE_ECHO},
-        "supabase": {"url_configured": bool(SUPABASE_URL), "key_configured": bool(SUPABASE_KEY)},
+        "database": {
+            "provider": DATABASE_PROVIDER,
+            "url_configured": bool(DATABASE_URL),
+            "echo": DATABASE_ECHO,
+            "auto_create_tables": DATABASE_AUTO_CREATE_TABLES,
+        },
+        "usage_limits": {
+            "default_monthly_limit_cad": DEFAULT_MONTHLY_LIMIT_CAD,
+            "credits_per_cad": CREDITS_PER_CAD,
+            "warning_threshold_percent": WARNING_THRESHOLD_PERCENT,
+            "critical_threshold_percent": CRITICAL_THRESHOLD_PERCENT,
+            "default_model_input_cost_per_million_cad": DEFAULT_MODEL_INPUT_COST_PER_MILLION_CAD,
+            "default_model_output_cost_per_million_cad": DEFAULT_MODEL_OUTPUT_COST_PER_MILLION_CAD,
+        },
+        "storage": {
+            "provider": STORAGE_PROVIDER,
+            "bucket_name": STORAGE_BUCKET_NAME,
+            "filesystem_path": FILESYSTEM_STORAGE_PATH,
+        },
+        "supabase": {
+            "url_configured": bool(SUPABASE_URL),
+            "key_configured": bool(SUPABASE_KEY),
+            "anon_key_configured": bool(SUPABASE_ANON_KEY),
+            "service_role_key_configured": bool(SUPABASE_SERVICE_ROLE_KEY),
+        },
+        "email": {
+            "outbound_provider": OUTBOUND_EMAIL_PROVIDER,
+            "inbound_provider": INBOUND_EMAIL_PROVIDER,
+            "inbound_runtime_enabled": INBOUND_EMAIL_PROVIDER in {"resend", "microsoft_graph"},
+            "resend_api_key_configured": bool(RESEND_API_KEY),
+            "resend_webhook_secret_configured": bool(RESEND_WEBHOOK_SECRET),
+            "graph_tenant_configured": bool(GRAPH_TENANT_ID),
+            "graph_client_configured": bool(GRAPH_CLIENT_ID),
+            "graph_mailbox_configured": bool(GRAPH_MAILBOX),
+            "graph_poll_batch_size": GRAPH_POLL_BATCH_SIZE,
+            "graph_poll_lookback_seconds": GRAPH_POLL_LOOKBACK_SECONDS,
+            "job_execution_mode": EMAIL_JOB_EXECUTION_MODE,
+            "worker_poll_interval_seconds": EMAIL_WORKER_POLL_INTERVAL_SECONDS,
+            "worker_max_jobs_per_cycle": EMAIL_WORKER_MAX_JOBS_PER_CYCLE,
+        },
         "quote_extraction": {
             "context_chars": QUOTE_CONTEXT_CHARS,
             "max_quote_length": MAX_QUOTE_LENGTH,

@@ -6,7 +6,7 @@
  * Uses custom hooks for data management and state handling.
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import DocumentViewer from '../components/report/DocumentViewer';
 import LoadingState from '../components/report/LoadingState';
@@ -298,8 +298,7 @@ export default function ReportView() {
         throw new Error('Failed to save report');
       }
 
-      const result = await response.json();
-      console.log('Report saved successfully:', result);
+      await response.json();
       
       // Show success message (you could add a toast notification here)
       alert(`Report "${reportName}" saved successfully!`);

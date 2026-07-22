@@ -1,7 +1,7 @@
 // AuthCallback.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../libs/supabase';
+import { authClient, isTokenAuthProvider } from '../libs/auth';
 import { useAuth } from '../feature/auth/useAuth';
 import './Login.css';
 
@@ -26,10 +26,18 @@ const AuthCallback: React.FC = () => {
   useEffect(() => {
     let timer: number | undefined;
 
+    if (isTokenAuthProvider) {
+      authClient.getSession().then(({ data }) => {
+        if (data.session) navigate('/dashboard', { replace: true });
+        else navigate('/login', { replace: true });
+      });
+      return () => undefined;
+    }
+
     // If the hook already says "recovery", force recovery UI immediately
     if (isPasswordRecovery) setMode('recovery');
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: sub } = authClient.onAuthStateChange((event, session) => {
       // If the auth event says recovery, lock into recovery mode
       if (event === 'PASSWORD_RECOVERY') {
         recoveryRef.current = true;
@@ -45,7 +53,7 @@ const AuthCallback: React.FC = () => {
     });
 
     // Prime current session; but never redirect if recovering
-    supabase.auth.getSession().then(({ data, error: authErr }) => {
+    authClient.getSession().then(({ data, error: authErr }) => {
       if (authErr) {
         setError(authErr.message);
         setMode('error');
@@ -80,11 +88,11 @@ const AuthCallback: React.FC = () => {
       setBusy(true);
       setError(null);
 
-      const { error } = await supabase.auth.updateUser({ password: pwd });
+      const { error } = await authClient.updateUser({ password: pwd });
       if (error) throw error;
 
       // Fully sign out (global if supported)
-      await supabase.auth.signOut({ scope: 'global' });
+      await authClient.signOut({ scope: 'global' });
 
       // Clear recovery guard so routes treat this as a normal unauthenticated user
       localStorage.removeItem('auth:recovery');
@@ -245,7 +253,7 @@ const AuthCallback: React.FC = () => {
             <div className="login-branding">
               <div className="brand-badge">
                 <span className="badge-icon">🏢</span>
-                <span>Attently</span>
+                <span>Attenly</span>
               </div>
               <h1 className="brand-title">
                 Authentication <span className="title-highlight">Error</span>

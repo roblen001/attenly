@@ -1,271 +1,281 @@
-# Attenly - AI-Powered Document Processing Platform
+# Attenly
 
-Attenly is a production-ready AI-powered document processing platform that transforms unstructured PDFs into structured, professional reports. Built specifically for insurance professionals, underwriters, and brokers who need to quickly extract and organize key information from complex documents.
+Attenly turns source documents into structured, editable reports with traceable
+references. It can run on one company-controlled Docker host, use local or
+hosted models, and optionally process reports through a Microsoft 365 mailbox.
 
-## 🚀 Features
+The first self-hosted release is designed as a **single-workspace internal
+deployment**:
 
-- **Advanced AI Processing**: Gemini 2.5 Flash-Lite integration with cost-optimized batch processing
-- **Professional Report Generation**: Business-ready PDFs with ReportLab formatting
-- **Quote Attribution**: Click quotes to view source documents with precise highlighting
-- **Historical Reports**: Complete report storage and retrieval with Supabase
-- **Advanced Security**: JWT authentication, rate limiting, and comprehensive security headers
-- **Real-time Processing**: Live feedback during document processing
-- **User Isolation**: Complete data separation with Row Level Security policies
+- one deployment access token unlocks one shared workspace;
+- SQLite and uploaded documents persist in one Docker volume;
+- report generation and embeddings use either an OpenAI-compatible endpoint or
+  Gemini;
+- email connectors are disabled until an administrator enables one;
+- the web service and long-running email worker run separately so reports stay
+  responsive while email jobs are processed.
 
-## 🏗️ Architecture
+Local usernames/passwords and browser OIDC redirects are not included in this
+release. Organizations that need individual identities can use the existing
+Supabase profile or place Attenly behind an identity-aware gateway that supplies
+validated JWTs. See [Authentication](#authentication).
 
-- **Frontend**: React 19 + TypeScript + Vite
-- **Backend**: FastAPI + Python with comprehensive middleware stack
-- **Database**: Supabase PostgreSQL with RLS policies
-- **AI Processing**: Gemini 2.5 Flash-Lite + ChromaDB vector store
-- **Authentication**: Supabase JWT with secure session management
-- **File Storage**: Supabase Storage with signed URLs
-- **Rate Limiting**: Redis-based token bucket + SlowAPI
+## Requirements
 
-## 🔒 Security Features
+- Docker Engine or Docker Desktop with Compose v2
+- Python 3.10 or newer for the setup and preflight scripts
+- a model endpoint, or a Gemini API key
+- at least 8 GB of free space for the published Attenly images, plus model and
+  document storage; allow at least 20 GB of free space when building the large
+  OCR-enabled backend image from source
 
-### Production Security Stack
-- **JWT Authentication**: Supabase-based with proper token validation
-- **Row Level Security**: Database-level user isolation
-- **Rate Limiting**: Both IP-based and user-based quota management
-- **Security Headers**: CSP, HSTS, X-Frame-Options, and more
-- **Input Validation**: Comprehensive validation on both client and server
-- **Error Handling**: Security-aware error messages without information leakage
-- **Correlation IDs**: Request tracing for security monitoring
-- **Idempotency Keys**: Prevent duplicate operations
+## Start in a few minutes
 
-### Security Monitoring
-- **Health Checks**: `/health`, `/ready`, `/metrics` endpoints
-- **Audit Logging**: Security events and data access tracking
-- **Structured Logging**: JSON logs with correlation IDs and security context
+Choose one model setup, create `.env`, and start Compose.
 
-## 🛠️ Development Setup
+### Option A: Ollama or another OpenAI-compatible endpoint
 
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- Redis (for rate limiting)
-- Supabase account
+For a small local Ollama setup with chat, embeddings, and multimodal template
+ingestion:
 
-### Backend Setup
 ```bash
-cd backend
-
-# Create virtual environment
-python -m venv attenly-backend
-source attenly-backend/bin/activate  # On Windows: attenly-backend\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp ../.env.example .env
-# Edit .env with your actual API keys and configuration
-
-# Run development server
-python -m app.main
+ollama pull qwen3.5:9b
+ollama pull embeddinggemma
 ```
 
-### Frontend Setup
+Create the environment file:
+
+```bash
+python scripts/init_self_hosted_env.py --provider openai_compatible --model-base-url http://host.docker.internal:11434/v1 --llm-model qwen3.5:9b --embedding-model embeddinggemma:latest --embedding-dimensions 768 --template-ingest-provider openai_compatible --template-ingest-model qwen3.5:9b
+```
+
+Use a private HTTPS URL instead of `host.docker.internal` when the model server
+runs elsewhere on the company network. Omit `--template-ingest-provider` and
+`--template-ingest-model` if smart template uploads are not needed.
+
+The listed Ollama models were checked against the public Ollama library for this
+release. Model availability still changes over time; the setup is not tied to
+these particular models.
+
+### Option B: Gemini
+
+```bash
+python scripts/init_self_hosted_env.py --provider gemini --llm-model gemini-3.5-flash --embedding-model gemini-embedding-2 --embedding-dimensions 768 --template-ingest-provider gemini --template-ingest-model gemini-3.5-flash
+```
+
+The script securely prompts for `GEMINI_API_KEY` if it is not passed on the
+command line. Prefer the prompt so the key is not saved in shell history.
+
+### Start Attenly
+
+```bash
+python scripts/check_self_hosted_env.py .env
+docker compose up -d --wait
+```
+
+Open <http://localhost:5173>. Enter the `LOCAL_AUTH_TOKEN` from `.env` on the
+login page.
+
+To print only that generated token:
+
+Linux or macOS:
+
+```bash
+grep '^LOCAL_AUTH_TOKEN=' .env | cut -d= -f2-
+```
+
+PowerShell:
+
+```powershell
+(Get-Content .env | Where-Object { $_ -like "LOCAL_AUTH_TOKEN=*" }) -replace "LOCAL_AUTH_TOKEN=", ""
+```
+
+Treat this token like a workspace password. Do not place it in a `VITE_`
+variable: all frontend configuration is readable by browser users.
+
+## What “OpenAI-compatible” means
+
+The models can run entirely on company hardware. Attenly only requires the
+gateway to accept the usual OpenAI request/response shapes at:
+
+- `POST <base-url>/chat/completions`
+- `POST <base-url>/embeddings`
+
+Set the base URL including `/v1`, for example:
+
+```dotenv
+OPENAI_COMPATIBLE_BASE_URL=https://models.company.internal/v1
+OPENAI_COMPATIBLE_API_KEY=replace-with-gateway-token
+LLM_MODEL=company-chat-model
+EMBEDDING_MODEL=company-embedding-model
+EMBEDDING_DIMENSIONS=768
+```
+
+Ollama, vLLM, LM Studio, or a company-built adapter can provide these routes.
+See [Model gateways](docs/MODEL_GATEWAYS.md) for the exact contract, Ollama
+server setup, network guidance, and verification commands.
+
+## Microsoft 365 email (optional)
+
+Start with the upload/report flow first. To add Microsoft Graph without
+changing the existing model settings:
+
+```bash
+python scripts/configure_microsoft_graph_env.py .env --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-mailbox attenly@company.com
+```
+
+The script prompts securely for the client secret. Then validate the Entra app,
+Graph permissions, and mailbox:
+
+```bash
+python scripts/check_microsoft_graph_connection.py .env
+docker compose up -d --force-recreate --wait
+```
+
+For a real outbound test:
+
+```bash
+python scripts/check_microsoft_graph_connection.py .env --send-test-to you@company.com
+```
+
+The Entra application needs application permissions `Mail.Read` and
+`Mail.Send`, with administrator consent. Use a dedicated licensed mailbox.
+Verified senders email documents directly to `GRAPH_MAILBOX`; generated
+`u_...` addresses are internal routing identifiers and do not need Microsoft
+365 aliases in the single-workspace profile.
+
+See [Connectors](docs/CONNECTORS.md) for the complete Entra setup and the sender
+verification/report workflow.
+
+## Operations
+
+Check status and logs:
+
+```bash
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f email-worker
+```
+
+Stop without deleting data:
+
+```bash
+docker compose down
+```
+
+Delete the deployment data volume only when data loss is intended:
+
+```bash
+docker compose down -v
+```
+
+Changing `.env` requires container recreation:
+
+```bash
+docker compose up -d --force-recreate --wait
+```
+
+Source code changes require a rebuild:
+
+```bash
+docker compose -f compose.yml -f compose.build.yml up -d --build --wait
+```
+
+The default stack publishes only the frontend port. Nginx proxies `/api` to the
+private backend service. `backend` and `email-worker` share the `attenly-data`
+volume, which contains `/data/attenly.db` and `/data/storage`.
+
+Back up the volume before upgrades. A simple Docker-volume backup procedure is
+documented in [Self-hosting](docs/SELF_HOSTING.md).
+
+To change the browser port, regenerate the environment file with, for example,
+`--frontend-port 5174`, or set `ATTENLY_FRONTEND_PORT=5174` in `.env`.
+
+## Authentication
+
+| Mode | Intended use | Current behavior |
+| --- | --- | --- |
+| `local` | Trusted internal pilot | One shared bearer token and workspace identity |
+| `external_jwt` | Company gateway or IdP integration | Validates an HMAC secret or issuer/audience/JWKS; the user pastes/provides the token |
+| `supabase` | Existing hosted or multi-user deployment | Supabase browser authentication and provider-backed persistence |
+
+The default local profile is not user-account management. Every person using
+the same token can see the same agents and reports. Do not expose it directly to
+the public internet. Put production deployments behind HTTPS, firewall rules,
+and the organization’s normal access controls.
+
+## Configuration and customization
+
+Provider selection is environment-driven. Companies can switch model,
+embedding, storage, authentication, and email providers without editing the
+report-generation code. The current support matrix and extension boundaries are
+documented in [Provider matrix](docs/PROVIDER_MATRIX.md).
+
+Important example files:
+
+- `.env.example` — recommended single-workspace Docker profile
+- `.env.enterprise.example` — external JWT and company endpoint example
+- `.env.default.example` — original Supabase-hosted profile
+- `.env.local.example` — expanded local profile reference
+
+Never commit `.env`. It is ignored by Git and excluded from Docker build
+contexts.
+
+## Development and validation
+
+Run the backend through Docker to match the release environment:
+
+```bash
+docker compose -f compose.yml -f compose.build.yml up -d --build --wait
+```
+
+Frontend checks:
+
 ```bash
 cd frontend
-
-# Install dependencies
-npm install
-
-# Configure environment variables
-cp .env.example .env.local
-# Edit .env.local with your configuration
-
-# Run development server
-npm run dev
+npm ci
+npm run lint
+npm run build
 ```
 
-### Database Setup
+Profile and packaging checks:
+
 ```bash
-# Apply Supabase migrations
-supabase migration up
-
-# Or manually apply the SQL files:
-# - supabase/migrations/001_user_quotas.sql
-# - supabase/migrations/002_rls_policies.sql
+python scripts/verify_open_source_profiles.py
+python scripts/check_self_hosted_env.py .env.example
+python scripts/smoke_self_hosted_compose.py
 ```
 
-## 🚀 Production Deployment
+See [Contributing](CONTRIBUTING.md) for the branch policy and validation
+expectations.
 
-### Environment Configuration
+## Documentation
 
-#### Backend Environment Variables
-```bash
-# Required Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_supabase_service_role_key
-GEMINI_API_KEY=your_gemini_api_key
+- [Self-hosting guide](docs/SELF_HOSTING.md)
+- [Model gateways](docs/MODEL_GATEWAYS.md)
+- [Microsoft Graph and other connectors](docs/CONNECTORS.md)
+- [Provider matrix](docs/PROVIDER_MATRIX.md)
+- [Docker architecture](docs/DOCKER_ARCHITECTURE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Security policy](SECURITY.md)
 
-# Production Settings
-ENV=production
-PORT=8000
-CORS_ORIGINS=https://app.attently.ca
-REDIS_URL=redis://your-redis-instance
+## Security
 
-# Optional Tuning
-LLM_MAX_CONTEXT_TOKENS_PER_QUESTION=8000
-VECTOR_SEARCH_TOP_K_PER_QUESTION=10
-MAX_FILE_SIZE_MB=50
-```
+- Use HTTPS and restrict the frontend to trusted networks/users.
+- Use a long random `LOCAL_AUTH_TOKEN` and rotate it if exposed.
+- Keep model and connector credentials server-side in `.env` or an external
+  secret manager.
+- Review uploaded documents and model-provider data policies before processing
+  sensitive information.
+- Uploaded files are validated, but this release does not include an antivirus
+  engine. Integrate malware scanning at the gateway or storage boundary when
+  required by company policy.
 
-#### Frontend Environment Variables
-```bash
-VITE_API_BASE_URL=https://api.attenly.ca
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
-### Deployment Checklist
+## License
 
-#### Pre-Deployment Security
-- [ ] **Rotate API Keys**: Generate new production API keys
-- [ ] **Environment Variables**: Ensure all secrets are in secure environment variables
-- [ ] **Database Migrations**: Apply all SQL migrations to production database
-- [ ] **SSL Certificates**: Ensure HTTPS is properly configured
-- [ ] **Domain Configuration**: Update CORS origins and CSP policies
-
-#### Infrastructure Requirements
-- [ ] **Application Server**: Docker container or cloud hosting (Koyeb, Railway, etc.)
-- [ ] **Redis Instance**: For rate limiting and caching
-- [ ] **CDN**: CloudFlare or similar for static asset delivery
-- [ ] **Monitoring**: Application monitoring (DataDog, New Relic, etc.)
-- [ ] **Error Tracking**: Error aggregation service (Sentry, etc.)
-
-#### Security Hardening
-- [ ] **Rate Limiting**: Configure appropriate rate limits for production load
-- [ ] **User Quotas**: Set up proper user quotas and billing integration
-- [ ] **Monitoring**: Implement security monitoring and alerting
-- [ ] **Backup Strategy**: Automated backups for database and file storage
-- [ ] **Incident Response**: Prepare incident response procedures
-
-### Docker Deployment
-
-#### Backend Dockerfile
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-
-EXPOSE 8000
-
-CMD ["python", "-m", "app.main"]
-```
-
-#### Frontend Dockerfile
-```dockerfile
-FROM node:18-alpine as build
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-### Cloud Deployment Examples
-
-#### Koyeb (Recommended)
-```yaml
-# koyeb.yaml
-services:
-- name: attenly-backend
-  git:
-    url: https://github.com/your-username/attenly
-    branch: main
-    build_command: pip install -r backend/requirements.txt
-    run_command: cd backend && python -m app.main
-  instance_type: nano
-  env:
-    - key: ENV
-      value: production
-    - key: SUPABASE_URL
-      value: your_supabase_url
-    # Add other environment variables from secrets
-
-- name: attently-frontend
-  git:
-    url: https://github.com/your-username/attenly
-    branch: main
-    build_command: cd frontend && npm install && npm run build
-  instance_type: nano
-  static: true
-  static_path: frontend/dist
-```
-
-### Monitoring and Maintenance
-
-#### Health Monitoring
-- **Health Checks**: `/health` (basic), `/ready` (comprehensive)
-- **Metrics**: `/metrics` (Prometheus format)
-- **Log Aggregation**: Structured JSON logs with correlation IDs
-
-#### Performance Monitoring
-- **Response Times**: Track API response times and database query performance
-- **Error Rates**: Monitor 4xx/5xx error rates and security violations  
-- **Resource Usage**: Monitor CPU, memory, and Redis usage
-- **Cost Tracking**: Monitor LLM API usage and processing costs
-
-#### Security Monitoring
-- **Authentication Events**: Failed login attempts and suspicious activity
-- **Rate Limiting**: Track rate limit violations and potential abuse
-- **Data Access**: Monitor data access patterns and unauthorized attempts
-- **Error Patterns**: Watch for security-related errors and attack patterns
-
-## 📊 Performance Optimization
-
-### Current Performance
-- **Processing Speed**: < 2 minutes for typical insurance documents
-- **Page Load Time**: < 3 seconds for report viewing
-- **PDF Generation**: Instant downloads using cached data
-- **Cost Efficiency**: 50% LLM cost reduction through optimization
-
-### Optimization Features
-- **Batch Processing**: Single LLM API calls for multiple questions
-- **Report Caching**: In-memory caching eliminates redundant processing
-- **Vector Search**: Question-specific search reduces context noise
-- **Connection Pooling**: Efficient database connection management
-
-## 🤝 Contributing
-
-### Development Guidelines
-- **Security First**: All changes must maintain security standards
-- **Testing**: Include tests for new features and security measures
-- **Documentation**: Update documentation for any configuration changes
-- **Code Quality**: Follow TypeScript strict mode and Python type hints
-
-### Security Reporting
-Please report security vulnerabilities to security@attently.ca following our [Security Policy](SECURITY.md).
-
-## 📄 License
-
-This project is proprietary software. All rights reserved.
-
-## 🆘 Support
-
-- **Documentation**: See `/docs` folder for detailed API documentation
-- **Issues**: Create GitHub issues for bug reports and feature requests
-- **Security**: Report security issues to security@attently.ca
-- **General**: Contact support@attently.ca for general inquiries
-
----
-
-*Last updated: October 2025*
+Attenly is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
+If you modify Attenly and let users interact with that modified version over a
+network, the AGPL requires you to offer those users the corresponding source
+code under the same license.

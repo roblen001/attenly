@@ -30,7 +30,7 @@ class DiffService:
     - Merge across EQUAL spans containing only whitespace/punctuation
     - Never merge INSERT and DELETE operations together
     
-    Rationale: Legal/insurance text requires predictable, semantic spans
+    Rationale: Enterprise and legal text requires predictable, semantic spans
     rather than character-level fragmentation.
     """
 

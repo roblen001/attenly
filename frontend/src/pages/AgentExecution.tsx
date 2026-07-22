@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Agent, UploadedFile } from '../types';
 import FileUpload from '../components/AgentExecution/FileUpload';
@@ -20,39 +20,9 @@ export default function AgentExecutionPage() {
   // Track if files have been cleared on initial load
   const hasClearedFiles = useRef(false);
 
-  // Clear vector store and files when entering this page, only once on mount
-  useEffect(() => {
-    const clearFilesOnEntry = async () => {
-      // Only clear once per component mount
-      if (hasClearedFiles.current) {
-        return;
-      }
-
-      hasClearedFiles.current = true;
-
-      try {
-        const filesResponse = await api('/agents/files');
-        const filesData = await filesResponse.json();
-        if (filesData.files && filesData.files.length > 0) {
-          await api('/agents/files/clear', { method: 'DELETE' });
-          console.log('Files cleared on entering agent execution page');
-        }
-      } catch (error) {
-        console.error('Failed to clear files on entry:', error);
-        // Don't block page loading on cleanup failure
-      }
-    };
-
-    // Clear files once when auth is ready
-    if (!authLoading && session) {
-      clearFilesOnEntry();
-    }
-  }, []); // No dependencies - only run on mount
-
-  // Separate effect to wait for auth without triggering file clearing
+  // Clear vector storage once after authentication is ready.
   useEffect(() => {
     if (!authLoading && session && !hasClearedFiles.current) {
-      // Trigger the clearing logic above by force re-running it
       const clearFilesOnEntry = async () => {
         if (hasClearedFiles.current) {
           return;
@@ -65,7 +35,6 @@ export default function AgentExecutionPage() {
           const filesData = await filesResponse.json();
           if (filesData.files && filesData.files.length > 0) {
             await api('/agents/files/clear', { method: 'DELETE' });
-            console.log('Files cleared on entering agent execution page');
           }
         } catch (error) {
           console.error('Failed to clear files on entry:', error);
@@ -74,7 +43,7 @@ export default function AgentExecutionPage() {
 
       clearFilesOnEntry();
     }
-  }, [authLoading, session]); // Only for initial auth check, protected by hasClearedFiles.current
+  }, [authLoading, session]);
 
   useEffect(() => {
     const fetchAgent = async () => {
@@ -111,7 +80,6 @@ export default function AgentExecutionPage() {
     // Clear files when user explicitly navigates back to dashboard
     try {
       await api('/agents/files/clear', { method: 'DELETE' });
-      console.log('Files cleared on navigation back to dashboard');
     } catch (error) {
       console.error('Failed to clear files on navigation:', error);
       // Don't block navigation on cleanup failure
@@ -146,7 +114,6 @@ export default function AgentExecutionPage() {
       if (result.success) {
         setIsGenerating(false);
         setReportReady(true);
-        console.log('Processing result:', result);
         // Backend will handle template population and return the complete report
       } else {
         throw new Error(result.error || 'Processing failed');

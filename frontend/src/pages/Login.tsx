@@ -1,21 +1,29 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "../libs/supabase";
+import {
+  authClient,
+  authProvider,
+  consumeAuthError,
+  isLocalAuthProvider,
+  isTokenAuthProvider,
+} from "../libs/auth";
 import { useAuth } from "../feature/auth/useAuth";
 import "./Login.css";
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isPasswordRecovery } = useAuth();
+  const { isAuthenticated, isPasswordRecovery, signIn, signInWithToken } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [isPasswordReset, setIsPasswordReset] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [localToken, setLocalToken] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => consumeAuthError());
   const [message, setMessage] = useState("");
+  const tokenLabel = authProvider === 'external_jwt' ? 'Identity Token' : 'Deployment Access Token';
 
   // Check for password reset success
   useEffect(() => {
@@ -39,9 +47,18 @@ export default function Login() {
     setMessage("");
 
     try {
-      if (isPasswordReset) {
+      if (isTokenAuthProvider) {
+        const { error } = await signInWithToken(localToken);
+
+        if (error) {
+          setError(error.message);
+        } else {
+          const from = location.state?.from?.pathname || '/dashboard';
+          navigate(from, { replace: true });
+        }
+      } else if (isPasswordReset) {
         // Handle password reset
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await authClient.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
         });
 
@@ -57,7 +74,7 @@ export default function Login() {
           return;
         }
 
-        const { error } = await supabase.auth.signUp({
+        const { error } = await authClient.signUp({
           email,
           password,
         });
@@ -68,10 +85,7 @@ export default function Login() {
           setMessage("Check your email for the confirmation link!");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error } = await signIn(email, password);
 
         if (error) {
           setError(error.message);
@@ -135,10 +149,14 @@ export default function Login() {
           <div className="login-form-container">
             <div className="form-header">
               <h2 className="form-title">
-                {isPasswordReset ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
+                {isTokenAuthProvider ? "Internal Access" : isPasswordReset ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
               </h2>
               <p className="form-subtitle">
-                {isPasswordReset
+                {isTokenAuthProvider
+                  ? isLocalAuthProvider
+                    ? "Unlock this deployment's shared company workspace"
+                    : "Continue to your company workspace"
+                  : isPasswordReset
                   ? "Enter your email to receive a password reset link"
                   : isSignUp 
                   ? "Get started with your professional workflow" 
@@ -148,22 +166,44 @@ export default function Login() {
             </div>
 
             <form onSubmit={handleSubmit} className="login-form">
-              <div className="form-group">
-                <label htmlFor="email" className="form-label">
-                  Email Address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="form-input"
-                  placeholder="Enter your email"
-                  required
-                />
-              </div>
+              {isTokenAuthProvider ? (
+                <div className="form-group">
+                  <label htmlFor="localToken" className="form-label">
+                    {tokenLabel}
+                  </label>
+                  <input
+                    id="localToken"
+                    type="password"
+                    value={localToken}
+                    onChange={(e) => setLocalToken(e.target.value)}
+                    className="form-input"
+                    placeholder={`Enter ${tokenLabel.toLowerCase()}`}
+                    required
+                  />
+                  {isLocalAuthProvider && (
+                    <p className="form-help">
+                      This shared token is not a separate user account. Everyone using it opens the same local workspace.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label htmlFor="email" className="form-label">
+                    Email Address
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="form-input"
+                    placeholder="Enter your email"
+                    required
+                  />
+                </div>
+              )}
 
-              {!isPasswordReset && (
+              {!isTokenAuthProvider && !isPasswordReset && (
                 <div className="form-group">
                   <label htmlFor="password" className="form-label">
                     Password
@@ -180,7 +220,7 @@ export default function Login() {
                 </div>
               )}
 
-              {isSignUp && !isPasswordReset && (
+              {!isTokenAuthProvider && isSignUp && !isPasswordReset && (
                 <div className="form-group">
                   <label htmlFor="confirmPassword" className="form-label">
                     Confirm Password
@@ -219,59 +259,61 @@ export default function Login() {
                 {loading ? (
                   <>
                     <span className="loading-spinner"></span>
-                    {isPasswordReset ? "Sending Reset Link..." : isSignUp ? "Creating Account..." : "Signing In..."}
+                    {isTokenAuthProvider ? "Signing In..." : isPasswordReset ? "Sending Reset Link..." : isSignUp ? "Creating Account..." : "Signing In..."}
                   </>
                 ) : (
                   <>
                     <span className="btn-icon">
                       {isPasswordReset ? "🔐" : isSignUp ? "🚀" : "✨"}
                     </span>
-                    {isPasswordReset ? "Send Reset Link" : isSignUp ? "Create Account" : "Sign In"}
+                    {isTokenAuthProvider ? "Continue" : isPasswordReset ? "Send Reset Link" : isSignUp ? "Create Account" : "Sign In"}
                     <span className="btn-arrow">→</span>
                   </>
                 )}
               </button>
             </form>
 
-            <div className="form-footer">
-              {!isPasswordReset ? (
-                <>
-                  <p className="toggle-text">
-                    {isSignUp ? "Already have an account?" : "Don't have an account?"}
-                    <button
-                      type="button"
-                      onClick={toggleMode}
-                      className="toggle-btn"
-                    >
-                      {isSignUp ? "Sign In" : "Sign Up"}
-                    </button>
-                  </p>
-                  {!isSignUp && (
+            {!isTokenAuthProvider && (
+              <div className="form-footer">
+                {!isPasswordReset ? (
+                  <>
                     <p className="toggle-text">
-                      Need to set or reset your password?
+                      {isSignUp ? "Already have an account?" : "Don't have an account?"}
                       <button
                         type="button"
-                        onClick={togglePasswordReset}
+                        onClick={toggleMode}
                         className="toggle-btn"
                       >
-                        Reset Password
+                        {isSignUp ? "Sign In" : "Sign Up"}
                       </button>
                     </p>
-                  )}
-                </>
-              ) : (
-                <p className="toggle-text">
-                  Remember your password?
-                  <button
-                    type="button"
-                    onClick={togglePasswordReset}
-                    className="toggle-btn"
-                  >
-                    Sign In
-                  </button>
-                </p>
-              )}
-            </div>
+                    {!isSignUp && (
+                      <p className="toggle-text">
+                        Need to set or reset your password?
+                        <button
+                          type="button"
+                          onClick={togglePasswordReset}
+                          className="toggle-btn"
+                        >
+                          Reset Password
+                        </button>
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="toggle-text">
+                    Remember your password?
+                    <button
+                      type="button"
+                      onClick={togglePasswordReset}
+                      className="toggle-btn"
+                    >
+                      Sign In
+                    </button>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

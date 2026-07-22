@@ -1,8 +1,8 @@
 // TemplateSelectionStep.tsx
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './TemplateSelectionStep.css';
 import { api } from '../../libs/https';
-import type { TemplateIngestResponse } from '../../types';
+import type { TemplateIngestCapabilities, TemplateIngestResponse } from '../../types';
 
 interface TemplateSelectionStepProps {
   onBack: () => void;
@@ -26,6 +26,41 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [capabilities, setCapabilities] = useState<TemplateIngestCapabilities | null>(null);
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCapabilities = async () => {
+      try {
+        setCapabilitiesLoading(true);
+        const response = await api('/agents/template/capabilities', {
+          method: 'GET',
+          nonCritical: true,
+        });
+        const data: TemplateIngestCapabilities = await response.json();
+        if (!cancelled) {
+          setCapabilities(data);
+        }
+      } catch (err) {
+        console.warn('Failed to load template ingest capabilities:', err);
+        if (!cancelled) {
+          setCapabilities(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCapabilitiesLoading(false);
+        }
+      }
+    };
+
+    fetchCapabilities();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleTemplateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -70,9 +105,6 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
         setWarnings(result.warnings);
       }
 
-      // Log the source for debugging
-      console.log(`Template ingested successfully via ${result.source}`);
-
       // Pass HTML and CSS to parent component
       onSelectTemplate(result.html_body, result.css, result.source);
       onProcessingEnd(); // Hide loading state on success
@@ -113,6 +145,11 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
   };
 
   const handleUploadClick = () => {
+    if (capabilities?.enabled === false) {
+      onUploadError(capabilities.message);
+      return;
+    }
+
     if (!isProcessing) {
       fileInputRef.current?.click();
     }
@@ -124,6 +161,17 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
       action();
     }
   };
+
+  const uploadEnabled = capabilities?.enabled ?? true;
+  const providerLabel = capabilities?.provider
+    ? capabilities.provider.replace(/_/g, ' ')
+    : 'configured provider';
+  const uploadDescription = capabilitiesLoading
+    ? 'Checking template upload configuration...'
+    : capabilities?.enabled === false
+      ? capabilities.message
+      : capabilities?.message
+        || 'Upload DOCX, PDF, or HTML template (max 5 pages). Complex layouts require a configured smart multimodal template provider.';
 
   return (
     <div className="template-selection-step">
@@ -166,6 +214,13 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
         </div>
       )}
 
+      {!capabilitiesLoading && capabilities?.enabled === false && (
+        <div className="template-warning-message">
+          <span className="warning-icon">!</span>
+          <div className="warning-text">{capabilities.message}</div>
+        </div>
+      )}
+
       <div className="template-options">
         {/* Option 1: Create from Scratch */}
         <div
@@ -192,13 +247,14 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
 
         {/* Option 2: Upload Template */}
         <div
-          className={`template-option-card ${isProcessing ? 'converting' : ''}`}
+          className={`template-option-card ${isProcessing ? 'converting' : ''} ${!uploadEnabled ? 'disabled' : ''}`}
           onClick={handleUploadClick}
           role="button"
-          tabIndex={0}
+          tabIndex={uploadEnabled ? 0 : -1}
           onKeyDown={(e) => handleKeyDown(e, handleUploadClick)}
           aria-label="Upload template file"
           aria-busy={isProcessing}
+          aria-disabled={!uploadEnabled}
         >
           <div className="option-icon-wrapper upload-icon">
             <span className="option-icon">📄</span>
@@ -207,10 +263,10 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
           <p>
             {isProcessing
               ? 'Normalizing your template...'
-              : 'Upload DOCX, PDF, or HTML template (max 5 pages) to get started quickly.'}
+              : uploadDescription}
           </p>
           <div className="option-features">
-            <span className="feature-tag">AI-Powered</span>
+            <span className="feature-tag">{capabilitiesLoading ? 'Checking' : providerLabel}</span>
             <span className="feature-tag">Multi-Format</span>
             <span className="feature-tag">5-Page Limit</span>
           </div>

@@ -63,7 +63,7 @@ scope.
 See Microsoft's guides for
 [app registration](https://learn.microsoft.com/entra/identity-platform/howto-create-service-principal-portal),
 [mailbox-scoped Application RBAC](https://learn.microsoft.com/exchange/permissions-exo/application-rbac),
-and [adding a mailbox alias](https://learn.microsoft.com/microsoft-365/admin/email/add-another-email-alias-for-a-user).
+and [mailbox email addresses](https://learn.microsoft.com/exchange/recipients-in-exchange-online/manage-user-mailboxes/add-or-remove-email-addresses).
 
 ### Add Graph to an existing local-model `.env`
 
@@ -76,8 +76,8 @@ python scripts/configure_microsoft_graph_env.py .env --graph-tenant-id YOUR_TENA
 
 The command prompts for the client secret without showing it or placing it in
 shell history. It preserves the current auth and model values, generates an
-internal cron secret when needed, and defaults generated Attenly aliases to the
-mailbox's domain.
+internal cron secret when needed, and defaults Attenly's internal routing
+addresses to the mailbox's domain.
 
 Validate the credentials before recreating Docker:
 
@@ -165,43 +165,37 @@ Header: X-Cron-Secret: <INTERNAL_CRON_SECRET>
 Keep internal routes behind network controls. `INTERNAL_CRON_SECRET` is not a
 substitute for public internet exposure controls.
 
-### Route the generated Attenly address to the Graph mailbox
+### Use the configured Graph mailbox
 
 After Docker starts, open **Settings > Email Ingest** and enable email ingest.
-Attenly displays an address such as:
+In the recommended `AUTH_PROVIDER=local` single-workspace deployment, Attenly
+displays the configured `GRAPH_MAILBOX`, such as:
 
 ```text
-u_abc123@example.onmicrosoft.com
+attenly@example.onmicrosoft.com
 ```
 
-Microsoft 365 must deliver that exact address to `GRAPH_MAILBOX`. For a
-one-user test:
-
-1. Copy the generated address from Attenly.
-2. In Microsoft 365 admin center, open **Users > Active users** and select the
-   Graph mailbox.
-3. Open **Manage username and email**, add the generated address as an alias,
-   and save.
-4. Allow time for the alias to propagate before sending the test attachment.
-
-The message appearing in the `GRAPH_MAILBOX` Inbox is expected. The alias is a
-delivery address for that mailbox, and Attenly polls the Inbox rather than
+Send attachment-bearing emails directly to that mailbox. No generated
+Microsoft 365 alias is required for this deployment shape. The message remains
+in the `GRAPH_MAILBOX` Inbox because Attenly polls that Inbox rather than
 receiving a separate mailbox or webhook copy.
 
 Exchange Online can expose an alias-delivered message through Graph with only
 the mailbox's primary address in both `toRecipients` and the standard message
 headers. In `AUTH_PROVIDER=local` mode, Attenly safely handles this Microsoft
 normalization by routing mail delivered to `GRAPH_MAILBOX` to the configured
-local user's active email endpoint. The verified-sender check still applies.
+local workspace's internal email endpoint. The settings page therefore shows
+the deliverable Graph mailbox instead of that internal endpoint. The
+verified-sender check still applies.
 Use a dedicated mailbox for Attenly so unrelated attachment-bearing mail from a
 verified sender is not treated as an Attenly submission.
 
 For a multi-user production deployment, configure the company's mail routing so
 every generated address at `EMAIL_INGEST_DOMAIN` reaches the polled mailbox
-while preserving the original recipient address. Creating aliases manually is
-only appropriate for this small local-auth test. Do not depend on the
-single-workspace fallback to distinguish multiple users because Graph no longer
-provides Attenly with the alias after Exchange normalizes it.
+while preserving the original recipient address. This is an administrator-level
+mail-routing design, not a task for each business user. Do not depend on the
+single-workspace fallback to distinguish multiple users because Graph may no
+longer provide Attenly with an alias after Exchange normalizes it.
 
 ### End-to-end connector test
 
@@ -223,11 +217,9 @@ provides Attenly with the alias after Exchange normalizes it.
    verified sender.
 5. Open the verification email and click its localhost verification link from
    the same computer running Attenly.
-6. Add Attenly's generated address as an alias on `GRAPH_MAILBOX`, as described
-   above.
-7. Send a new email from the verified sender to the generated address. Include
+6. Send a new email from the verified sender directly to `GRAPH_MAILBOX`. Include
    one small PDF and put the report instruction in the message body.
-8. Either wait for the next worker poll or trigger one immediate poll:
+7. Either wait for the next worker poll or trigger one immediate poll:
 
    ```bash
    python scripts/trigger_microsoft_graph_poll.py .env

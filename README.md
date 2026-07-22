@@ -705,7 +705,12 @@ python scripts/check_microsoft_graph_connection.py .env
 
 The first command securely prompts for the secret. See
 [`docs/CONNECTORS.md`](docs/CONNECTORS.md) for test-tenant options, the required
-mailbox alias step, a live `Mail.Send` check, and the full acceptance test.
+mailbox permissions, a live `Mail.Send` check, and the full acceptance test.
+
+For the recommended local-auth single-workspace setup, users send attachments
+directly to `GRAPH_MAILBOX`; they do not need to create a generated Microsoft
+365 alias. Attenly keeps a generated endpoint internally for job ownership and
+maps the configured Graph mailbox to it.
 
 Compose runs the `email-worker` service automatically. It polls the configured
 mailbox, stores valid attachments through the configured storage provider,

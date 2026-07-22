@@ -3,7 +3,7 @@
 # =========================
 
 # --- Build stage ---
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip wheel -r requirements.txt -w /wheels
 
 # --- Runtime stage ---
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 WORKDIR /app
 ARG ATTENLY_PRECACHE_DOCTR_MODELS=true
 

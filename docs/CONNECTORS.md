@@ -180,6 +180,12 @@ Microsoft 365 alias is required for this deployment shape. The message remains
 in the `GRAPH_MAILBOX` Inbox because Attenly polls that Inbox rather than
 receiving a separate mailbox or webhook copy.
 
+Use the address displayed as **Report Intake Mailbox**. If someone sends to an
+internal `u_...` endpoint that has not been configured as an Exchange address,
+Microsoft 365 returns an **Unknown To address** or **recipient not found**
+delivery failure before Attenly can see the message. That bounce indicates a
+Microsoft mail-routing problem, not an unhealthy Attenly container.
+
 Exchange Online can expose an alias-delivered message through Graph with only
 the mailbox's primary address in both `toRecipients` and the standard message
 headers. In `AUTH_PROVIDER=local` mode, Attenly safely handles this Microsoft

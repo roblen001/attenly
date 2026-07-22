@@ -221,6 +221,15 @@ docker compose logs backend
 docker compose logs email-worker
 ```
 
+If Microsoft 365 sends an **Unknown To address** or **recipient not found**
+notice for a generated `u_...` address, the message never reached the Graph
+mailbox. In a local-auth single-workspace deployment, send to the **Report
+Intake Mailbox** shown in Attenly, which is the configured `GRAPH_MAILBOX`.
+This delivery failure is upstream of Attenly and does not mean the containers
+are stopped. Only multi-user routing designs should expose generated addresses,
+and the administrator must make those addresses deliverable while preserving
+the original recipient.
+
 Common causes:
 
 - tenant ID, client ID, client secret, or mailbox is wrong

@@ -1,23 +1,22 @@
-"""File upload security service for comprehensive validation and protection."""
+"""File upload validation and basic content-safety checks."""
 import os
 import magic
 import hashlib
 import logging
-from typing import Dict, List, Tuple, Optional
-from pathlib import Path
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 class FileSecurityService:
     """
-    Comprehensive file security service for upload validation.
+    File upload validation service.
     
     Features:
     - MIME type validation with whitelist
     - File extension validation
     - File size limits
     - Content-based file type detection
-    - Malware scanning hooks
+    - Basic size and binary-content heuristics (not antivirus scanning)
     - Path traversal prevention
     - Filename sanitization
     """
@@ -170,7 +169,7 @@ class FileSecurityService:
         
         return None
     
-    def validate_file_content(self, content: bytes, filename: str) -> Dict[str, any]:
+    def validate_file_content(self, content: bytes, filename: str) -> Dict[str, Any]:
         """
         Validate file content for security issues.
         
@@ -229,9 +228,9 @@ class FileSecurityService:
         content: bytes, 
         filename: str, 
         declared_mime_type: Optional[str] = None
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
-        Comprehensive file upload validation.
+        Validate upload metadata and content with basic safety heuristics.
         
         Args:
             content: File content bytes
@@ -251,7 +250,7 @@ class FileSecurityService:
             "extension_valid": True,
             "content_valid": True,
             "size_valid": True,
-            "security_scan_passed": True
+            "basic_safety_checks_passed": True
         }
         
         # Sanitize filename
@@ -309,12 +308,18 @@ class FileSecurityService:
                 f"File size {len(content) / 1024 / 1024:.1f}MB exceeds maximum allowed size of {self.max_file_size_mb}MB"
             )
         
-        # Malware scanning hook (placeholder for future integration)
-        malware_scan_result = self._scan_for_malware(content, validation_result["sanitized_filename"])
-        if not malware_scan_result["clean"]:
+        # Lightweight heuristics only. Deployments that require antivirus scanning
+        # should scan uploads before they reach Attenly.
+        basic_safety_result = self._run_basic_file_safety_checks(
+            content,
+            validation_result["sanitized_filename"],
+        )
+        if not basic_safety_result["passed"]:
             validation_result["valid"] = False
-            validation_result["security_scan_passed"] = False
-            validation_result["errors"].append("File failed security scan")
+            validation_result["basic_safety_checks_passed"] = False
+            validation_result["errors"].append(
+                f"File failed basic safety validation: {basic_safety_result['details']}"
+            )
         
         return validation_result
     
@@ -358,7 +363,7 @@ class FileSecurityService:
         
         return False
     
-    def _validate_pdf_content(self, content: bytes) -> Dict[str, any]:
+    def _validate_pdf_content(self, content: bytes) -> Dict[str, Any]:
         """Validate PDF-specific content."""
         result = {"valid": True, "errors": []}
         
@@ -403,35 +408,29 @@ class FileSecurityService:
         expected_type = mime_mappings.get(declared_mime)
         return expected_type == detected_type if expected_type else True
     
-    def _scan_for_malware(self, content: bytes, filename: str) -> Dict[str, any]:
+    def _run_basic_file_safety_checks(
+        self,
+        content: bytes,
+        filename: str,
+    ) -> Dict[str, Any]:
         """
-        Placeholder for malware scanning integration.
-        
-        In production, this could integrate with:
-        - ClamAV
-        - VirusTotal API  
-        - Windows Defender API
-        - Custom scanning service
+        Apply small upload-safety heuristics.
+
+        This is not an antivirus or malware scanner. Organizations with malware
+        scanning requirements should add that control at their ingress layer.
         """
-        # Basic checks for now
-        result = {"clean": True, "details": "Basic security scan passed"}
+        result = {"passed": True, "details": "Basic file safety checks passed"}
         
         # Check file size (extremely large files could be suspicious)
         if len(content) > 100 * 1024 * 1024:  # 100MB
-            result["clean"] = False
+            result["passed"] = False
             result["details"] = "File size exceeds security limits"
         
         # Check for null bytes (could indicate binary in text file)
         if b'\x00' in content[:1024] and filename.lower().endswith(('.txt', '.csv')):
-            result["clean"] = False
+            result["passed"] = False
             result["details"] = "Text file contains binary data"
-        
-        # TODO: Integrate with actual malware scanning service
-        # Example integration points:
-        # - ClamAV: subprocess call to clamscan
-        # - VirusTotal: HTTP API call
-        # - Custom service: gRPC/HTTP call
-        
+
         return result
 
 # Global instance

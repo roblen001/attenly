@@ -3,8 +3,8 @@
 The backend image can be large because it includes document processing and OCR
 dependencies, including Python OCR/model libraries and native runtime packages.
 
-In local validation during open-source preparation, the backend image was around
-6 to 7 GB.
+Current source-build validation produces a backend image of approximately 6 to
+7 GB, depending on the Docker platform and build cache.
 
 ## Why It Is Large
 
@@ -38,14 +38,15 @@ first OCR use instead.
 
 ## Current Recommendation
 
-For the first open-source pilot, keep one backend image and document the size.
-This is simpler for companies than splitting image variants too early.
+The current release uses one backend image so companies do not need to assemble
+OCR dependencies or choose between image variants during installation.
 
-After the first clean published-image install is verified, consider:
+Possible future optimizations include:
 
 - a default backend image without pre-cached OCR models
 - an OCR-enabled image tag
 - lazy OCR dependency/model download
 - moving heavy document/OCR processing into an optional worker image
 
-Do not split the image until there is a tested workflow for both variants.
+Any future image split should include a tested installation path for every
+published variant.

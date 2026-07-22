@@ -1,21 +1,22 @@
 # Contributing to Attenly
 
-Attenly is being prepared for open-source self-hosting. The current integration
-branch for open-source work is `open-sourcing`.
+Attenly welcomes focused issues and pull requests that improve the self-hosted
+experience, security, documentation, provider compatibility, and reliability.
 
-## Branch Policy
+## Pull Request Workflow
 
-- Do not base open-source work on `main`.
-- Create feature branches from `open-sourcing`.
-- Merge completed open-source branches back into `open-sourcing`.
-- The project owner will decide when `open-sourcing` is merged into `main`.
+- Create a focused feature branch from `main` unless a maintainer or issue asks
+  you to use another integration branch.
+- Open a pull request against `main` and explain the user-visible behavior,
+  configuration changes, and validation performed.
+- Keep unrelated formatting or refactoring out of the same pull request.
+- Do not commit generated databases, local environment files, model weights,
+  logs, uploaded documents, credentials, or other private deployment data.
+- Maintainers decide when changes are ready to merge and release.
 
-For Codex-assisted changes, use a `codex/` branch name unless a maintainer asks
-for a different branch name.
+## Project Priorities
 
-## Local Development Priorities
-
-The current milestone is a simple on-prem pilot:
+The self-hosted release prioritizes a simple on-prem deployment:
 
 - Docker Compose starts the backend and frontend together.
 - Local auth works with a configured bearer token.
@@ -24,12 +25,11 @@ The current milestone is a simple on-prem pilot:
 - Connectors can be disabled by default and enabled explicitly.
 
 Keep changes focused on those goals. Avoid large refactors unless they make the
-self-hosted path simpler or make provider boundaries clearer.
+self-hosted path simpler, safer, or make provider boundaries clearer.
 
 ## Validation
 
-Before opening or merging an open-source branch, run the checks that match the
-change.
+Before opening a pull request, run the checks that match the change.
 
 For provider profile/configuration changes:
 

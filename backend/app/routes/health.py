@@ -1,6 +1,6 @@
 """Health check endpoints for monitoring and load balancer integration."""
 from fastapi import APIRouter, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from app.limits.slowapi import limiter, get_rate_limit
 from app.client import supabase_client
 import logging
@@ -11,6 +11,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_PROCESS_START_MONOTONIC = time.monotonic()
 
 @router.get("/health")
 @limiter.limit(get_rate_limit("health"))
@@ -141,20 +142,19 @@ async def readiness_check(request: Request):
 @router.get("/metrics")
 @limiter.limit(get_rate_limit("health"))
 async def metrics_endpoint(request: Request):
-    """
-    Basic metrics endpoint in Prometheus format.
-    
-    This is a placeholder for future metrics integration.
-    In production, you might use proper monitoring tools like DataDog or New Relic.
-    """
+    """Return basic process metrics in Prometheus text format."""
+    uptime_seconds = max(0.0, time.monotonic() - _PROCESS_START_MONOTONIC)
     metrics = [
-        "# HELP attently_health_check Health check status",
-        "# TYPE attently_health_check gauge",
-        "attently_health_check{service=\"attenly-api\",version=\"1.0.0\"} 1",
+        "# HELP attenly_health_check Process health status.",
+        "# TYPE attenly_health_check gauge",
+        "attenly_health_check{service=\"attenly-api\",version=\"1.0.0\"} 1",
         "",
-        "# HELP attently_uptime_seconds Service uptime in seconds",
-        "# TYPE attently_uptime_seconds counter",
-        f"attently_uptime_seconds {int(time.time())}",
+        "# HELP attenly_uptime_seconds Process uptime in seconds.",
+        "# TYPE attenly_uptime_seconds gauge",
+        f"attenly_uptime_seconds {uptime_seconds:.3f}",
     ]
-    
-    return "\n".join(metrics)
+
+    return Response(
+        content="\n".join(metrics) + "\n",
+        media_type="text/plain; version=0.0.4",
+    )

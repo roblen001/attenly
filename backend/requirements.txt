@@ -21,7 +21,7 @@ httpx==0.28.1
 hyperframe==6.1.0
 idna==3.18
 itsdangerous==2.2.0
-packaging==25.0
+packaging==26.2
 passlib==1.7.4
 postgrest==1.1.1
 pydantic==2.11.7

@@ -4,9 +4,6 @@ LLM Service
 Provides AI-powered data extraction from document chunks.
 Optimized for cost-efficient RAG processing with batch inferencing.
 Supports Gemini and OpenAI-compatible chat completion providers.
-
-TODO: generalize later to support multiple LLM providers/models
-TODO: add custom embeddings so we don't need to use chromas default embeddings (I am thinking of using voyager)
 """
 
 import logging

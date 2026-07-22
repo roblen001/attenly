@@ -19,6 +19,7 @@ import os
 import json
 import uuid
 import logging
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
@@ -59,9 +60,20 @@ class DocumentStorageService:
         Returns:
             Path to user-specific directory
         """
-        user_dir = self.base_dir / str(user_id)
+        user_id_value = str(user_id)
+        if not user_id_value or Path(user_id_value).name != user_id_value or user_id_value in {".", ".."}:
+            raise ValueError("Invalid user identifier")
+
+        user_dir = self.base_dir / user_id_value
         user_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         return user_dir
+
+    @staticmethod
+    def _validate_token(token: str) -> str:
+        """Accept only tokens created by ``_generate_secure_token``."""
+        if not re.fullmatch(r"[0-9a-f]{32}", token):
+            raise ValueError("Invalid document token")
+        return token
     
     def _generate_secure_token(self) -> str:
         """
@@ -86,7 +98,7 @@ class DocumentStorageService:
         try:
             resolved = filepath.resolve()
             user_dir_resolved = user_dir.resolve()
-            return str(resolved).startswith(str(user_dir_resolved))
+            return resolved.parent == user_dir_resolved
         except Exception:
             return False
     
@@ -129,7 +141,11 @@ class DocumentStorageService:
             # Atomic move to final location
             temp_filepath.rename(filepath)
             
-            logger.info(f"Stored {processor_type} document data for doc {document_id}, user {user_id[:8]}..., token {token[:8]}...")
+            logger.info(
+                "Stored %s document data for document %s",
+                processor_type,
+                document_id,
+            )
             return token
             
         except Exception as e:
@@ -148,6 +164,7 @@ class DocumentStorageService:
             Stored document data
         """
         try:
+            token = self._validate_token(token)
             user_dir = self._get_user_dir(user_id)
             filepath = user_dir / f"{token}.json"
             
@@ -176,7 +193,7 @@ class DocumentStorageService:
             return secure_data["data"]
             
         except Exception as e:
-            logger.error(f"Failed to load document data for token {token[:8]}...: {e}")
+            logger.error("Failed to load document data: %s", e)
             raise ValueError(f"Failed to load document data: {str(e)}")
     
     def delete(self, token: str, user_id: str) -> bool:
@@ -191,12 +208,13 @@ class DocumentStorageService:
             True if deleted successfully
         """
         try:
+            token = self._validate_token(token)
             user_dir = self._get_user_dir(user_id)
             filepath = user_dir / f"{token}.json"
             
             # Security checks
             if not filepath.exists():
-                logger.debug(f"Document data not found for deletion: token {token[:8]}...")
+                logger.debug("Document data not found for deletion")
                 return False
             
             if not self._validate_path(filepath, user_dir):
@@ -211,11 +229,11 @@ class DocumentStorageService:
                     raise ValueError("Unauthorized deletion attempt")
             except json.JSONDecodeError:
                 # If file is corrupted, allow deletion
-                logger.warning(f"Corrupted document data file, proceeding with deletion: {token[:8]}...")
+                logger.warning("Corrupted document data file; proceeding with deletion")
             
             # Delete file
             os.unlink(filepath)
-            logger.info(f"Deleted document data for token {token[:8]}..., user {user_id[:8]}...")
+            logger.info("Deleted document data")
             return True
             
         except Exception as e:

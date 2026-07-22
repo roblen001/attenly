@@ -53,5 +53,5 @@ which parts are still adapter work.
   download.
 - Provider interfaces still need to be hardened so custom company logic can be
   added without touching deep application code.
-- Published image tags should move from the temporary `open-sourcing` tag to
-  immutable version tags before the first public release.
+- The first public Compose profile targets the immutable `v1.0.0` image tag.
+  Create and publish that Git tag before announcing the release.

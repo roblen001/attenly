@@ -409,7 +409,6 @@ class VectorStoreManager:
     
     def get_store(self, user_id: str) -> VectorStore:
         """Get or create vector store for user"""
-        print(user_id)
         if user_id not in self.stores:
             self.stores[user_id] = VectorStore(user_id)
 

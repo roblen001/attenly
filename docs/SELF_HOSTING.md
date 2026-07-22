@@ -82,6 +82,34 @@ does not remove the volume.
 
 Do not use `docker compose down -v` unless you intend to delete local data.
 
+### Back up the Docker volume
+
+Stop writes, create an archive in the current directory, and restart:
+
+```bash
+docker compose stop backend email-worker
+docker run --rm -v attenly_attenly-data:/data:ro -v "$PWD:/backup" alpine tar czf /backup/attenly-data-backup.tgz -C /data .
+docker compose start backend email-worker
+```
+
+PowerShell uses the same container command with PowerShell path expansion:
+
+```powershell
+docker compose stop backend email-worker
+docker run --rm -v attenly_attenly-data:/data:ro -v "${PWD}:/backup" alpine tar czf /backup/attenly-data-backup.tgz -C /data .
+docker compose start backend email-worker
+```
+
+Compose normally names the volume `attenly_attenly-data`. Confirm the actual
+name with `docker volume ls` if the project was started with a different Compose
+project name. Store the archive according to company backup and encryption
+policy. Test restores on a separate deployment before relying on the backup.
+
+Published images require roughly 8 GB of free Docker storage. A local source
+build can temporarily require 20 GB or more because Docker retains dependency
+and wheel-building layers. Model files and company documents require additional
+capacity.
+
 ## 3. Model Gateway Options
 
 Attenly uses OpenAI-compatible endpoints for the default self-hosted Docker

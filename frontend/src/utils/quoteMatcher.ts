@@ -38,32 +38,27 @@ export const findTextMatch = (
   // Strategy 1: Exact match anywhere in document (HIGHEST PRIORITY)
   const exactIndex = fullText.indexOf(searchText);
   if (exactIndex !== -1) {
-    console.log('Found exact match for:', searchText);
     return { index: exactIndex, length: searchText.length, isExactMatch: true };
   }
 
   // Strategy 2: Page-aware exact match (within specified page)
   const pageExactMatch = findPageAwareExactMatch(fullText, searchText, pageSections, currentQuote);
   if (pageExactMatch) {
-    console.log('Found page-aware exact match for:', searchText);
     return { ...pageExactMatch, isExactMatch: true };
   }
 
   // Strategy 3: Word sequence match (only if exact fails)
   const wordMatch = findWordSequenceMatch(fullText, searchText);
   if (wordMatch) {
-    console.log('Found word sequence match for:', searchText);
     return { ...wordMatch, isExactMatch: false };
   }
 
   // Strategy 4: Multi-word combination (last resort)
   const multiWordMatch = findMultiWordCombination(fullText, searchText);
   if (multiWordMatch) {
-    console.log('Found multi-word combination match for:', searchText);
     return { ...multiWordMatch, isExactMatch: false };
   }
 
-  console.warn('No match found for:', searchText);
   return null;
 };
 

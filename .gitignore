@@ -148,6 +148,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local AI assistant settings and scratch files
+.claude/
+.agents/
+
 # Spyder project settings
 .spyderproject
 .spyproject

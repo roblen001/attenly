@@ -12,6 +12,7 @@ on:
 
 jobs:
   claude-review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
@@ -47,7 +48,7 @@ jobs:
             
             Keep your review concise.
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            Use CONTRIBUTING.md and the repository documentation for guidance on style and conventions. Be constructive and helpful in your feedback.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 

@@ -180,6 +180,14 @@ Inbound polling runs automatically in the `email-worker` container. The
 internal route documented in `docs/CONNECTORS.md` is still available as a
 manual nudge and should stay behind internal network controls.
 
+With `AUTH_PROVIDER=local`, the Email Ingest settings page shows
+`GRAPH_MAILBOX` as the report intake address. Send documents directly to that
+mailbox; the generated endpoint remains an internal routing identifier and does
+not need to be added as a Microsoft 365 alias. Use a dedicated mailbox so
+unrelated attachment-bearing email from a verified sender is not submitted to
+Attenly. Multi-user deployments require administrator-managed routing that
+preserves the original recipient; see `docs/CONNECTORS.md`.
+
 ## 5. Auth Options
 
 The simplest pilot uses local token auth:

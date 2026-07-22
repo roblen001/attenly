@@ -76,7 +76,9 @@ docker compose -f compose.yml -f compose.build.yml up -d --build --wait
 ```
 
 `compose.build.yml` only adds build contexts and forces Compose to build local
-images.
+images. It builds the shared backend image once; both `backend` and
+`email-worker` reference that image tag so they run identical code without
+duplicate build/export work.
 
 The backend source build pre-caches DocTR OCR models by default. For CI or fast
 health-only builds, skip that pre-cache:

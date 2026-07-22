@@ -13,7 +13,7 @@ import secrets
 from pathlib import Path
 
 from check_self_hosted_env import parse_env, validate
-from init_self_hosted_env import update_env_lines
+from init_self_hosted_env import update_env_lines, write_env
 
 
 def required_value(name: str, value: str | None, *, secret: bool = False) -> str:
@@ -97,7 +97,7 @@ def main() -> int:
 
     original_lines = path.read_text(encoding="utf-8").splitlines()
     updated_lines = update_env_lines(original_lines, updates)
-    path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+    write_env(path, updated_lines, force=True)
 
     errors, warnings = validate(parse_env(path))
     if errors:

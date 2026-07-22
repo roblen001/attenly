@@ -8,11 +8,40 @@ can still process jobs through the same route.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 from pathlib import Path
-from urllib import error, request
+from urllib import error, parse, request
 
 from check_self_hosted_env import parse_env
+
+
+def validated_api_url(value: str) -> str:
+    """Require HTTPS unless the API endpoint is on the local loopback host."""
+    api_url = value.strip().rstrip("/")
+    parsed = parse.urlsplit(api_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise SystemExit("API URL must be an absolute http:// or https:// URL.")
+
+    if parsed.username is not None or parsed.password is not None:
+        raise SystemExit("API URL must not contain embedded credentials.")
+    if parsed.query or parsed.fragment:
+        raise SystemExit("API URL must not contain a query string or fragment.")
+
+    hostname = parsed.hostname.lower().rstrip(".")
+    is_loopback = hostname == "localhost" or hostname.endswith(".localhost")
+    if not is_loopback:
+        try:
+            is_loopback = ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            is_loopback = False
+
+    if parsed.scheme != "https" and not is_loopback:
+        raise SystemExit(
+            "Refusing to send INTERNAL_CRON_SECRET over plain HTTP to a "
+            "non-loopback host. Use HTTPS or a localhost API URL."
+        )
+    return api_url
 
 
 def main() -> int:
@@ -37,11 +66,11 @@ def main() -> int:
     if not secret:
         raise SystemExit("INTERNAL_CRON_SECRET is missing from the env file.")
 
-    api_url = (
+    api_url = validated_api_url(
         args.api_url
         or env.get("PUBLIC_API_URL")
         or "http://localhost:5173/api"
-    ).rstrip("/")
+    )
     route = "/internal/poll-inbound-email" if args.poll_only else "/internal/process-email-jobs"
     url = f"{api_url}{route}"
     poll_request = request.Request(

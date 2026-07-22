@@ -138,7 +138,6 @@ export async function api(path: string, init: ApiOptions = {}) {
     // For critical API calls, sign out user and redirect
     const currentPath = window.location.pathname;
     if (currentPath !== '/login' && currentPath !== '/') {
-      console.log('Signing out user and redirecting to login due to 401 error');
       
       storeAuthError(authError);
 

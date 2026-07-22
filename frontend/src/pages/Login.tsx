@@ -6,7 +6,6 @@ import {
   consumeAuthError,
   isLocalAuthProvider,
   isTokenAuthProvider,
-  localAuthTokenPrefill,
 } from "../libs/auth";
 import { useAuth } from "../feature/auth/useAuth";
 import "./Login.css";
@@ -20,7 +19,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [localToken, setLocalToken] = useState(localAuthTokenPrefill);
+  const [localToken, setLocalToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(() => consumeAuthError());
   const [message, setMessage] = useState("");

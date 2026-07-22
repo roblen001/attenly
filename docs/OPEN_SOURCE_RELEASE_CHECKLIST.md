@@ -56,9 +56,26 @@ public open-source release instead of an open-source preparation branch.
 - The source-build override builds the shared backend/worker image once, and a
   disposable three-service source install passed health and writable-volume
   checks after that packaging fix.
+- A final source and Git-history credential scan found no committed live
+  credentials; local `.env` remains ignored and excluded from build contexts.
+- Frontend production dependencies were updated until `npm audit` reported no
+  known vulnerabilities.
+- Backend framework, JWT, HTTP, packaging, and OCR dependencies were updated in
+  response to `pip-audit`. The rebuilt image reported no known vulnerabilities;
+  the audit tool skipped the current official `+cpu` Torch packages because
+  those identifiers are hosted on the PyTorch index rather than PyPI.
+- The final local source images passed Compose readiness, worker health,
+  authentication-boundary, writable-volume, frontend security-header, bundled
+  PDF worker, and self-hosted TinyMCE checks.
+- Browser logs no longer print report text, quotes, agent payloads, or audit
+  edits, and backend logs no longer print credential/token prefixes.
+- The root README now documents one Docker golden path and links detailed
+  provider/connector guidance instead of duplicating multiple quick starts.
 
 ## Release Blockers
 
+- Create and push the `v1.0.0` Git tag so the immutable backend/frontend images
+  referenced by the release Compose profile are published.
 - Confirm GitHub workflows pass for the pushed `open-sourcing` branch.
 - Test a clean published-image install from a fresh clone or clean machine on a
   free frontend port:
@@ -80,9 +97,7 @@ docker compose up -d --wait
 
 ## Documentation Before Public Announcement
 
-- Replace temporary `open-sourcing` image tag guidance with the first immutable
-  release tag.
-- Review and tighten the operator docs after the first clean published-image
+- Review the operator docs after the first clean `v1.0.0` published-image
   install.
 - Confirm `security@attenly.ca` receives vulnerability reports before linking
   the security policy from a public release.

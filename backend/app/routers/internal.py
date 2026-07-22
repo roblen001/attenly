@@ -7,6 +7,7 @@ These endpoints use header-based authentication, not JWT.
 
 import asyncio
 import logging
+import secrets
 from fastapi import APIRouter, Request, HTTPException, status, Header
 from fastapi.responses import JSONResponse
 
@@ -48,7 +49,7 @@ def verify_cron_secret(x_cron_secret: str = Header(None)) -> bool:
             detail="Internal configuration error"
         )
     
-    if x_cron_secret != expected_secret:
+    if not secrets.compare_digest(x_cron_secret, expected_secret):
         logger.warning("Invalid cron secret provided")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -146,7 +147,7 @@ async def process_email_jobs(
             content={
                 "success": False,
                 "error": "Internal processing error",
-                "message": str(e)
+                "message": "Email processing failed. Check the server logs for details."
             }
         )
 
@@ -186,7 +187,7 @@ async def poll_inbound_email(
             content={
                 "success": False,
                 "error": "Inbound polling error",
-                "message": str(e),
+                "message": "Inbound polling failed. Check the server logs for details.",
             },
         )
 

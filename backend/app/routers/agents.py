@@ -516,8 +516,8 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
                 processing_results.append(processing_result)
                 
             except Exception as e:
-                error_message = str(e)
                 logging.error(f"Failed to process document {file.filename}: {e}")
+                error_message = "Document processing failed. Check the backend logs for details."
                 file_record["status"] = "failed"
                 file_record["error"] = error_message
                 
@@ -545,8 +545,8 @@ async def upload_files(files: List[UploadFile] = File(...), current_user = Depen
             
         except Exception as e:
             # Handle any unexpected errors gracefully
-            error_message = f"Unexpected error: {str(e)}"
             logging.error(f"Unexpected error processing file {file.filename}: {e}")
+            error_message = "Unexpected file processing error. Check the backend logs for details."
             
             file_result = {
                 "id": str(uuid.uuid4()),
@@ -735,7 +735,7 @@ async def get_document_content(document_id: str, current_user = Depends(get_curr
         raise
     except Exception as e:
         logging.error(f"Failed to get content for document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve document content: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document content")
 
 @router.get("/documents/{document_id}/bboxes")
 async def get_document_bboxes(document_id: str, current_user = Depends(get_current_user)):
@@ -895,7 +895,10 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
         )
         
         if not report_result["success"]:
-            raise HTTPException(status_code=500, detail=f"Document processing failed: {report_result.get('error', 'Unknown error')}")
+            raise HTTPException(
+                status_code=500,
+                detail="Document processing failed. Check the backend logs and model configuration.",
+            )
         
         # Extract AI baseline IMMEDIATELY after generation (before any user edits)
         ai_baseline_answers = supabase_service._extract_baseline_answers(report_result["report_data"])
@@ -923,7 +926,7 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logging.error(f"Failed to process documents with agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Document processing failed")
 
 
 @router.post("/{agent_id}/test-question")
@@ -1025,7 +1028,10 @@ async def test_single_question(
         llm_result = llm_service.process_agent_questions(questions_with_chunks, document_context, user_id=str(user_id))
         
         if not llm_result["success"]:
-            raise HTTPException(status_code=500, detail=f"LLM processing failed: {llm_result.get('error', 'Unknown error')}")
+            raise HTTPException(
+                status_code=500,
+                detail="Model processing failed. Check the backend logs and model configuration.",
+            )
         
         # Extract result for the test question
         question_result = llm_result["results"].get("{{Test Question}}")
@@ -1129,7 +1135,7 @@ async def test_single_question(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logging.error(f"Failed to test question: {e}")
-        raise HTTPException(status_code=500, detail=f"Question testing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Question testing failed")
 
 
 @router.get("/{agent_id}/report")
@@ -1178,7 +1184,7 @@ async def get_agent_report(agent_id: str, request: Request, current_user = Depen
         
     except Exception as e:
         logging.error(f"Failed to retrieve cached report for agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve cached report: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve cached report")
 
 
 @router.get("/{agent_id}/pdf")
@@ -1241,7 +1247,7 @@ async def download_agent_report_pdf(
 
     except Exception as e:
         logging.error(f"Failed to generate PDF from cached data for agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="PDF generation failed")
 
 
 @router.put("/reports/{agent_id}/cache")
@@ -1364,7 +1370,7 @@ async def save_current_report(
         
     except Exception as e:
         logging.error(f"Failed to save report: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save report: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to save report")
 
 @router.get("/reports/saved", response_model=List[SavedReportOut])
 async def list_saved_reports(
@@ -1586,7 +1592,7 @@ async def preload_saved_report_documents(
         raise
     except Exception as e:
         logging.error(f"Failed to preload documents for report {report_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to preload documents: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to preload documents")
 
 
 @router.delete("/reports/saved/{report_id}/unload-documents")
@@ -2148,7 +2154,7 @@ async def upload_template(
                 "html_body": "",
                 "css": "",
                 "source": "error",
-                "error": f"Template processing failed: {str(e)}",
+                "error": "Template processing failed. Check the backend logs for details.",
                 "warnings": []
             }
         )
@@ -2219,7 +2225,7 @@ async def create_custom_agent(
         
     except Exception as e:
         logging.error(f"Failed to create custom agent: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create custom agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create custom agent")
 
 @router.get("/list_user_custom_agents", response_model=List[CustomAgentOut])
 async def list_user_custom_agents(
@@ -2331,7 +2337,7 @@ async def update_custom_agent(
         raise
     except Exception as e:
         logging.error(f"Failed to update custom agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update custom agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update custom agent")
 
 @router.delete("/custom/{agent_id}")
 async def delete_custom_agent(
@@ -2357,7 +2363,7 @@ async def delete_custom_agent(
         raise
     except Exception as e:
         logging.error(f"Failed to delete custom agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete custom agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete custom agent")
 
 @router.get("/{agent_id}", response_model=Agent)
 def get_agent_by_id(agent_id: str, current_user = Depends(get_current_user), jwt_token: str = Depends(extract_jwt_token)):
@@ -2390,7 +2396,7 @@ async def get_performance_report(current_user = Depends(get_current_user)):
         logging.error(f"Failed to generate performance report: {e}")
         return {
             "available": False,
-            "error": str(e)
+            "error": "Failed to generate performance report"
         }
 
 @router.post("/performance/export")
@@ -2414,4 +2420,4 @@ async def export_performance_metrics(current_user = Depends(get_current_user)):
         
     except Exception as e:
         logging.error(f"Failed to export performance metrics: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to export metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to export metrics")

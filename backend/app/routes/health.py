@@ -79,7 +79,7 @@ async def readiness_check(request: Request):
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         checks["database"]["status"] = "unhealthy"
-        checks["database"]["error"] = str(e)
+        checks["database"]["error"] = "Database readiness check failed"
         overall_status = "unhealthy"
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
@@ -107,7 +107,7 @@ async def readiness_check(request: Request):
     except Exception as e:
         logger.error(f"Storage readiness check failed: {e}")
         checks["storage"]["status"] = "unhealthy"
-        checks["storage"]["error"] = str(e)
+        checks["storage"]["error"] = "Storage readiness check failed"
         overall_status = "unhealthy"
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     
@@ -119,7 +119,7 @@ async def readiness_check(request: Request):
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         checks["configuration"]["status"] = "unhealthy"
-        checks["configuration"]["error"] = str(e)
+        checks["configuration"]["error"] = "Configuration readiness check failed"
         overall_status = "unhealthy"
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     

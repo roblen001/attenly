@@ -6,6 +6,7 @@ from typing import Optional
 from app.client import supabase_client
 from app import config
 import logging
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def _extract_bearer_token(authorization: Optional[str]) -> str:
         raise _unauthorized("Authentication required. Please log in.")
 
     if not authorization.startswith("Bearer "):
-        logger.warning("Invalid authorization header format: %s...", authorization[:20])
+        logger.warning("Invalid authorization header format")
         raise _unauthorized("Invalid authentication format. Please log in again.")
 
     return authorization.split(" ", 1)[1]
@@ -43,7 +44,7 @@ def _get_local_user(token: str) -> AuthenticatedUser:
         logger.error("LOCAL_AUTH_TOKEN is not configured")
         raise _unauthorized("Local authentication is not configured.")
 
-    if token != config.LOCAL_AUTH_TOKEN:
+    if not secrets.compare_digest(token, config.LOCAL_AUTH_TOKEN):
         logger.warning("Invalid local authentication token")
         raise _unauthorized("Authentication failed. Please log in again.")
 

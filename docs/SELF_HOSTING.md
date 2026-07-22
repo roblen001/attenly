@@ -18,8 +18,13 @@ and leaves the model gateway URL at `http://host.docker.internal:11434/v1`.
 Use `--model-base-url` for a company gateway.
 
 ```bash
-python scripts/init_self_hosted_env.py --model-base-url https://models.company.internal/v1 --model-api-key replace-with-gateway-token --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
+python scripts/init_self_hosted_env.py --model-base-url https://models.company.internal/v1 --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model
 ```
+
+For an authenticated company gateway, set `OPENAI_COMPATIBLE_API_KEY` in the
+generated `.env` using your normal secret-management process. Avoid putting a
+real token on the command line because shell history and process listings may
+retain it.
 
 For Gemini report generation, embeddings, and Gemini smart template ingestion:
 
@@ -176,15 +181,16 @@ To create `.env` with both Microsoft Graph outbound email and inbound mailbox
 polling enabled:
 
 ```bash
-python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --email-provider microsoft_graph --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-mailbox attenly@company.com
 ```
 
-This generates `INTERNAL_CRON_SECRET` for internal manual polling routes and
+The initializer securely prompts for `GRAPH_CLIENT_SECRET` without echoing it.
+It generates `INTERNAL_CRON_SECRET` for internal manual polling routes and
 configures the Compose `email-worker` service to process inbound jobs outside
 the web backend. To enable only one email direction, use:
 
 ```bash
-python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --outbound-email-provider microsoft_graph --inbound-email-provider none --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-client-secret replace-with-client-secret --graph-mailbox attenly@company.com
+python scripts/init_self_hosted_env.py --llm-model replace-with-chat-model --embedding-model replace-with-embedding-model --outbound-email-provider microsoft_graph --inbound-email-provider none --graph-tenant-id replace-with-tenant-id --graph-client-id replace-with-client-id --graph-mailbox attenly@company.com
 ```
 
 The generated Microsoft Graph settings are:

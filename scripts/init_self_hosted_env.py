@@ -7,6 +7,8 @@ cannot safely guess.
 from __future__ import annotations
 
 import argparse
+import getpass
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -28,13 +30,20 @@ MODEL_PROVIDER_CHOICES = ("openai_compatible", "gemini")
 TEMPLATE_INGEST_PROVIDER_CHOICES = ("disabled", "basic", "gemini", "openai_compatible")
 
 
-def prompt_value(name: str, current: str | None, default: str | None = None) -> str:
+def prompt_value(
+    name: str,
+    current: str | None,
+    default: str | None = None,
+    *,
+    secret: bool = False,
+) -> str:
     if current:
         return current
 
     if sys.stdin.isatty():
         suffix = f" [{default}]" if default else ""
-        value = input(f"{name}{suffix}: ").strip()
+        prompt = f"{name}{suffix}: "
+        value = (getpass.getpass(prompt) if secret else input(prompt)).strip()
         if value:
             return value
         if default is not None:
@@ -74,7 +83,19 @@ def update_env_lines(lines: Iterable[str], updates: Dict[str, str]) -> List[str]
 def write_env(path: Path, lines: List[str], *, force: bool) -> None:
     if path.exists() and not force:
         raise SystemExit(f"{path} already exists. Use --force to overwrite it.")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    content = "\n".join(lines) + "\n"
+    if os.name == "posix":
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.fchmod(descriptor, 0o600)
+        except Exception:
+            os.close(descriptor)
+            raise
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as env_file:
+            env_file.write(content)
+    else:
+        path.write_text(content, encoding="utf-8")
 
 
 def selected_email_providers(args: argparse.Namespace) -> tuple[str, str]:
@@ -143,7 +164,11 @@ def apply_model_updates(
         or template_ingest_provider == "gemini"
     )
     if uses_gemini:
-        updates["GEMINI_API_KEY"] = prompt_value("GEMINI_API_KEY", args.gemini_api_key)
+        updates["GEMINI_API_KEY"] = prompt_value(
+            "GEMINI_API_KEY",
+            args.gemini_api_key,
+            secret=True,
+        )
     else:
         updates["GEMINI_API_KEY"] = args.gemini_api_key or ""
 
@@ -182,6 +207,7 @@ def apply_email_updates(
         updates["GRAPH_CLIENT_SECRET"] = prompt_value(
             "GRAPH_CLIENT_SECRET",
             args.graph_client_secret,
+            secret=True,
         )
         updates["GRAPH_MAILBOX"] = prompt_value("GRAPH_MAILBOX", args.graph_mailbox)
         updates["GRAPH_POLL_BATCH_SIZE"] = args.graph_poll_batch_size
@@ -199,7 +225,11 @@ def apply_email_updates(
 
     uses_resend = outbound_email_provider == "resend" or inbound_email_provider == "resend"
     if uses_resend:
-        updates["RESEND_API_KEY"] = prompt_value("RESEND_API_KEY", args.resend_api_key)
+        updates["RESEND_API_KEY"] = prompt_value(
+            "RESEND_API_KEY",
+            args.resend_api_key,
+            secret=True,
+        )
 
     if inbound_email_provider == "resend":
         updates["EMAIL_JOB_EXECUTION_MODE"] = args.email_job_execution_mode
@@ -208,6 +238,7 @@ def apply_email_updates(
         updates["RESEND_WEBHOOK_SECRET"] = prompt_value(
             "RESEND_WEBHOOK_SECRET",
             args.resend_webhook_secret,
+            secret=True,
         )
 
     return generated_internal_cron_secret

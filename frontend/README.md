@@ -37,8 +37,9 @@ VITE_LOCAL_AUTH_EMAIL=local-admin@example.com
 VITE_LOCAL_AUTH_DISPLAY_NAME=Local Admin
 ```
 
-`VITE_LOCAL_AUTH_TOKEN` can prefill the login form for local development, but it
-is bundled into browser code and is not a secret.
+Enter the deployment access token on the login screen. Attenly intentionally
+does not support placing this credential in a `VITE_` variable because frontend
+configuration is readable by every browser user.
 
 ## Docker Runtime Config
 

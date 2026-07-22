@@ -37,7 +37,6 @@ interface SavedReport {
   generated_at: string;
 }
 
-// TODO BEFORE LAUNCH: important to adjust supabase polecies to include email confirmation and what not
 export default function Dashboard() {
   const { loading: authLoading, session, signOut } = useAuth();
   const navigate = useNavigate();
@@ -49,9 +48,19 @@ export default function Dashboard() {
   
   // Ref to track if API calls have been initiated to prevent duplicates
   const apiCallsInitiated = useRef(false);
+  const customAgentsRef = useRef<CustomAgent[]>([]);
+  const savedReportsRef = useRef<SavedReport[]>([]);
   // State and ref to track visibility and data loading times
   const [wasVisible, setWasVisible] = useState(true);
   const lastDataLoad = useRef<number>(0);
+
+  useEffect(() => {
+    customAgentsRef.current = customAgents;
+  }, [customAgents]);
+
+  useEffect(() => {
+    savedReportsRef.current = savedReports;
+  }, [savedReports]);
 
   const handleExecuteAgent = (agent: Agent) => {
     navigate(`/agent-execution/${agent.id}`);
@@ -73,7 +82,6 @@ export default function Dashboard() {
 
       // Remove from local state
       setCustomAgents(prev => prev.filter(agent => agent.id !== agentId));
-      console.log('Custom agent deleted successfully');
     } catch (error) {
       console.error('Failed to delete custom agent:', error);
       alert('Failed to delete custom agent. Please try again.');
@@ -104,7 +112,6 @@ export default function Dashboard() {
 
       // Remove from local state
       setSavedReports(prev => prev.filter(report => report.id !== reportId));
-      console.log('Report deleted successfully');
     } catch (error) {
       console.error('Failed to delete report:', error);
       alert('Failed to delete report. Please try again.');
@@ -234,7 +241,7 @@ export default function Dashboard() {
     async function loadCustomAgents() {
       try {
         // Only show loading state if we don't have existing data or it's been a while
-        const hasExistingData = customAgents.length > 0;
+        const hasExistingData = customAgentsRef.current.length > 0;
         const shouldShowLoading = !hasExistingData || (Date.now() - lastDataLoad.current > 30000);
         
         if (shouldShowLoading) {
@@ -264,7 +271,7 @@ export default function Dashboard() {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Error loading custom agents:", err);
           // Only clear existing data if we don't have any
-          if (customAgents.length === 0) {
+          if (customAgentsRef.current.length === 0) {
             setCustomAgents([]);
           }
         }
@@ -276,7 +283,7 @@ export default function Dashboard() {
     async function loadSavedReports() {
       try {
         // Only show loading state if we don't have existing data or it's been a while
-        const hasExistingData = savedReports.length > 0;
+        const hasExistingData = savedReportsRef.current.length > 0;
         const shouldShowLoading = !hasExistingData || (Date.now() - lastDataLoad.current > 30000);
         
         if (shouldShowLoading) {
@@ -306,7 +313,7 @@ export default function Dashboard() {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Error loading saved reports:", err);
           // Only clear existing data if we don't have any
-          if (savedReports.length === 0) {
+          if (savedReportsRef.current.length === 0) {
             setSavedReports([]);
           }
         }

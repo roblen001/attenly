@@ -6,7 +6,6 @@ type RuntimeConfigKey =
   | 'VITE_LOCAL_AUTH_USER_ID'
   | 'VITE_LOCAL_AUTH_EMAIL'
   | 'VITE_LOCAL_AUTH_DISPLAY_NAME'
-  | 'VITE_LOCAL_AUTH_TOKEN'
   | 'VITE_TINYMCE_MODE'
   | 'VITE_TINYMCE_SCRIPT_SRC'
   | 'VITE_TINYMCE_LICENSE_KEY'
@@ -44,7 +43,6 @@ export const SUPABASE_ANON_KEY = configValue('VITE_SUPABASE_ANON_KEY')
 export const LOCAL_AUTH_USER_ID = configValue('VITE_LOCAL_AUTH_USER_ID', 'local-admin')
 export const LOCAL_AUTH_EMAIL = configValue('VITE_LOCAL_AUTH_EMAIL', 'local-admin@example.com')
 export const LOCAL_AUTH_DISPLAY_NAME = configValue('VITE_LOCAL_AUTH_DISPLAY_NAME', 'Local Admin')
-export const LOCAL_AUTH_TOKEN_PREFILL = configValue('VITE_LOCAL_AUTH_TOKEN')
 export const TINYMCE_MODE = configValue('VITE_TINYMCE_MODE', 'cloud').toLowerCase()
 export const TINYMCE_SCRIPT_SRC = configValue('VITE_TINYMCE_SCRIPT_SRC', '/tinymce/tinymce.min.js')
 export const TINYMCE_LICENSE_KEY = configValue('VITE_TINYMCE_LICENSE_KEY')

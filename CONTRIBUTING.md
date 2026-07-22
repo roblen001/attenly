@@ -46,8 +46,13 @@ For frontend changes:
 ```bash
 cd frontend
 npm ci
+npm run lint
 npm run build
+npm audit --audit-level=high
 ```
+
+Before a release, audit `backend/requirements.txt` with `pip-audit` in an
+isolated environment and run backend unit/smoke tests against the built image.
 
 For Docker onboarding changes:
 

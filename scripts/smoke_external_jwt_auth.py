@@ -13,6 +13,7 @@ import jwt
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = REPO_ROOT / "backend"
+SMOKE_JWT_SECRET = "external-jwt-smoke-secret-at-least-32-bytes"
 
 
 def configure_env() -> None:
@@ -20,7 +21,7 @@ def configure_env() -> None:
         {
             "APP_PROFILE": "enterprise",
             "AUTH_PROVIDER": "external_jwt",
-            "EXTERNAL_JWT_SECRET": "external-jwt-smoke-secret",
+            "EXTERNAL_JWT_SECRET": SMOKE_JWT_SECRET,
             "EXTERNAL_JWT_ALGORITHM": "HS256",
             "EXTERNAL_JWT_ISSUER": "https://idp.example.test",
             "EXTERNAL_JWT_AUDIENCE": "attenly",
@@ -59,7 +60,7 @@ def make_token(**overrides) -> str:
         "exp": now + 300,
     }
     payload.update(overrides)
-    return jwt.encode(payload, "external-jwt-smoke-secret", algorithm="HS256")
+    return jwt.encode(payload, SMOKE_JWT_SECRET, algorithm="HS256")
 
 
 def main() -> int:

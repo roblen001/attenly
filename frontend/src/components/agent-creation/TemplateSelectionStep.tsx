@@ -105,9 +105,6 @@ const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
         setWarnings(result.warnings);
       }
 
-      // Log the source for debugging
-      console.log(`Template ingested successfully via ${result.source}`);
-
       // Pass HTML and CSS to parent component
       onSelectTemplate(result.html_body, result.css, result.source);
       onProcessingEnd(); // Hide loading state on success

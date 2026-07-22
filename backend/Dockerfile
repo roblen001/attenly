@@ -19,7 +19,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 # Build wheels for requirements AND their transitive deps (no --no-deps)
-RUN python -m pip install --upgrade pip setuptools wheel && \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    PIP_NO_CACHE_DIR=0 python -m pip install --upgrade pip setuptools wheel && \
+    PIP_NO_CACHE_DIR=0 pip wheel \
+      pip==26.1.2 setuptools==83.0.0 wheel==0.47.0 -w /wheels && \
+    PIP_NO_CACHE_DIR=0 \
     pip wheel -r requirements.txt -w /wheels
 
 # --- Runtime stage ---
@@ -52,7 +56,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ---- Install Python deps from prebuilt wheels as root (offline) ----
 COPY --from=builder /wheels /wheels
 COPY requirements.txt .
-RUN pip install --no-index --find-links /wheels -r requirements.txt && \
+RUN pip install --no-index --find-links /wheels \
+      pip==26.1.2 setuptools==83.0.0 wheel==0.47.0 \
+      -r requirements.txt && \
     rm -rf /wheels
 
 # Fail the image build if the pinned WeasyPrint/PyDyf pair cannot render a PDF.

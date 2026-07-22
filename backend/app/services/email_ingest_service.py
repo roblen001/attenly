@@ -207,7 +207,7 @@ class EmailIngestService:
                 .first()
             )
             if not sender:
-                logger.warning("Verification failed: token not found - %s...", token[:8])
+                logger.warning("Verification failed: token not found")
                 return (False, "Invalid or expired verification link")
 
             if sender.status == "verified":
@@ -561,7 +561,7 @@ class EmailIngestService:
                 .execute()
             
             if not result.data:
-                logger.warning(f"Verification failed: token not found - {token[:8]}...")
+                logger.warning("Verification failed: token not found")
                 return (False, "Invalid or expired verification link")
             
             sender = result.data[0]
@@ -610,8 +610,9 @@ class EmailIngestService:
                 return (False, "Verification failed. Please try again.")
             
             logger.info(
-                f"Successfully verified sender {sender_email} for user {user_id} "
-                f"(token: {token[:8]}...)"
+                "Successfully verified sender %s for user %s",
+                sender_email,
+                user_id,
             )
             
             return (True, "Email address verified successfully!")

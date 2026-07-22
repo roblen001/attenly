@@ -232,7 +232,7 @@ const EditorStep: React.FC<EditorStepProps> = ({
       try {
         action();
         editor.selection.setRng(selection);
-      } catch (e) {
+      } catch {
         // Selection restore failed, run action without restore
         action();
       }

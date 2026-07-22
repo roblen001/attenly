@@ -298,8 +298,7 @@ export default function ReportView() {
         throw new Error('Failed to save report');
       }
 
-      const result = await response.json();
-      console.log('Report saved successfully:', result);
+      await response.json();
       
       // Show success message (you could add a toast notification here)
       alert(`Report "${reportName}" saved successfully!`);

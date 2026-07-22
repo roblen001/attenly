@@ -258,7 +258,6 @@ expectations.
 - [Docker architecture](docs/DOCKER_ARCHITECTURE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Security policy](SECURITY.md)
-- [Release checklist](docs/OPEN_SOURCE_RELEASE_CHECKLIST.md)
 
 ## Security
 

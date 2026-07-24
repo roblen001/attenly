@@ -4,6 +4,14 @@ Attenly turns source documents into structured, editable reports with traceable
 references. It can run on one company-controlled Docker host, use local or
 hosted models, and optionally process reports through a Microsoft 365 mailbox.
 
+## Demo
+
+[![Watch the Attenly self-hosted demo: AI extracts the data, you design the reports](docs/assets/attenly-demo-thumbnail.png)](https://www.youtube.com/watch?v=TW4FYGe4cGU)
+
+[Watch the Attenly self-hosted demo on YouTube](https://www.youtube.com/watch?v=TW4FYGe4cGU)
+to see document ingestion, agent configuration, report generation, and
+traceable source references.
+
 The first self-hosted release is designed as a **single-workspace internal
 deployment**:
 

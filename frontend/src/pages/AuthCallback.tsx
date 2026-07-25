@@ -1,6 +1,6 @@
 // AuthCallback.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { authClient, isTokenAuthProvider } from '../libs/auth';
 import { useAuth } from '../feature/auth/useAuth';
 import './Login.css';

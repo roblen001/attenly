@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import "./LandingPage.css";
 import { useAuth } from "../feature/auth/useAuth";
 
@@ -48,8 +48,8 @@ export default function LandingPage() {
                 <div className="feature-icon">🎨</div>
                 <h3>Visual Report Builder</h3>
                 <p>
-                  Drag-and-drop interface to customize layouts, styling, and
-                  organization exactly how you need it
+                  Visual editor to customize layouts, styling, and organization
+                  for your workflow
                 </p>
               </div>
               <div className="feature-item">

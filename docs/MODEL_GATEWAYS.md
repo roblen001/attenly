@@ -50,7 +50,8 @@ being deleted; Ollama loads it again automatically on the next request.
 
 Install Ollama using the current
 [official Linux instructions](https://docs.ollama.com/linux), then download the
-models. This pair is a practical small example rather than a requirement:
+models. `embeddinggemma` requires Ollama v0.11.10 or newer. This pair is a
+practical small example rather than a requirement:
 
 ```bash
 ollama pull qwen3.5:9b

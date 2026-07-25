@@ -1,6 +1,6 @@
 // src/pages/Dashboard.tsx
 import { useEffect, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { api } from "../libs/https";
 import { useAuth } from "../feature/auth/useAuth";
 import type { Agent } from '../types';

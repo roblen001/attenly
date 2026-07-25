@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { api } from '../libs/https';
 import type { EmailIngestSettings as EmailIngestSettingsType, Agent } from '../types';
 import { useCredits } from '../hooks/useCredits';

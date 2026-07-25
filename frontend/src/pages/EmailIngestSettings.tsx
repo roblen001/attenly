@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { api } from '../libs/https';
 import type { EmailIngestSettings as EmailIngestSettingsType, Agent } from '../types';
 import VerifiedSendersList from '../components/email-ingest/VerifiedSendersList';

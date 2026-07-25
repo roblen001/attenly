@@ -115,6 +115,9 @@ build can temporarily require 20 GB or more because Docker retains dependency
 and wheel-building layers. Model files and company documents require additional
 capacity.
 
+The published `v1.0.0` images target `linux/amd64` (x86-64). Native ARM64
+images are not published or release-tested yet.
+
 ## 3. Model Gateway Options
 
 Attenly uses OpenAI-compatible endpoints for the default self-hosted Docker

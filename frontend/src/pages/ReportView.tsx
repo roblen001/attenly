@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router';
 import DocumentViewer from '../components/report/DocumentViewer';
 import LoadingState from '../components/report/LoadingState';
 import ErrorState from '../components/report/ErrorState';

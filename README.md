@@ -6,7 +6,7 @@ hosted models, and optionally process reports through a Microsoft 365 mailbox.
 
 ## Demo
 
-[![Watch the Attenly self-hosted demo: AI extracts the data, you design the reports](docs/assets/attenly-demo-thumbnail.png)](https://www.youtube.com/watch?v=TW4FYGe4cGU)
+[![Watch the Attenly self-hosted demo: AI extracts the data, you design the reports](docs/assets/attenly-demo-thumbnail-v2.png)](https://www.youtube.com/watch?v=TW4FYGe4cGU)
 
 [Watch the Attenly self-hosted demo on YouTube](https://www.youtube.com/watch?v=TW4FYGe4cGU)
 to see document ingestion, agent configuration, report generation, and
@@ -31,6 +31,8 @@ validated JWTs. See [Authentication](#authentication).
 ## Requirements
 
 - Docker Engine or Docker Desktop with Compose v2
+- an x86-64 Docker host for the published `v1.0.0` images; this release does
+  not publish or test native ARM64 images
 - Python 3.10 or newer for the setup and preflight scripts
 - a model endpoint, or a Gemini API key
 - at least 8 GB of free space for the published Attenly images, plus model and
@@ -63,7 +65,7 @@ runs elsewhere on the company network. Omit `--template-ingest-provider` and
 
 The listed Ollama models were checked against the public Ollama library for this
 release. Model availability still changes over time; the setup is not tied to
-these particular models.
+these particular models. `embeddinggemma` requires Ollama v0.11.10 or newer.
 
 ### Option B: Gemini
 
@@ -245,6 +247,9 @@ npm ci
 npm run lint
 npm run build
 ```
+
+Frontend source development requires Node.js 22.22 or newer. Docker users do
+not need Node.js installed on the host.
 
 Profile and packaging checks:
 

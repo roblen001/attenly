@@ -2,6 +2,9 @@
 
 React + TypeScript + Vite frontend for Attenly.
 
+Local frontend development requires Node.js 22.22 or newer. Self-hosted Docker
+users do not need Node.js installed on the host.
+
 ## Local Self-Hosted Auth
 
 Use this with the backend local profile. The access token entered on the login

@@ -190,11 +190,6 @@ const prefixCssSelectors = (css: string, prefix: string): string => {
     
     // Prefix each selector
     const prefixedSelectors = selectors.map((sel: string) => {
-      // If selector already starts with our prefix, don't duplicate
-      if (sel.startsWith(prefix)) {
-        return sel;
-      }
-      
       // Special handling for body tag - apply styles to container itself
       if (sel === 'body' || sel.startsWith('body ') || sel.startsWith('body:') || sel.startsWith('body.')) {
         // Replace body with our container
@@ -299,11 +294,25 @@ export const getBaseReportStyles = (config: ReportStyleConfig, customCss?: strin
     /* Custom Template Styles (Prefixed for Isolation) */
     ${prefixCssSelectors(customCss, '.template-isolated-content')}
   ` : '';
+
+  // Keep even legacy template CSS inside the report's paint and stacking
+  // boundary. New templates are additionally constrained on the server.
+  const isolationBoundary = `
+    .report-html > .template-isolated-content {
+      contain: layout paint style !important;
+      isolation: isolate !important;
+      position: relative !important;
+      overflow: clip !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+  `;
   
   // Build final CSS with proper cascade order
   const finalCss = `
     ${isolationReset}
     ${templateCss}
+    ${isolationBoundary}
     ${baseStyles}
   `;
 

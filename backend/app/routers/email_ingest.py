@@ -88,7 +88,9 @@ def require_email_ingest_enabled() -> None:
 
 
 def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authorization")) -> str:
-    """Extract JWT access token from Authorization header"""
+    """Return the provider token; OIDC uses its already-verified cookie session."""
+    if config.AUTH_PROVIDER == "oidc":
+        return ""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=401,

@@ -103,5 +103,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Start FastAPI via Uvicorn: 1 worker, low keep-alive, optional concurrency cap
 CMD ["uvicorn", "app.main:app", \
      "--host", "0.0.0.0", "--port", "8080", \
-     "--proxy-headers", "--forwarded-allow-ips", "*", \
+     "--proxy-headers", "--forwarded-allow-ips", \
+     "127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", \
      "--workers", "1", "--timeout-keep-alive", "5"]

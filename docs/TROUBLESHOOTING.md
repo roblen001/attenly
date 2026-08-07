@@ -101,6 +101,57 @@ If nginx starts but the browser app cannot call the backend, check:
 - `VITE_API_BASE_URL=/api`
 - requests are going to `http://localhost:5173/api/...`
 
+## Microsoft Entra OIDC Login Fails
+
+For the prepared local test profile, validate the environment and inspect the
+backend logs first:
+
+```powershell
+python scripts/check_self_hosted_env.py .env.docker-test
+docker compose --env-file .env.docker-test logs backend
+```
+
+Verify the Entra values carefully:
+
+- `OIDC_TENANT_ID` is **Directory (tenant) ID**.
+- `OIDC_CLIENT_ID` is **Application (client) ID**, not Object ID.
+- `OIDC_CLIENT_SECRET` is the client secret **Value**, not Secret ID. It must
+  also be unexpired.
+- The redirect URI is configured as a **Web** URI and exactly matches
+  `http://localhost:5173/api/auth/oidc/callback` for the standard local test.
+
+Common failures:
+
+- `AADSTS50011` means the callback does not exactly match a registered redirect
+  URI. Check scheme, hostname, port, path, and trailing slash.
+- `AADSTS7000215`, `invalid_client`, or an invalid-secret message usually means
+  Secret ID was used instead of the secret Value, the secret expired, or the
+  secret belongs to another app registration.
+- **Your account is not assigned an Attenly application role** means the login
+  was authenticated but lacks `Attenly.User` or `Attenly.Admin`. Define those
+  exact role Values under **App registrations > App roles**, then assign one
+  under **Enterprise applications > Users and groups**. Sign out and start a
+  new login after changing the assignment.
+- **This account belongs to a different tenant** means the signed-in account's
+  tenant does not match `OIDC_TENANT_ID`. Confirm the portal directory and avoid
+  the Entra `common` or `organizations` endpoints.
+- A login loop on local HTTP commonly means secure production cookie names were
+  copied into the development profile. Rerun
+  `python scripts/configure_oidc_env.py .env.docker-test` to restore the local
+  cookie and origin settings.
+
+After changing `.env.docker-test` or backend source, rebuild and recreate the
+containers without deleting the data volume:
+
+```powershell
+docker compose --env-file .env.docker-test -f compose.yml -f compose.build.yml up -d --build --force-recreate --wait
+```
+
+If upload logs contain `Expected collection name` followed by a long
+`user_oidc-...` name, the backend image predates the OIDC collection-name fix.
+Rebuild from current source with the command above. The uploaded file itself is
+not the cause.
+
 ## Model Gateway Cannot Be Reached
 
 From Docker, a model server running on the host machine is usually reached with:

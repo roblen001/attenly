@@ -209,7 +209,7 @@ const ReportContent: React.FC<ReportContentProps> = ({
           for (const change of sortedChanges) {
             if (currentPosition < change.start_offset && lastProcessedOffset < change.start_offset) {
               const unchangedText = plainText.substring(currentPosition, change.start_offset);
-              decoratedContent += unchangedText;
+              decoratedContent += escapeHtml(unchangedText);
               lastProcessedOffset = change.start_offset;
               currentPosition = change.start_offset;
             }
@@ -226,7 +226,7 @@ const ReportContent: React.FC<ReportContentProps> = ({
           }
           
           if (currentPosition < plainText.length) {
-            decoratedContent += plainText.substring(currentPosition);
+            decoratedContent += escapeHtml(plainText.substring(currentPosition));
           }
           
           decoratedContent += superscriptsHTML;

@@ -1,7 +1,7 @@
 // AuthCallback.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { authClient, isTokenAuthProvider } from '../libs/auth';
+import { authClient, isOidcAuthProvider, isTokenAuthProvider } from '../libs/auth';
 import { useAuth } from '../feature/auth/useAuth';
 import './Login.css';
 
@@ -26,8 +26,13 @@ const AuthCallback: React.FC = () => {
   useEffect(() => {
     let timer: number | undefined;
 
-    if (isTokenAuthProvider) {
-      authClient.getSession().then(({ data }) => {
+    if (isTokenAuthProvider || isOidcAuthProvider) {
+      authClient.getSession().then(({ data, error: authError }) => {
+        if (authError) {
+          setError(authError.message);
+          setMode('error');
+          return;
+        }
         if (data.session) navigate('/dashboard', { replace: true });
         else navigate('/login', { replace: true });
       });

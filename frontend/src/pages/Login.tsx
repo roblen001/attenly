@@ -4,16 +4,30 @@ import {
   authClient,
   authProvider,
   consumeAuthError,
+  consumeAuthReturnPath,
   isLocalAuthProvider,
+  isOidcAuthProvider,
   isTokenAuthProvider,
+  safeRelativeReturnPath,
 } from "../libs/auth";
 import { useAuth } from "../feature/auth/useAuth";
 import "./Login.css";
 
+function oidcLoginError(search: string): string {
+  const code = new URLSearchParams(search).get('auth_error');
+  if (code === 'oidc_unavailable') {
+    return 'Company sign-in is temporarily unavailable. Please try again or contact your administrator.';
+  }
+  if (code === 'oidc_login_failed') {
+    return 'Company sign-in was not accepted. Confirm that you are assigned access, then try again.';
+  }
+  return '';
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isPasswordRecovery, signIn, signInWithToken } = useAuth();
+  const { isAuthenticated, isPasswordRecovery, signIn, signInWithToken, signInWithOidc } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [isPasswordReset, setIsPasswordReset] = useState(false);
   const [email, setEmail] = useState("");
@@ -21,9 +35,18 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [localToken, setLocalToken] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(() => consumeAuthError());
+  const [error, setError] = useState(() => consumeAuthError() || oidcLoginError(location.search));
+  const [storedReturnTo] = useState(() => consumeAuthReturnPath());
   const [message, setMessage] = useState("");
   const tokenLabel = authProvider === 'external_jwt' ? 'Identity Token' : 'Deployment Access Token';
+  const requestedLocation = location.state?.from;
+  const returnTo = safeRelativeReturnPath(
+    typeof requestedLocation === 'string'
+      ? requestedLocation
+      : requestedLocation?.pathname
+        ? `${requestedLocation.pathname}${requestedLocation.search ?? ''}${requestedLocation.hash ?? ''}`
+        : storedReturnTo ?? '/dashboard'
+  );
 
   // Check for password reset success
   useEffect(() => {
@@ -35,8 +58,7 @@ export default function Login() {
 
   // Redirect if already authenticated
   if (isAuthenticated && !isPasswordRecovery) {
-    const from = location.state?.from?.pathname || '/dashboard';
-    navigate(from, { replace: true });
+    navigate(returnTo, { replace: true });
     return null;
   }
 
@@ -47,14 +69,16 @@ export default function Login() {
     setMessage("");
 
     try {
-      if (isTokenAuthProvider) {
+      if (isOidcAuthProvider) {
+        const { error } = await signInWithOidc(returnTo);
+        if (error) setError(error.message);
+      } else if (isTokenAuthProvider) {
         const { error } = await signInWithToken(localToken);
 
         if (error) {
           setError(error.message);
         } else {
-          const from = location.state?.from?.pathname || '/dashboard';
-          navigate(from, { replace: true });
+          navigate(returnTo, { replace: true });
         }
       } else if (isPasswordReset) {
         // Handle password reset
@@ -90,8 +114,7 @@ export default function Login() {
         if (error) {
           setError(error.message);
         } else {
-          const from = location.state?.from?.pathname || '/dashboard';
-          navigate(from, { replace: true });
+          navigate(returnTo, { replace: true });
         }
       }
     } catch {
@@ -149,10 +172,12 @@ export default function Login() {
           <div className="login-form-container">
             <div className="form-header">
               <h2 className="form-title">
-                {isTokenAuthProvider ? "Internal Access" : isPasswordReset ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
+                {isOidcAuthProvider ? "Company Sign In" : isTokenAuthProvider ? "Internal Access" : isPasswordReset ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
               </h2>
               <p className="form-subtitle">
-                {isTokenAuthProvider
+                {isOidcAuthProvider
+                  ? "Use your organization's existing account"
+                  : isTokenAuthProvider
                   ? isLocalAuthProvider
                     ? "Unlock this deployment's shared company workspace"
                     : "Continue to your company workspace"
@@ -166,7 +191,13 @@ export default function Login() {
             </div>
 
             <form onSubmit={handleSubmit} className="login-form">
-              {isTokenAuthProvider ? (
+              {isOidcAuthProvider ? (
+                <div className="form-group">
+                  <p className="form-help">
+                    You will continue to your company's secure identity provider and return here after signing in.
+                  </p>
+                </div>
+              ) : isTokenAuthProvider ? (
                 <div className="form-group">
                   <label htmlFor="localToken" className="form-label">
                     {tokenLabel}
@@ -203,7 +234,7 @@ export default function Login() {
                 </div>
               )}
 
-              {!isTokenAuthProvider && !isPasswordReset && (
+              {!isOidcAuthProvider && !isTokenAuthProvider && !isPasswordReset && (
                 <div className="form-group">
                   <label htmlFor="password" className="form-label">
                     Password
@@ -220,7 +251,7 @@ export default function Login() {
                 </div>
               )}
 
-              {!isTokenAuthProvider && isSignUp && !isPasswordReset && (
+              {!isOidcAuthProvider && !isTokenAuthProvider && isSignUp && !isPasswordReset && (
                 <div className="form-group">
                   <label htmlFor="confirmPassword" className="form-label">
                     Confirm Password
@@ -259,21 +290,21 @@ export default function Login() {
                 {loading ? (
                   <>
                     <span className="loading-spinner"></span>
-                    {isTokenAuthProvider ? "Signing In..." : isPasswordReset ? "Sending Reset Link..." : isSignUp ? "Creating Account..." : "Signing In..."}
+                    {isOidcAuthProvider ? "Redirecting..." : isTokenAuthProvider ? "Signing In..." : isPasswordReset ? "Sending Reset Link..." : isSignUp ? "Creating Account..." : "Signing In..."}
                   </>
                 ) : (
                   <>
                     <span className="btn-icon">
                       {isPasswordReset ? "🔐" : isSignUp ? "🚀" : "✨"}
                     </span>
-                    {isTokenAuthProvider ? "Continue" : isPasswordReset ? "Send Reset Link" : isSignUp ? "Create Account" : "Sign In"}
+                    {isOidcAuthProvider ? "Continue with Company SSO" : isTokenAuthProvider ? "Continue" : isPasswordReset ? "Send Reset Link" : isSignUp ? "Create Account" : "Sign In"}
                     <span className="btn-arrow">→</span>
                   </>
                 )}
               </button>
             </form>
 
-            {!isTokenAuthProvider && (
+            {!isOidcAuthProvider && !isTokenAuthProvider && (
               <div className="form-footer">
                 {!isPasswordReset ? (
                   <>

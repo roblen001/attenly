@@ -6,9 +6,20 @@ import { useCredits } from '../hooks/useCredits';
 import CreditOverview from '../components/settings/CreditOverview';
 import VerifiedSendersList from '../components/email-ingest/VerifiedSendersList';
 import UsageInstructions from '../components/email-ingest/UsageInstructions';
+import { useAuth } from '../feature/auth/useAuth';
 import './Settings.css';
 
-type SettingsTab = 'credits' | 'email';
+type SettingsTab = 'credits' | 'email' | 'users';
+
+type OrganizationUser = {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+  role: string;
+  status: string;
+  last_login_at?: string | null;
+  created_at?: string | null;
+};
 
 type VerificationNotice = {
   type: 'success' | 'error';
@@ -54,6 +65,12 @@ const disabledEmailSettings = (
 export default function Settings() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { session, loading: authLoading } = useAuth();
+  const isOidcAdmin = session?.user.user_metadata?.provider === 'oidc'
+    && session?.user.app_metadata?.role === 'admin';
+  const currentAppUserId = typeof session?.user.app_metadata?.app_user_id === 'string'
+    ? session.user.app_metadata.app_user_id
+    : null;
 
   // Tab state from URL
   const initialTab = (searchParams.get('tab') as SettingsTab) || 'credits';
@@ -72,6 +89,12 @@ export default function Settings() {
   const [updatingAgent, setUpdatingAgent] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [verificationNotice, setVerificationNotice] = useState<VerificationNotice | null>(null);
+
+  // Organization user administration state
+  const [organizationUsers, setOrganizationUsers] = useState<OrganizationUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   // Turn the public email-link callback into a clear in-app result, then remove
   // the callback parameter so refreshing the page does not repeat the message.
@@ -96,6 +119,14 @@ export default function Settings() {
     setSearchParams({ tab });
   };
 
+  // A copied Users URL must not expose an admin view to other auth modes or roles.
+  useEffect(() => {
+    if (!authLoading && activeTab === 'users' && !isOidcAdmin) {
+      setActiveTab('credits');
+      setSearchParams({ tab: 'credits' }, { replace: true });
+    }
+  }, [activeTab, authLoading, isOidcAdmin, setSearchParams]);
+
   // Fetch email settings
   useEffect(() => {
     if (activeTab === 'email') {
@@ -110,6 +141,61 @@ export default function Settings() {
       fetchUsageSummary(30);
     }
   }, [activeTab, credits, fetchUsageSummary]);
+
+  useEffect(() => {
+    if (activeTab === 'users' && isOidcAdmin) {
+      void fetchOrganizationUsers();
+    }
+  }, [activeTab, isOidcAdmin]);
+
+  const fetchOrganizationUsers = async () => {
+    try {
+      setUsersLoading(true);
+      setUsersError(null);
+      const response = await api('/auth/api/auth/users', { method: 'GET' });
+      const data = await response.json() as OrganizationUser[];
+      setOrganizationUsers(data);
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : 'Failed to load organization users');
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const handleUserStatusChange = async (user: OrganizationUser) => {
+    const nextStatus = user.status === 'blocked' ? 'active' : 'blocked';
+    const label = user.display_name || user.email || 'this user';
+    const confirmationMessage = nextStatus === 'blocked'
+      ? `Block ${label}? Their active Attenly sessions will be revoked immediately.`
+      : `Unblock ${label}? They can sign in again if their identity-provider assignment and app role allow it.`;
+
+    if (!window.confirm(confirmationMessage)) return;
+
+    let reason: string | undefined;
+    if (nextStatus === 'blocked') {
+      const enteredReason = window.prompt('Optional reason for blocking this user:');
+      if (enteredReason === null) return;
+      reason = enteredReason.trim() || undefined;
+    }
+
+    try {
+      setUpdatingUserId(user.id);
+      setUsersError(null);
+      const response = await api(`/auth/api/auth/users/${encodeURIComponent(user.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus, ...(reason ? { reason } : {}) }),
+      });
+      const updated = await response.json() as OrganizationUser;
+      setOrganizationUsers((current) => current.map((item) => (
+        item.id === updated.id ? { ...item, ...updated } : item
+      )));
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : `Failed to ${nextStatus === 'blocked' ? 'block' : 'unblock'} user`);
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
 
   const fetchEmailSettings = async () => {
     try {
@@ -258,6 +344,14 @@ export default function Settings() {
         >
           Email Ingest
         </button>
+        {isOidcAdmin && (
+          <button
+            className={`settings-tab ${activeTab === 'users' ? 'active' : ''}`}
+            onClick={() => handleTabChange('users')}
+          >
+            Users
+          </button>
+        )}
       </div>
 
       {/* Credits Tab */}
@@ -460,6 +554,110 @@ export default function Settings() {
               />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Organization Users Tab — available only to OIDC organization admins. */}
+      {activeTab === 'users' && isOidcAdmin && (
+        <div className="settings-content">
+          <div className="settings-card organization-users-card">
+            <div className="organization-users-heading">
+              <div>
+                <h2>Organization Users</h2>
+                <p className="help-text">
+                  Manage access to this Attenly organization. Blocking a user revokes their active
+                  Attenly sessions immediately. Identity-provider assignment and Attenly app
+                  roles still determine who can sign in through SSO.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => void fetchOrganizationUsers()}
+                disabled={usersLoading || updatingUserId !== null}
+              >
+                {usersLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            {usersError && (
+              <div className="error-banner" role="alert">
+                <span className="error-icon">!</span>
+                <span>{usersError}</span>
+                <button onClick={() => setUsersError(null)} className="close-error" aria-label="Dismiss error">x</button>
+              </div>
+            )}
+
+            {usersLoading && organizationUsers.length === 0 ? (
+              <div className="loading-state organization-users-loading">
+                <div className="spinner"></div>
+                <p>Loading organization users...</p>
+              </div>
+            ) : organizationUsers.length === 0 ? (
+              <div className="organization-users-empty">
+                <p>No organization users were found.</p>
+                <button type="button" className="btn btn-primary" onClick={() => void fetchOrganizationUsers()}>
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <div className="organization-users-table-wrap">
+                <table className="organization-users-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">User</th>
+                      <th scope="col">Role</th>
+                      <th scope="col">Status</th>
+                      <th scope="col"><span className="visually-hidden">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {organizationUsers.map((user) => {
+                      const isCurrentUser = user.id === currentAppUserId;
+                      const isBlocked = user.status === 'blocked';
+                      const isUpdating = updatingUserId === user.id;
+
+                      return (
+                        <tr key={user.id}>
+                          <td>
+                            <div className="organization-user-name">
+                              {user.display_name || user.email || 'Unnamed user'}
+                              {isCurrentUser && <span className="current-user-label">You</span>}
+                            </div>
+                            {user.email && user.email !== user.display_name && (
+                              <div className="organization-user-email">{user.email}</div>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`user-role-badge ${user.role}`}>{user.role}</span>
+                          </td>
+                          <td>
+                            <span className={`user-status-badge ${isBlocked ? 'blocked' : 'active'}`}>
+                              {isBlocked ? 'Blocked' : 'Active'}
+                            </span>
+                          </td>
+                          <td className="organization-user-action">
+                            {isCurrentUser ? (
+                              <span className="current-account-text">Current account</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className={`btn btn-small ${isBlocked ? 'btn-secondary' : 'btn-danger'}`}
+                                onClick={() => void handleUserStatusChange(user)}
+                                disabled={updatingUserId !== null}
+                              >
+                                {isUpdating ? 'Updating...' : isBlocked ? 'Unblock' : 'Block'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -1,5 +1,12 @@
 import { API_BASE_URL } from "./configs";
-import { authClient, isLocalAuthProvider, isTokenAuthProvider, storeAuthError } from "./auth";
+import {
+  authClient,
+  isLocalAuthProvider,
+  isOidcAuthProvider,
+  isTokenAuthProvider,
+  storeAuthError,
+  storeAuthReturnPath,
+} from "./auth";
 
 interface ApiOptions extends RequestInit {
   nonCritical?: boolean; // If true, 401 errors won't sign out the user
@@ -15,22 +22,33 @@ export async function api(path: string, init: ApiOptions = {}) {
   let retryCount = 0;
   const maxRetries = 3;
   
-  while (retryCount < maxRetries && !session) {
+  if (isOidcAuthProvider) {
+    // The BFF session is represented by its user; provider tokens never enter
+    // the browser. One cached /me check is enough before sending the cookie.
     const { data: { session: currentSession }, error } = await authClient.getSession();
-    
+    session = currentSession;
+    retryCount = 1;
     if (error) {
-      console.warn(`Session retrieval error (attempt ${retryCount + 1}):`, error);
+      console.warn('Company session retrieval error:', error);
     }
-    
-    if (currentSession?.access_token) {
-      session = currentSession;
-      break;
-    }
-    
-    retryCount++;
-    if (retryCount < maxRetries) {
-      // Wait a bit before retrying
-      await new Promise(resolve => setTimeout(resolve, 100));
+  } else {
+    while (retryCount < maxRetries && !session) {
+      const { data: { session: currentSession }, error } = await authClient.getSession();
+
+      if (error) {
+        console.warn(`Session retrieval error (attempt ${retryCount + 1}):`, error);
+      }
+
+      if (currentSession?.access_token) {
+        session = currentSession;
+        break;
+      }
+
+      retryCount++;
+      if (retryCount < maxRetries) {
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
   }
   const headers: HeadersInit = {
@@ -44,13 +62,13 @@ export async function api(path: string, init: ApiOptions = {}) {
   }
   
   // Add Authorization header if user is authenticated
-  if (session?.access_token) {
+  if (!isOidcAuthProvider && session?.access_token) {
     (headers as Record<string, string>).Authorization = `Bearer ${session.access_token}`;
     // Include a refresh token when the selected backend auth/storage adapter needs it.
     if (session?.refresh_token) {
       (headers as Record<string, string>)['X-Refresh-Token'] = session.refresh_token;
     }
-  } else {
+  } else if (!isOidcAuthProvider) {
     console.warn('No valid session found for API call to:', path);
   }
   
@@ -63,6 +81,7 @@ export async function api(path: string, init: ApiOptions = {}) {
       const response = await fetch(`${API_BASE_URL}${path}`, {
         ...requestInit,
         headers,
+        credentials: isOidcAuthProvider ? 'include' : requestInit.credentials,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -118,6 +137,8 @@ export async function api(path: string, init: ApiOptions = {}) {
       ? 'Your access token is invalid or no longer accepted. Enter the current deployment access token.'
       : isTokenAuthProvider
       ? 'Your identity token is invalid or no longer accepted. Enter a current identity token.'
+      : isOidcAuthProvider
+      ? backendDetail || 'Your company session is no longer valid. Please sign in again.'
       : backendDetail || 'Your session is no longer valid. Please sign in again.';
 
     console.error('Authentication failed for API call:', {
@@ -140,6 +161,9 @@ export async function api(path: string, init: ApiOptions = {}) {
     if (currentPath !== '/login' && currentPath !== '/') {
       
       storeAuthError(authError);
+      storeAuthReturnPath(
+        `${window.location.pathname}${window.location.search}${window.location.hash}`
+      );
 
       // Sign out the user and clear session
       await authClient.signOut();

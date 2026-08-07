@@ -7,10 +7,10 @@ import json
 from pathlib import Path
 from typing import List, Optional
 import hashlib
+from app import config
 from app.schemas import Agent, SaveReportRequest, SavedReportOut, SavedReportDetailOut, UpdateSavedReportRequest, UpdateCachedReportRequest, CustomAgentOut, CreateCustomAgentRequest, UpdateCustomAgentRequest
 from app.core.deps import get_current_user
 from app.services.supabase_service import supabase_service
-from app.services.agent_loader import load_agent_by_id
 import uuid
 
 # Import document processing services
@@ -19,6 +19,7 @@ from app.services.vector_store import vector_store_manager # In user-based stora
 from app.services.report_service import report_service
 from app.services.pdf_generator import pdf_generator
 from app.services.credit_service import CreditLimitExceeded
+from app.services.template_security import TemplateSecurityError
 
 # Import performance monitoring
 from app.services.performance_monitor import get_performance_monitor, time_operation, timed_operation
@@ -38,15 +39,77 @@ preloaded_reports_cache = {}
 # Initialize document processor
 document_processor = DocumentProcessor()
 
-def extract_jwt_token(authorization: Optional[str] = Header(None, alias="Authorization")) -> str:
-    """Extract JWT access token from Authorization header"""
+def extract_optional_jwt_token(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> str:
+    """Return the provider token when present; OIDC cookie sessions do not have one."""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-    return authorization.split(" ")[1]
+        return ""
+    return authorization.split(" ", 1)[1]
+
+
+def _organization_agent_kwargs(current_user) -> dict:
+    """Build opt-in organization context for persistence providers that support it."""
+    if not getattr(supabase_service, "supports_organization_agents", False):
+        return {}
+
+    organization_id = getattr(current_user, "organization_id", None)
+    app_user_id = getattr(current_user, "app_user_id", None)
+    if not organization_id or not app_user_id:
+        return {}
+
+    membership_status = getattr(
+        current_user,
+        "organization_status",
+        getattr(current_user, "membership_status", "active"),
+    )
+    if membership_status and str(membership_status).strip().lower() != "active":
+        raise HTTPException(status_code=403, detail="Organization membership is not active")
+
+    return {
+        "organization_id": str(organization_id),
+        "app_user_id": str(app_user_id),
+        "organization_role": str(getattr(current_user, "organization_role", "user")),
+    }
+
+
+def _can_manage_custom_agent(agent_data: dict, current_user) -> bool:
+    organization_kwargs = _organization_agent_kwargs(current_user)
+    agent_organization_id = agent_data.get("organization_id")
+    if not organization_kwargs or not agent_organization_id:
+        return str(agent_data.get("user_id")) == str(current_user.id)
+
+    if str(agent_organization_id) != organization_kwargs["organization_id"]:
+        return False
+    if organization_kwargs["organization_role"].strip().lower() == "admin":
+        return True
+    return str(agent_data.get("created_by_user_id")) == organization_kwargs["app_user_id"]
+
+
+def _custom_agent_response(agent_data: dict, current_user) -> CustomAgentOut:
+    questions_out = [
+        {
+            "id": str(question["id"]),
+            "placeholder": question["placeholder"],
+            "prompt": question["prompt"],
+        }
+        for question in agent_data.get("agent_questions", [])
+    ]
+    return CustomAgentOut(
+        id=str(agent_data["id"]),
+        name=agent_data["name"],
+        description=agent_data["description"],
+        reportTemplate=agent_data["report_template"],
+        reportTemplateCss=agent_data.get("report_template_css"),
+        questions=questions_out,
+        user_id=agent_data["user_id"],
+        is_custom=agent_data["is_custom"],
+        created_by_name=agent_data["created_by_name"],
+        createdAt=agent_data["created_at"],
+        updatedAt=agent_data["updated_at"],
+        can_delete=_can_manage_custom_agent(agent_data, current_user),
+    )
+
 
 def extract_auth_tokens(
     authorization: Optional[str] = Header(None, alias="Authorization"),
@@ -58,7 +121,7 @@ def extract_auth_tokens(
     Returns:
         Tuple of (access_token, refresh_token). Refresh token may be empty string.
     """
-    access_token = extract_jwt_token(authorization)
+    access_token = extract_optional_jwt_token(authorization)
     refresh_token = x_refresh_token or ""
     
     if not refresh_token:
@@ -70,7 +133,15 @@ def calculate_content_hash(content: bytes) -> str:
     """Calculate SHA-256 hash of file content for duplicate detection"""
     return hashlib.sha256(content).hexdigest()
 
-def _get_agent_by_id_internal(agent_id: str, user_id: str, jwt_token: Optional[str] = None) -> dict:
+def _get_agent_by_id_internal(
+    agent_id: str,
+    user_id: str,
+    jwt_token: Optional[str] = None,
+    *,
+    organization_id: Optional[str] = None,
+    app_user_id: Optional[str] = None,
+    organization_role: Optional[str] = None,
+) -> dict:
     """
     Internal helper to get agent configuration by ID.
     Handles both prebuilt agents (from JSON) and custom agents (from database with JWT).
@@ -113,10 +184,23 @@ def _get_agent_by_id_internal(agent_id: str, user_id: str, jwt_token: Optional[s
             logging.error(f"Error reading prebuilt agents: {e}")
             # Continue to custom agent lookup
     
-    # Step 2: Try custom agents from database (requires JWT for RLS)
-    if jwt_token:
+    # Step 2: Try custom agents from database. Supabase uses a JWT for RLS;
+    # local OIDC deployments use the trusted organization context instead.
+    if jwt_token or organization_id:
         try:
-            agent_data = supabase_service.get_agent_by_id(jwt_token, user_id, agent_id)
+            organization_kwargs = {}
+            if organization_id and getattr(supabase_service, "supports_organization_agents", False):
+                organization_kwargs = {
+                    "organization_id": organization_id,
+                    "app_user_id": app_user_id,
+                    "organization_role": organization_role,
+                }
+            agent_data = supabase_service.get_agent_by_id(
+                jwt_token or "",
+                user_id,
+                agent_id,
+                **organization_kwargs,
+            )
             
             if agent_data:
                 # Transform custom agent data to match Agent schema
@@ -845,9 +929,17 @@ async def process_agent_documents(agent_id: str, request: Request, current_user 
     
     # Get agent configuration
     try:
-        agent = load_agent_by_id(agent_id, user_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        auth_header = request.headers.get("Authorization")
+        jwt_token = extract_optional_jwt_token(auth_header)
+        agent_dict = _get_agent_by_id_internal(
+            agent_id,
+            user_id,
+            jwt_token,
+            **_organization_agent_kwargs(current_user),
+        )
+        agent = Agent(**agent_dict)
+    except HTTPException:
+        raise
     
     # Check if there are uploaded files for this user
     if user_id not in uploaded_files_storage or not uploaded_files_storage[user_id]:
@@ -1147,8 +1239,13 @@ async def get_agent_report(agent_id: str, request: Request, current_user = Depen
     try:
         # Extract JWT token from request headers for custom agent access
         auth_header = request.headers.get("Authorization")
-        jwt_token = extract_jwt_token(auth_header) if auth_header else None
-        agent_dict = _get_agent_by_id_internal(agent_id, user_id, jwt_token)
+        jwt_token = extract_optional_jwt_token(auth_header)
+        agent_dict = _get_agent_by_id_internal(
+            agent_id,
+            user_id,
+            jwt_token,
+            **_organization_agent_kwargs(current_user),
+        )
         # Convert dictionary to Agent object for type safety
         agent = Agent(**agent_dict)
     except HTTPException as e:
@@ -1204,8 +1301,13 @@ async def download_agent_report_pdf(
     try:
         # Extract JWT token from request headers for custom agent access
         auth_header = request.headers.get("Authorization")
-        jwt_token = extract_jwt_token(auth_header) if auth_header else None
-        agent_dict = _get_agent_by_id_internal(agent_id, user_id, jwt_token)
+        jwt_token = extract_optional_jwt_token(auth_header)
+        agent_dict = _get_agent_by_id_internal(
+            agent_id,
+            user_id,
+            jwt_token,
+            **_organization_agent_kwargs(current_user),
+        )
         # Convert dictionary to Agent object for type safety
         agent = Agent(**agent_dict)
     except HTTPException as e:
@@ -1302,7 +1404,12 @@ async def save_current_report(
     
     # Get agent configuration using internal helper with proper auth
     try:
-        agent_dict = _get_agent_by_id_internal(agent_id, user_id, access_token)
+        agent_dict = _get_agent_by_id_internal(
+            agent_id,
+            user_id,
+            access_token,
+            **_organization_agent_kwargs(current_user),
+        )
         agent = Agent(**agent_dict)
     except HTTPException as e:
         raise e
@@ -1375,7 +1482,7 @@ async def save_current_report(
 @router.get("/reports/saved", response_model=List[SavedReportOut])
 async def list_saved_reports(
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """List user's saved reports"""
     user_id = current_user.id
@@ -1405,7 +1512,7 @@ async def list_saved_reports(
 async def get_saved_report(
     report_id: str, 
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Get a specific saved report with full data for viewing"""
     user_id = current_user.id
@@ -1436,7 +1543,7 @@ async def get_saved_report(
 async def get_report_with_audit(
     report_id: str,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """
     Get saved report with audit trail changes for track changes view.
@@ -1477,7 +1584,7 @@ async def get_saved_document_content(
     report_id: str, 
     document_id: str, 
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Get document content for saved report (for DocumentViewer)"""
     user_id = current_user.id
@@ -1650,7 +1757,7 @@ async def get_saved_document_bboxes(
     report_id: str,
     document_id: str,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Get bounding box data for a saved report document (OCR documents only)"""
     user_id = current_user.id
@@ -1692,7 +1799,7 @@ async def get_saved_document_file(
     document_id: str,
     request: Request,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Stream PDF file for saved report documents (checks preload cache first, then uses Supabase Storage)"""
     from fastapi.responses import RedirectResponse
@@ -1876,7 +1983,7 @@ async def update_saved_report(
     report_id: str,
     request: UpdateSavedReportRequest,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Update a saved report's content and/or name"""
     user_id = current_user.id
@@ -1906,7 +2013,7 @@ async def download_saved_report_pdf(
     report_id: str,
     with_references: bool = False,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Download PDF of saved report using existing code patterns"""
     from fastapi.responses import StreamingResponse
@@ -1922,7 +2029,12 @@ async def download_saved_report_pdf(
             raise HTTPException(status_code=404, detail="Saved report not found")
         
         # Get proper agent configuration with reportTemplate (reuse existing code pattern)
-        agent_dict = _get_agent_by_id_internal(report_data["agent_id"], user_id, jwt_token)
+        agent_dict = _get_agent_by_id_internal(
+            report_data["agent_id"],
+            user_id,
+            jwt_token,
+            **_organization_agent_kwargs(current_user),
+        )
         agent = Agent(**agent_dict)
         
         # Enhance report_data with document context (same pattern as fresh reports)
@@ -2165,12 +2277,20 @@ async def upload_template(
 async def create_custom_agent(
     request: CreateCustomAgentRequest,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Create a new custom agent"""
     user_id = current_user.id
     
     try:
+        organization_kwargs = _organization_agent_kwargs(current_user)
+        create_organization_kwargs = {}
+        if organization_kwargs:
+            create_organization_kwargs = {
+                "organization_id": organization_kwargs["organization_id"],
+                "created_by_user_id": organization_kwargs["app_user_id"],
+            }
+
         # Extract questions data for Supabase service
         questions_data = []
         for question in request.questions:
@@ -2191,38 +2311,27 @@ async def create_custom_agent(
             description=request.description or "",
             report_template=request.report_template,
             report_template_css=request.report_template_css,
-            questions=questions_data
+            questions=questions_data,
+            **create_organization_kwargs,
         )
         
         # Get the created agent to return
-        agent_data = supabase_service.get_agent_by_id(jwt_token, user_id, agent_id)
+        agent_data = supabase_service.get_agent_by_id(
+            jwt_token,
+            user_id,
+            agent_id,
+            **organization_kwargs,
+        )
         
         if not agent_data:
             raise HTTPException(status_code=500, detail="Failed to retrieve created agent")
         
-        # Transform to CustomAgentOut format
-        questions_out = []
-        for q in agent_data.get("agent_questions", []):
-            questions_out.append({
-                "id": str(q["id"]),
-                "placeholder": q["placeholder"],
-                "prompt": q["prompt"]
-            })
+        return _custom_agent_response(agent_data, current_user)
         
-        return CustomAgentOut(
-            id=str(agent_data["id"]),
-            name=agent_data["name"],
-            description=agent_data["description"],
-            reportTemplate=agent_data["report_template"],
-            questions=questions_out,
-            user_id=agent_data["user_id"],
-            is_custom=agent_data["is_custom"],
-            created_by_name=agent_data["created_by_name"],
-            createdAt=agent_data["created_at"],
-            updatedAt=agent_data["updated_at"],
-            can_delete=True
-        )
-        
+    except TemplateSecurityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Failed to create custom agent: {e}")
         raise HTTPException(status_code=500, detail="Failed to create custom agent")
@@ -2230,40 +2339,25 @@ async def create_custom_agent(
 @router.get("/list_user_custom_agents", response_model=List[CustomAgentOut])
 async def list_user_custom_agents(
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
-    """Get user's custom agents"""
+    """Get custom agents visible to the user or their organization."""
     user_id = current_user.id
     
     try:
-        agents_data = supabase_service.get_user_custom_agents(jwt_token, user_id)
+        organization_kwargs = _organization_agent_kwargs(current_user)
+        agents_data = supabase_service.get_user_custom_agents(
+            jwt_token,
+            user_id,
+            **organization_kwargs,
+        )
+        return [
+            _custom_agent_response(agent_data, current_user)
+            for agent_data in agents_data
+        ]
         
-        custom_agents = []
-        for agent_data in agents_data:
-            questions_out = []
-            for q in agent_data.get("agent_questions", []):
-                questions_out.append({
-                    "id": str(q["id"]),
-                    "placeholder": q["placeholder"],
-                    "prompt": q["prompt"]
-                })
-            
-            custom_agents.append(CustomAgentOut(
-                id=str(agent_data["id"]),
-                name=agent_data["name"],
-                description=agent_data["description"],
-                reportTemplate=agent_data["report_template"],
-                questions=questions_out,
-                user_id=agent_data["user_id"],
-                is_custom=agent_data["is_custom"],
-                created_by_name=agent_data["created_by_name"],
-                createdAt=agent_data["created_at"],
-                updatedAt=agent_data["updated_at"],
-                can_delete=True
-            ))
-        
-        return custom_agents
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Failed to fetch custom agents: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch custom agents")
@@ -2273,12 +2367,13 @@ async def update_custom_agent(
     agent_id: str,
     request: UpdateCustomAgentRequest,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Update a custom agent"""
     user_id = current_user.id
     
     try:
+        organization_kwargs = _organization_agent_kwargs(current_user)
         # Extract questions data for Supabase service
         questions_data = None
         if request.questions is not None:
@@ -2298,41 +2393,28 @@ async def update_custom_agent(
             description=request.description,
             report_template=request.report_template,
             report_template_css=request.report_template_css,
-            questions=questions_data
+            questions=questions_data,
+            **organization_kwargs,
         )
         
         if not success:
             raise HTTPException(status_code=404, detail="Custom agent not found or access denied")
         
         # Get the updated agent to return
-        agent_data = supabase_service.get_agent_by_id(jwt_token, user_id, agent_id)
+        agent_data = supabase_service.get_agent_by_id(
+            jwt_token,
+            user_id,
+            agent_id,
+            **organization_kwargs,
+        )
         
         if not agent_data:
             raise HTTPException(status_code=500, detail="Failed to retrieve updated agent")
         
-        # Transform to CustomAgentOut format
-        questions_out = []
-        for q in agent_data.get("agent_questions", []):
-            questions_out.append({
-                "id": str(q["id"]),
-                "placeholder": q["placeholder"],
-                "prompt": q["prompt"]
-            })
+        return _custom_agent_response(agent_data, current_user)
         
-        return CustomAgentOut(
-            id=str(agent_data["id"]),
-            name=agent_data["name"],
-            description=agent_data["description"],
-            reportTemplate=agent_data["report_template"],
-            questions=questions_out,
-            user_id=agent_data["user_id"],
-            is_custom=agent_data["is_custom"],
-            created_by_name=agent_data["created_by_name"],
-            createdAt=agent_data["created_at"],
-            updatedAt=agent_data["updated_at"],
-            can_delete=True
-        )
-        
+    except TemplateSecurityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -2343,13 +2425,18 @@ async def update_custom_agent(
 async def delete_custom_agent(
     agent_id: str,
     current_user = Depends(get_current_user),
-    jwt_token: str = Depends(extract_jwt_token)
+    jwt_token: str = Depends(extract_optional_jwt_token)
 ):
     """Delete a custom agent"""
     user_id = current_user.id
     
     try:
-        success = supabase_service.delete_custom_agent(jwt_token, user_id, agent_id)
+        success = supabase_service.delete_custom_agent(
+            jwt_token,
+            user_id,
+            agent_id,
+            **_organization_agent_kwargs(current_user),
+        )
         
         if not success:
             raise HTTPException(status_code=404, detail="Custom agent not found or access denied")
@@ -2366,58 +2453,15 @@ async def delete_custom_agent(
         raise HTTPException(status_code=500, detail="Failed to delete custom agent")
 
 @router.get("/{agent_id}", response_model=Agent)
-def get_agent_by_id(agent_id: str, current_user = Depends(get_current_user), jwt_token: str = Depends(extract_jwt_token)):
+def get_agent_by_id(
+    agent_id: str,
+    current_user = Depends(get_current_user),
+    jwt_token: str = Depends(extract_optional_jwt_token),
+):
     """Get a specific agent by ID (handles both prebuilt and custom agents)"""
-    return _get_agent_by_id_internal(agent_id, current_user.id, jwt_token)
-
-@router.get("/performance/report")
-async def get_performance_report(current_user = Depends(get_current_user)):
-    """Get comprehensive performance metrics for file processing"""
-    performance_monitor = get_performance_monitor()
-    
-    try:
-        # Get performance summary
-        summary = performance_monitor.get_performance_summary(last_n_files=50)
-        
-        if "error" in summary:
-            return {
-                "available": False,
-                "message": summary["error"]
-            }
-        
-        return {
-            "available": True,
-            "user_id": current_user.id,
-            "performance_data": summary,
-            "report_generated_at": time.time()
-        }
-        
-    except Exception as e:
-        logging.error(f"Failed to generate performance report: {e}")
-        return {
-            "available": False,
-            "error": "Failed to generate performance report"
-        }
-
-@router.post("/performance/export")
-async def export_performance_metrics(current_user = Depends(get_current_user)):
-    """Export performance metrics to JSON file"""
-    performance_monitor = get_performance_monitor()
-    
-    try:
-        # Generate filename with timestamp
-        timestamp = int(time.time())
-        filepath = f"performance_export_{timestamp}.json"
-        
-        # Export metrics
-        performance_monitor.export_metrics(filepath, last_n_files=1000)
-        
-        return {
-            "success": True,
-            "filepath": filepath,
-            "message": f"Performance metrics exported to {filepath}"
-        }
-        
-    except Exception as e:
-        logging.error(f"Failed to export performance metrics: {e}")
-        raise HTTPException(status_code=500, detail="Failed to export metrics")
+    return _get_agent_by_id_internal(
+        agent_id,
+        current_user.id,
+        jwt_token,
+        **_organization_agent_kwargs(current_user),
+    )

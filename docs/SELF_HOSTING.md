@@ -115,7 +115,7 @@ build can temporarily require 20 GB or more because Docker retains dependency
 and wheel-building layers. Model files and company documents require additional
 capacity.
 
-The published `v1.0.0` images target `linux/amd64` (x86-64). Native ARM64
+The published `v1.1.0` images target `linux/amd64` (x86-64). Native ARM64
 images are not published or release-tested yet.
 
 ## 3. Model Gateway Options
@@ -227,7 +227,7 @@ preserves the original recipient; see `docs/CONNECTORS.md`.
 
 ## 5. Auth Options
 
-The simplest pilot uses local token auth:
+The simplest single-user pilot uses local token auth:
 
 ```bash
 AUTH_PROVIDER=local
@@ -235,8 +235,41 @@ LOCAL_AUTH_TOKEN=replace-with-a-long-random-token
 ```
 
 This is intended for a trusted internal pilot. The token is equivalent to the
-password for one shared deployment identity. Use Supabase auth or external JWT
-validation when each person needs a distinct identity and isolated permissions.
+password for one shared deployment identity.
+
+For distinct enterprise users, enable generic OpenID Connect. Microsoft Entra
+is the first documented provider:
+
+```bash
+AUTH_PROVIDER=oidc
+OIDC_TENANT_ID=your-entra-tenant-id
+OIDC_DISCOVERY_URL=https://login.microsoftonline.com/your-entra-tenant-id/v2.0/.well-known/openid-configuration
+OIDC_EXPECTED_ISSUER=https://login.microsoftonline.com/your-entra-tenant-id/v2.0
+OIDC_CLIENT_ID=your-client-id
+OIDC_CLIENT_SECRET=your-client-secret
+OIDC_CALLBACK_URL=https://attenly.company.internal/api/auth/oidc/callback
+OIDC_USER_ROLE=Attenly.User
+OIDC_ADMIN_ROLE=Attenly.Admin
+OIDC_ORGANIZATION_SLUG=company
+OIDC_ORGANIZATION_NAME=Company
+OIDC_COOKIE_SECURE=true
+```
+
+OIDC users have private files, saved reports, usage, and email settings. Custom
+agents are shared with active members of the deployment organization; only the
+creator or an organization admin can edit/delete them. See
+[Enterprise SSO](ENTERPRISE_SSO.md) for the Entra app-registration and role
+assignment steps.
+
+For a local Entra test using an existing `.env.docker-test`, run the guided
+setup and preflight. Use the Application (client) ID—not the Object ID—and the
+client secret Value—not its Secret ID:
+
+```powershell
+python scripts/configure_oidc_env.py .env.docker-test
+python scripts/check_self_hosted_env.py .env.docker-test
+docker compose --env-file .env.docker-test -f compose.yml -f compose.build.yml up -d --build --force-recreate --wait
+```
 
 For a company deployment where another component already issues bearer tokens,
 use external JWT validation:
@@ -248,8 +281,8 @@ EXTERNAL_JWT_AUDIENCE=attenly
 EXTERNAL_JWT_JWKS_URL=https://idp.company.internal/.well-known/jwks.json
 ```
 
-Full browser OIDC redirect login is not implemented yet. External JWT mode
-expects a token to already exist.
+External JWT mode still expects a token to already exist and is useful when a
+company gateway owns the browser login.
 
 ## 6. Validation Checklist
 

@@ -16,6 +16,7 @@ from weasyprint import HTML, CSS
 from bs4 import BeautifulSoup
 from markupsafe import Markup
 from app.schemas import Agent, QuestionOut, AnswerType, ColumnDefinition
+from app.services.template_security import restricted_weasyprint_url_fetcher
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +189,10 @@ class WeasyPrintPDFGenerator:
             # Inject CSS into HTML for PDF rendering
             populated_html = self._inject_css(populated_html, agent)
 
-            pdf_bytes = HTML(string=populated_html).write_pdf(
+            pdf_bytes = HTML(
+                string=populated_html,
+                url_fetcher=restricted_weasyprint_url_fetcher,
+            ).write_pdf(
                 presentational_hints=True,  # Respect HTML styling
                 optimize_images=True  # Optimize for smaller file size
             )

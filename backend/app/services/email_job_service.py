@@ -164,7 +164,7 @@ class EmailJobService:
                 return False
 
             user_id = job_data["user_id"]
-            
+
             # Step 2: IDEMPOTENCY CHECK - Skip if report already generated
             if job_data.get("report_id"):
                 logger.info(f"Job {job_id} already has report_id {job_data['report_id']}, skipping processing")
@@ -175,6 +175,30 @@ class EmailJobService:
                     self.job_store.mark_completed(job_id, job_data["report_id"])
                 
                 return True
+
+            # Cookie authentication is not present in the worker. Re-check the
+            # durable OIDC user/membership/org state before downloading private
+            # attachments or starting any document/model work. Completed jobs
+            # remain completed even if their owner is later blocked.
+            if config.AUTH_PROVIDER == "oidc":
+                from app.db import SessionLocal
+                from app.services.identity_service import resource_owner_has_active_access
+
+                with SessionLocal() as db:
+                    has_active_access = resource_owner_has_active_access(
+                        db,
+                        user_id,
+                        require_managed_user=True,
+                    )
+                if not has_active_access:
+                    logger.warning(
+                        "Rejected email job %s because its OIDC resource owner is inactive",
+                        job_id,
+                    )
+                    return self._fail_job(
+                        job_data,
+                        "Attenly account access is no longer active.",
+                    )
             
             attachments = (job_data.get("raw_metadata") or {}).get("attachments", [])
             

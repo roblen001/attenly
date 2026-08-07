@@ -7,11 +7,28 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
+from sqlalchemy import and_, or_
+
 from app import config
 from app.db import SessionLocal
-from app.models import Agent, AgentQuestion, ReportChange, SavedReport, SavedReportDocument
+from app.models import (
+    Agent,
+    AgentQuestion,
+    AppUser,
+    Organization,
+    OrganizationMembership,
+    ReportChange,
+    SavedReport,
+    SavedReportDocument,
+)
 from app.services.diff_service import DiffService
 from app.services.filesystem_storage_service import get_filesystem_storage_service
+from app.services.template_security import (
+    TemplateSecurityError,
+    sanitize_custom_agent_template,
+    sanitize_custom_template_css,
+    sanitize_custom_template_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +64,8 @@ def _parse_datetime(value: Any) -> datetime:
 class SqlAlchemyPersistenceService:
     """Persistence service with the same core surface as SupabaseService."""
 
+    supports_organization_agents = True
+
     def __init__(self):
         self.diff_service = DiffService()
         logger.info("SQLAlchemy persistence service initialized")
@@ -69,13 +88,42 @@ class SqlAlchemyPersistenceService:
         return None
 
     def _agent_to_dict(self, agent: Agent) -> Dict[str, Any]:
+        report_template = agent.report_template
+        report_template_css = agent.report_template_css
+        if agent.is_custom:
+            try:
+                report_template, report_template_css = sanitize_custom_agent_template(
+                    report_template,
+                    report_template_css,
+                )
+            except TemplateSecurityError:
+                logger.warning(
+                    "Disabled an unsafe legacy custom-agent template during read",
+                    extra={"agent_id": str(agent.id)},
+                )
+                report_template = (
+                    "<p>This report template was disabled because it contains "
+                    "unsupported active content.</p>"
+                )
+                report_template_css = None
+
         return {
             "id": str(agent.id),
             "name": agent.name,
             "description": agent.description,
-            "report_template": agent.report_template,
-            "report_template_css": agent.report_template_css,
+            "report_template": report_template,
+            "report_template_css": report_template_css,
             "user_id": agent.user_id,
+            "organization_id": (
+                str(agent.organization_id)
+                if getattr(agent, "organization_id", None) is not None
+                else None
+            ),
+            "created_by_user_id": (
+                str(agent.created_by_user_id)
+                if getattr(agent, "created_by_user_id", None) is not None
+                else None
+            ),
             "is_custom": agent.is_custom,
             "created_by_name": agent.created_by_name,
             "created_at": agent.created_at,
@@ -92,13 +140,35 @@ class SqlAlchemyPersistenceService:
         }
 
     def _report_to_dict(self, report: SavedReport) -> Dict[str, Any]:
+        report_data = deepcopy(report.report_data)
+        # Custom agents use UUID identifiers; bundled prebuilt agents use
+        # trusted string slugs. Re-sanitize UUID-backed snapshots on every read
+        # so reports saved before this security boundary cannot retain active
+        # template markup or resource-loading CSS.
+        if _to_uuid(report.agent_id) is not None and isinstance(report_data, dict):
+            template = report_data.get("template")
+            if isinstance(template, dict) and isinstance(template.get("html"), str):
+                try:
+                    safe_html, safe_css = sanitize_custom_agent_template(
+                        template["html"],
+                        template.get("css"),
+                    )
+                except TemplateSecurityError:
+                    safe_html = (
+                        "<p>This saved report template was disabled because it "
+                        "contains unsupported active content.</p>"
+                    )
+                    safe_css = None
+                template["html"] = safe_html
+                template["css"] = safe_css
+
         return {
             "id": str(report.id),
             "user_id": report.user_id,
             "agent_id": report.agent_id,
             "agent_name": report.agent_name,
             "report_name": report.report_name,
-            "report_data": report.report_data,
+            "report_data": report_data,
             "ai_baseline_answers": report.ai_baseline_answers,
             "generated_at": report.generated_at,
             "saved_at": report.saved_at,
@@ -526,8 +596,23 @@ class SqlAlchemyPersistenceService:
         report_template: str,
         report_template_css: Optional[str] = None,
         questions: Optional[List[Dict[str, str]]] = None,
+        *,
+        organization_id: Optional[str] = None,
+        created_by_user_id: Optional[str] = None,
     ) -> str:
         questions = questions or []
+        organization_uuid = _to_uuid(organization_id)
+        creator_uuid = _to_uuid(created_by_user_id)
+        if organization_id is not None and organization_uuid is None:
+            raise ValueError("organization_id must be a UUID")
+        if created_by_user_id is not None and creator_uuid is None:
+            raise ValueError("created_by_user_id must be a UUID")
+
+        report_template, report_template_css = sanitize_custom_agent_template(
+            report_template,
+            report_template_css,
+        )
+
         with self._session() as session:
             agent = Agent(
                 name=name,
@@ -535,6 +620,8 @@ class SqlAlchemyPersistenceService:
                 report_template=report_template,
                 report_template_css=report_template_css,
                 user_id=str(user_id),
+                organization_id=organization_uuid,
+                created_by_user_id=creator_uuid,
                 is_custom=True,
                 created_by_name=created_by_name,
             )
@@ -549,14 +636,34 @@ class SqlAlchemyPersistenceService:
             session.flush()
             return str(agent.id)
 
-    def get_user_custom_agents(self, user_jwt: str, user_id: str) -> List[Dict[str, Any]]:
+    def get_user_custom_agents(
+        self,
+        user_jwt: str,
+        user_id: str,
+        *,
+        organization_id: Optional[str] = None,
+        app_user_id: Optional[str] = None,
+        organization_role: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         with self._session() as session:
-            agents = (
-                session.query(Agent)
-                .filter(Agent.user_id == str(user_id), Agent.is_custom.is_(True))
-                .order_by(Agent.created_at.desc())
-                .all()
-            )
+            query = session.query(Agent).filter(Agent.is_custom.is_(True))
+            if organization_id is not None:
+                organization_uuid = _to_uuid(organization_id)
+                if organization_uuid is None:
+                    return []
+                query = query.filter(
+                    or_(
+                        Agent.organization_id == organization_uuid,
+                        and_(
+                            Agent.organization_id.is_(None),
+                            Agent.user_id == str(user_id),
+                        ),
+                    )
+                )
+            else:
+                query = query.filter(Agent.user_id == str(user_id))
+
+            agents = query.order_by(Agent.created_at.desc()).all()
             return [self._agent_to_dict(agent) for agent in agents]
 
     def get_agent_by_id(
@@ -564,25 +671,78 @@ class SqlAlchemyPersistenceService:
         user_jwt: str,
         user_id: str,
         agent_id: str,
+        *,
+        organization_id: Optional[str] = None,
+        app_user_id: Optional[str] = None,
+        organization_role: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         agent_uuid = _to_uuid(agent_id)
         if not agent_uuid:
             return None
 
         with self._session() as session:
+            query = session.query(Agent).filter(
+                Agent.id == agent_uuid,
+                Agent.is_custom.is_(True),
+            )
+            if organization_id is not None:
+                organization_uuid = _to_uuid(organization_id)
+                if organization_uuid is None:
+                    return None
+                query = query.filter(
+                    or_(
+                        Agent.organization_id == organization_uuid,
+                        and_(
+                            Agent.organization_id.is_(None),
+                            Agent.user_id == str(user_id),
+                        ),
+                    )
+                )
+            else:
+                query = query.filter(Agent.user_id == str(user_id))
+
+            agent = query.first()
+            return self._agent_to_dict(agent) if agent else None
+
+    def get_agent_by_id_system(self, agent_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        agent_uuid = _to_uuid(agent_id)
+        if not agent_uuid:
+            return None
+
+        with self._session() as session:
+            visible_organization_ids = (
+                session.query(OrganizationMembership.organization_id)
+                .join(
+                    AppUser,
+                    AppUser.id == OrganizationMembership.app_user_id,
+                )
+                .join(
+                    Organization,
+                    Organization.id == OrganizationMembership.organization_id,
+                )
+                .filter(
+                    AppUser.resource_owner_id == str(user_id),
+                    AppUser.status == "active",
+                    OrganizationMembership.status == "active",
+                    Organization.status == "active",
+                )
+            )
             agent = (
                 session.query(Agent)
                 .filter(
                     Agent.id == agent_uuid,
-                    Agent.user_id == str(user_id),
                     Agent.is_custom.is_(True),
+                    or_(
+                        and_(
+                            Agent.organization_id.is_(None),
+                            Agent.user_id == str(user_id),
+                        ),
+                        Agent.organization_id.in_(visible_organization_ids),
+                    ),
                 )
                 .first()
             )
             return self._agent_to_dict(agent) if agent else None
-
-    def get_agent_by_id_system(self, agent_id: str, user_id: str) -> Optional[Dict[str, Any]]:
-        return self.get_agent_by_id("", user_id, agent_id)
 
     def update_custom_agent(
         self,
@@ -594,32 +754,78 @@ class SqlAlchemyPersistenceService:
         report_template: Optional[str] = None,
         report_template_css: Optional[str] = None,
         questions: Optional[List[Dict[str, str]]] = None,
+        *,
+        organization_id: Optional[str] = None,
+        app_user_id: Optional[str] = None,
+        organization_role: Optional[str] = None,
     ) -> bool:
         agent_uuid = _to_uuid(agent_id)
         if not agent_uuid:
             return False
 
         with self._session() as session:
-            agent = (
-                session.query(Agent)
-                .filter(
-                    Agent.id == agent_uuid,
-                    Agent.user_id == str(user_id),
-                    Agent.is_custom.is_(True),
-                )
-                .first()
+            query = session.query(Agent).filter(
+                Agent.id == agent_uuid,
+                Agent.is_custom.is_(True),
             )
+            if organization_id is not None:
+                organization_uuid = _to_uuid(organization_id)
+                if organization_uuid is None:
+                    return False
+
+                organization_role_normalized = (organization_role or "").strip().lower()
+                if organization_role_normalized == "admin":
+                    organization_permission = Agent.organization_id == organization_uuid
+                else:
+                    creator_uuid = _to_uuid(app_user_id)
+                    creator_conditions = [
+                        and_(
+                            Agent.created_by_user_id.is_(None),
+                            Agent.user_id == str(user_id),
+                        )
+                    ]
+                    if creator_uuid is not None:
+                        creator_conditions.insert(0, Agent.created_by_user_id == creator_uuid)
+                    organization_permission = and_(
+                        Agent.organization_id == organization_uuid,
+                        or_(*creator_conditions),
+                    )
+
+                query = query.filter(
+                    or_(
+                        organization_permission,
+                        and_(
+                            Agent.organization_id.is_(None),
+                            Agent.user_id == str(user_id),
+                        ),
+                    )
+                )
+            else:
+                query = query.filter(Agent.user_id == str(user_id))
+
+            agent = query.first()
             if not agent:
                 return False
+
+            sanitized_report_template = (
+                sanitize_custom_template_html(report_template)
+                if report_template is not None
+                else None
+            )
+            sanitized_report_template_css = (
+                sanitize_custom_template_css(report_template_css)
+                if report_template_css is not None
+                else None
+            )
 
             if name is not None:
                 agent.name = name
             if description is not None:
                 agent.description = description
-            if report_template is not None:
-                agent.report_template = report_template
-            if report_template_css is not None:
-                agent.report_template_css = report_template_css
+            if sanitized_report_template is not None:
+                agent.report_template = sanitized_report_template
+            if sanitized_report_template_css is not None:
+                agent.report_template_css = sanitized_report_template_css
             agent.updated_at = datetime.now(timezone.utc)
 
             if questions is not None:
@@ -633,21 +839,61 @@ class SqlAlchemyPersistenceService:
 
             return True
 
-    def delete_custom_agent(self, user_jwt: str, user_id: str, agent_id: str) -> bool:
+    def delete_custom_agent(
+        self,
+        user_jwt: str,
+        user_id: str,
+        agent_id: str,
+        *,
+        organization_id: Optional[str] = None,
+        app_user_id: Optional[str] = None,
+        organization_role: Optional[str] = None,
+    ) -> bool:
         agent_uuid = _to_uuid(agent_id)
         if not agent_uuid:
             return False
 
         with self._session() as session:
-            agent = (
-                session.query(Agent)
-                .filter(
-                    Agent.id == agent_uuid,
-                    Agent.user_id == str(user_id),
-                    Agent.is_custom.is_(True),
-                )
-                .first()
+            query = session.query(Agent).filter(
+                Agent.id == agent_uuid,
+                Agent.is_custom.is_(True),
             )
+            if organization_id is not None:
+                organization_uuid = _to_uuid(organization_id)
+                if organization_uuid is None:
+                    return False
+
+                organization_role_normalized = (organization_role or "").strip().lower()
+                if organization_role_normalized == "admin":
+                    organization_permission = Agent.organization_id == organization_uuid
+                else:
+                    creator_uuid = _to_uuid(app_user_id)
+                    creator_conditions = [
+                        and_(
+                            Agent.created_by_user_id.is_(None),
+                            Agent.user_id == str(user_id),
+                        )
+                    ]
+                    if creator_uuid is not None:
+                        creator_conditions.insert(0, Agent.created_by_user_id == creator_uuid)
+                    organization_permission = and_(
+                        Agent.organization_id == organization_uuid,
+                        or_(*creator_conditions),
+                    )
+
+                query = query.filter(
+                    or_(
+                        organization_permission,
+                        and_(
+                            Agent.organization_id.is_(None),
+                            Agent.user_id == str(user_id),
+                        ),
+                    )
+                )
+            else:
+                query = query.filter(Agent.user_id == str(user_id))
+
+            agent = query.first()
             if not agent:
                 return False
 

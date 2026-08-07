@@ -46,6 +46,8 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 # Common rate limit configurations
 RATE_LIMITS = {
     "auth": "10/minute",      # Login attempts
+    "oidc_login": "300/minute",  # Enterprise users may share a corporate NAT
+    "oidc_callback": "600/minute",  # Do not strand completed IdP sign-ins
     "upload": "5/minute",     # File uploads
     "llm": "3/minute",        # LLM processing
     "general": "100/minute",  # General API calls

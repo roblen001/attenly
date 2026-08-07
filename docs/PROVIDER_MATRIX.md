@@ -9,7 +9,8 @@ which parts are still adapter work.
 | Area | Provider | Env Setting | Notes |
 | --- | --- | --- | --- |
 | Auth | Local bearer token | `AUTH_PROVIDER=local` | Trusted internal pilot mode. One shared token maps every login to the same configured local identity and workspace. |
-| Auth | External JWT | `AUTH_PROVIDER=external_jwt` | For an IdP, reverse proxy, or API gateway that already issues bearer tokens. Full browser OIDC redirect login is not implemented yet. |
+| Auth | Generic OIDC (Microsoft Entra target) | `AUTH_PROVIDER=oidc` | Browser Authorization Code + PKCE through an Attenly BFF. Distinct users, app-role authorization, opaque sessions, and local blocking. Requires SQLAlchemy + filesystem in this release. |
+| Auth | External JWT | `AUTH_PROVIDER=external_jwt` | For an IdP, reverse proxy, or API gateway that already issues bearer tokens. |
 | Database | SQLAlchemy + SQLite | `DATABASE_PROVIDER=sqlalchemy`, `DATABASE_URL=sqlite:////data/attenly.db` | Default Docker self-hosted path. Tables can be auto-created with `DATABASE_AUTO_CREATE_TABLES=true`. |
 | Database | Supabase | `DATABASE_PROVIDER=supabase` | Original hosted/default stack. |
 | Storage | Filesystem | `STORAGE_PROVIDER=filesystem`, `STORAGE_PATH=/data/storage` | Default Docker self-hosted path. Stored in the `attenly-data` Docker volume. |
@@ -37,14 +38,17 @@ which parts are still adapter work.
 | --- | --- | --- |
 | Fastest on-prem Docker deployment | `.env.example` | Local auth, SQLite, filesystem storage, OpenAI-compatible models, no email. |
 | Local no-Supabase with Gemini | `.env.local.example` | Local auth, SQLAlchemy/SQLite, filesystem storage, Gemini, no email. |
-| Company model gateway | `.env.enterprise.example` | SQLAlchemy/SQLite, filesystem storage, OpenAI-compatible chat and embeddings. |
+| Company SSO and model gateway | `.env.enterprise.example` | Microsoft Entra/generic OIDC, SQLAlchemy/SQLite, private filesystem storage, OpenAI-compatible chat and embeddings. |
 | Existing hosted stack | `.env.default.example` | Supabase, Gemini, optional Resend. |
 
 ## Known Gaps
 
-- Full browser OIDC redirect login is not implemented yet. Use
-  `AUTH_PROVIDER=external_jwt` only when another component already issues the
-  bearer token.
+- Microsoft Entra is the first documented OIDC target. Validate Entra—and any
+  other IdP's claim/client-auth interoperability—in staging before production.
+- OIDC currently supports the SQLAlchemy/filesystem persistence path. It does
+  not add organization sharing to Supabase RLS.
+- SAML, SCIM lifecycle provisioning, and Microsoft Graph group synchronization
+  are not included. OIDC uses JIT provisioning and Entra app roles.
 - Proprietary resale, white-label distribution, and managed hosting require
   separate commercial terms unless the distributor complies with AGPL source
   sharing obligations.
@@ -53,5 +57,5 @@ which parts are still adapter work.
   download.
 - Provider interfaces still need to be hardened so custom company logic can be
   added without touching deep application code.
-- The default Compose profile pins the immutable `v1.0.0` image tag. Override
+- The default Compose profile pins the immutable `v1.1.0` image tag. Override
   `ATTENLY_BACKEND_IMAGE` and `ATTENLY_FRONTEND_IMAGE` to use another release.

@@ -30,6 +30,7 @@ from app.config import (
 )
 from app.constants.default_template_css import DEFAULT_TEMPLATE_CSS
 from app.schemas import TemplateIngestResponse
+from app.services.template_security import restricted_weasyprint_url_fetcher
 
 logger = logging.getLogger(__name__)
 
@@ -724,7 +725,10 @@ breaks, and placeholders as faithfully as possible.
         try:
             from weasyprint import HTML
 
-            return HTML(string=html).write_pdf()
+            return HTML(
+                string=html,
+                url_fetcher=restricted_weasyprint_url_fetcher,
+            ).write_pdf()
         except Exception as exc:
             raise ValueError(f"Failed to render HTML template for vision input: {exc}") from exc
 

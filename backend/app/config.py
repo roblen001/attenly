@@ -4,6 +4,7 @@ Centralized Configuration for Attenly Backend (updated for small, fast docTR def
 
 import os
 from typing import Dict, List, Set
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,6 +25,15 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name: str, default: int) -> int:
+    """Load an integer without making malformed optional config crash import."""
+
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
 
 
 APP_PROFILE = _normalized_env("APP_PROFILE", "default")
@@ -72,7 +82,7 @@ ALLOWED_PROVIDER_VALUES: Dict[str, Set[str]] = {
 
 
 CURRENT_RUNTIME_PROVIDERS: Dict[str, Set[str]] = {
-    "auth": {"supabase", "local", "external_jwt"},
+    "auth": {"supabase", "local", "oidc", "external_jwt"},
     "database": {"supabase", "sqlalchemy"},
     "storage": {"supabase", "filesystem"},
     "llm": {"gemini", "openai_compatible"},
@@ -124,6 +134,48 @@ EXTERNAL_JWT_USER_ID_CLAIM = os.getenv("EXTERNAL_JWT_USER_ID_CLAIM", "sub")
 EXTERNAL_JWT_EMAIL_CLAIM = os.getenv("EXTERNAL_JWT_EMAIL_CLAIM", "email")
 EXTERNAL_JWT_NAME_CLAIM = os.getenv("EXTERNAL_JWT_NAME_CLAIM", "name")
 EXTERNAL_JWT_REQUIRE_EXP = _env_bool("EXTERNAL_JWT_REQUIRE_EXP", True)
+
+# Generic OpenID Connect authentication. The first supported deployment target
+# is a single Microsoft Entra tenant, but the protocol-level settings remain
+# provider-neutral so another standards-compliant IdP can be added without
+# changing Attenly's user or session model.
+OIDC_DISCOVERY_URL = os.getenv("OIDC_DISCOVERY_URL")
+OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID")
+OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET")
+OIDC_CLIENT_AUTH_METHOD = _normalized_env("OIDC_CLIENT_AUTH_METHOD", "client_secret_post")
+OIDC_SCOPES = os.getenv("OIDC_SCOPES", "openid profile email").strip()
+OIDC_CALLBACK_URL = os.getenv("OIDC_CALLBACK_URL")
+OIDC_EXPECTED_ISSUER = os.getenv("OIDC_EXPECTED_ISSUER")
+OIDC_ALLOWED_ID_TOKEN_ALGORITHMS = tuple(
+    value.strip()
+    for value in os.getenv("OIDC_ALLOWED_ID_TOKEN_ALGORITHMS", "RS256").split(",")
+    if value.strip()
+)
+OIDC_ROLES_CLAIM = os.getenv("OIDC_ROLES_CLAIM", "roles").strip()
+OIDC_USER_ROLE = os.getenv("OIDC_USER_ROLE", "Attenly.User").strip()
+OIDC_ADMIN_ROLE = os.getenv("OIDC_ADMIN_ROLE", "Attenly.Admin").strip()
+OIDC_TENANT_ID = os.getenv("OIDC_TENANT_ID")
+OIDC_ORGANIZATION_SLUG = os.getenv("OIDC_ORGANIZATION_SLUG", "default").strip()
+OIDC_ORGANIZATION_NAME = os.getenv("OIDC_ORGANIZATION_NAME", "Attenly").strip()
+OIDC_SESSION_TTL_HOURS = _env_int("OIDC_SESSION_TTL_HOURS", 12)
+OIDC_LOGIN_TTL_SECONDS = _env_int("OIDC_LOGIN_TTL_SECONDS", 600)
+OIDC_CLOCK_SKEW_SECONDS = _env_int("OIDC_CLOCK_SKEW_SECONDS", 60)
+OIDC_SESSION_COOKIE_NAME = os.getenv(
+    "OIDC_SESSION_COOKIE_NAME", "__Host-attenly_session"
+).strip()
+OIDC_LOGIN_COOKIE_NAME = os.getenv(
+    "OIDC_LOGIN_COOKIE_NAME", "__Host-attenly_oidc_flow"
+).strip()
+OIDC_ALLOWED_ORIGINS = tuple(
+    value.strip().rstrip("/")
+    for value in os.getenv("OIDC_ALLOWED_ORIGINS", "").split(",")
+    if value.strip()
+)
+OIDC_COOKIE_SECURE = _env_bool(
+    "OIDC_COOKIE_SECURE",
+    os.getenv("ENV", "development").strip().lower() == "production",
+)
+OIDC_ALLOW_INSECURE_HTTP = _env_bool("OIDC_ALLOW_INSECURE_HTTP", False)
 
 # =============================================================================
 # EMAIL SERVICE CONFIGURATION
@@ -431,7 +483,7 @@ DATABASE_AUTO_CREATE_TABLES = _env_bool(
 # DEVELOPMENT & DEBUGGING
 # =============================================================================
 
-ENVIRONMENT = os.getenv("ENV", "development")
+ENVIRONMENT = os.getenv("ENV", "development").strip().lower()
 DEBUG_MODE = _env_bool("DEBUG_MODE", False)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -452,7 +504,7 @@ CACHE_TTL_SECONDS = 3600
 # VALIDATION FUNCTIONS
 # =============================================================================
 
-_PLACEHOLDER_MARKERS = ("replace-with", "your_", "your-", "change-me")
+_PLACEHOLDER_MARKERS = ("replace-with", "your_", "your-", "change-me", "paste_")
 
 
 def _is_placeholder(value: str | None) -> bool:
@@ -544,6 +596,152 @@ def _validate_profile_and_providers(errors: List[str]) -> None:
             errors.append("EXTERNAL_JWT_JWKS_URL requires an asymmetric algorithm such as RS256")
         if not EXTERNAL_JWT_USER_ID_CLAIM:
             errors.append("EXTERNAL_JWT_USER_ID_CLAIM cannot be blank")
+
+    if AUTH_PROVIDER == "oidc":
+        missing_oidc = [
+            name
+            for name, value in {
+                "OIDC_DISCOVERY_URL": OIDC_DISCOVERY_URL,
+                "OIDC_CLIENT_ID": OIDC_CLIENT_ID,
+                "OIDC_CALLBACK_URL": OIDC_CALLBACK_URL,
+            }.items()
+            if not value
+        ]
+        if OIDC_CLIENT_AUTH_METHOD != "none" and not OIDC_CLIENT_SECRET:
+            missing_oidc.append("OIDC_CLIENT_SECRET")
+        if missing_oidc:
+            errors.append("OIDC authentication requires: " + ", ".join(missing_oidc))
+        if OIDC_CLIENT_AUTH_METHOD not in {"client_secret_basic", "client_secret_post", "none"}:
+            errors.append(
+                "OIDC_CLIENT_AUTH_METHOD must be 'client_secret_basic', "
+                "'client_secret_post', or 'none'"
+            )
+        if "openid" not in OIDC_SCOPES.split():
+            errors.append("OIDC_SCOPES must include 'openid'")
+        if not OIDC_ALLOWED_ID_TOKEN_ALGORITHMS:
+            errors.append("OIDC_ALLOWED_ID_TOKEN_ALGORITHMS cannot be empty")
+        safe_id_token_algorithms = {
+            "RS256", "RS384", "RS512",
+            "PS256", "PS384", "PS512",
+            "ES256", "ES384", "ES512",
+            "EdDSA",
+        }
+        unsupported_algorithms = set(OIDC_ALLOWED_ID_TOKEN_ALGORITHMS) - safe_id_token_algorithms
+        if unsupported_algorithms:
+            errors.append(
+                "OIDC_ALLOWED_ID_TOKEN_ALGORITHMS contains unsupported values: "
+                + ", ".join(sorted(unsupported_algorithms))
+            )
+        if not OIDC_ROLES_CLAIM or not OIDC_USER_ROLE or not OIDC_ADMIN_ROLE:
+            errors.append(
+                "OIDC_ROLES_CLAIM, OIDC_USER_ROLE, and OIDC_ADMIN_ROLE cannot be blank"
+            )
+        if not OIDC_ORGANIZATION_SLUG or not OIDC_ORGANIZATION_NAME:
+            errors.append(
+                "OIDC_ORGANIZATION_SLUG and OIDC_ORGANIZATION_NAME cannot be blank"
+            )
+        for name in (
+            "OIDC_SESSION_TTL_HOURS",
+            "OIDC_LOGIN_TTL_SECONDS",
+            "OIDC_CLOCK_SKEW_SECONDS",
+        ):
+            configured_value = os.getenv(name)
+            if configured_value is not None:
+                try:
+                    int(configured_value)
+                except ValueError:
+                    errors.append(f"{name} must be an integer")
+        if OIDC_SESSION_TTL_HOURS < 1 or OIDC_SESSION_TTL_HOURS > 168:
+            errors.append("OIDC_SESSION_TTL_HOURS must be between 1 and 168")
+        if OIDC_LOGIN_TTL_SECONDS < 60 or OIDC_LOGIN_TTL_SECONDS > 1800:
+            errors.append("OIDC_LOGIN_TTL_SECONDS must be between 60 and 1800")
+        if OIDC_CLOCK_SKEW_SECONDS < 0 or OIDC_CLOCK_SKEW_SECONDS > 300:
+            errors.append("OIDC_CLOCK_SKEW_SECONDS must be between 0 and 300")
+        if OIDC_USER_ROLE == OIDC_ADMIN_ROLE:
+            errors.append("OIDC_USER_ROLE and OIDC_ADMIN_ROLE must be different")
+        invalid_cookie_names = [
+            name
+            for name, value in {
+                "OIDC_SESSION_COOKIE_NAME": OIDC_SESSION_COOKIE_NAME,
+                "OIDC_LOGIN_COOKIE_NAME": OIDC_LOGIN_COOKIE_NAME,
+            }.items()
+            if not value
+            or any(
+                character in value
+                for character in '()<>@,;:\\"/[]?={} \t\r\n'
+            )
+        ]
+        if invalid_cookie_names:
+            errors.append(
+                "OIDC cookie names are blank or invalid: "
+                + ", ".join(invalid_cookie_names)
+            )
+        if OIDC_SESSION_COOKIE_NAME == OIDC_LOGIN_COOKIE_NAME:
+            errors.append("OIDC session and login cookie names must be different")
+        if not OIDC_COOKIE_SECURE and any(
+            name.startswith("__Host-")
+            for name in (OIDC_SESSION_COOKIE_NAME, OIDC_LOGIN_COOKIE_NAME)
+        ):
+            errors.append(
+                "__Host- OIDC cookie names require OIDC_COOKIE_SECURE=true; "
+                "use non-prefixed cookie names only for local HTTP development"
+            )
+        for name, value in {
+            "OIDC_DISCOVERY_URL": OIDC_DISCOVERY_URL,
+            "OIDC_CLIENT_ID": OIDC_CLIENT_ID,
+            "OIDC_CLIENT_SECRET": OIDC_CLIENT_SECRET,
+            "OIDC_CALLBACK_URL": OIDC_CALLBACK_URL,
+            "OIDC_EXPECTED_ISSUER": OIDC_EXPECTED_ISSUER,
+            "OIDC_TENANT_ID": OIDC_TENANT_ID,
+        }.items():
+            if value and _is_placeholder(value):
+                errors.append(f"{name} still contains an example placeholder")
+        if not OIDC_ALLOW_INSECURE_HTTP:
+            for name, value in {
+                "OIDC_DISCOVERY_URL": OIDC_DISCOVERY_URL,
+                "OIDC_CALLBACK_URL": OIDC_CALLBACK_URL,
+            }.items():
+                if value and not value.startswith("https://"):
+                    errors.append(f"{name} must use HTTPS")
+        if ENVIRONMENT == "production" and not OIDC_COOKIE_SECURE:
+            errors.append("OIDC_COOKIE_SECURE must be true in production")
+        if ENVIRONMENT == "production" and OIDC_ALLOW_INSECURE_HTTP:
+            errors.append("OIDC_ALLOW_INSECURE_HTTP cannot be enabled in production")
+        if ENVIRONMENT == "production":
+            for name, value in {
+                "OIDC_SESSION_COOKIE_NAME": OIDC_SESSION_COOKIE_NAME,
+                "OIDC_LOGIN_COOKIE_NAME": OIDC_LOGIN_COOKIE_NAME,
+            }.items():
+                if not value.startswith("__Host-"):
+                    errors.append(
+                        f"{name} must use the __Host- prefix in production"
+                    )
+        if "*" in {
+            origin.strip()
+            for origin in os.getenv("CORS_ORIGINS", "").split(",")
+        }:
+            errors.append("CORS_ORIGINS cannot contain '*' with OIDC authentication")
+        if OIDC_CALLBACK_URL and APP_URL:
+            callback = urlsplit(OIDC_CALLBACK_URL)
+            application = urlsplit(APP_URL)
+            if (
+                callback.scheme.lower(),
+                callback.netloc.casefold(),
+            ) != (
+                application.scheme.lower(),
+                application.netloc.casefold(),
+            ):
+                errors.append(
+                    "OIDC_CALLBACK_URL and APP_URL must use the same origin for the "
+                    "cookie-backed login flow"
+                )
+        if DATABASE_PROVIDER != "sqlalchemy":
+            errors.append("OIDC authentication requires DATABASE_PROVIDER='sqlalchemy'")
+        if STORAGE_PROVIDER != "filesystem":
+            errors.append(
+                "OIDC authentication currently requires STORAGE_PROVIDER='filesystem' "
+                "to preserve per-user file isolation"
+            )
 
     if AUTH_PROVIDER != "supabase" and (
         DATABASE_PROVIDER == "supabase" or STORAGE_PROVIDER == "supabase"
@@ -789,6 +987,16 @@ def get_config_summary() -> dict:
             "external_jwt_algorithm": EXTERNAL_JWT_ALGORITHM if AUTH_PROVIDER == "external_jwt" else None,
             "external_jwt_issuer_configured": bool(EXTERNAL_JWT_ISSUER),
             "external_jwt_audience_configured": bool(EXTERNAL_JWT_AUDIENCE),
+            "oidc_discovery_configured": bool(OIDC_DISCOVERY_URL),
+            "oidc_client_id_configured": bool(OIDC_CLIENT_ID),
+            "oidc_client_secret_configured": bool(OIDC_CLIENT_SECRET),
+            "oidc_callback_url": OIDC_CALLBACK_URL if AUTH_PROVIDER == "oidc" else None,
+            "oidc_expected_issuer_configured": bool(OIDC_EXPECTED_ISSUER),
+            "oidc_tenant_restricted": bool(OIDC_TENANT_ID),
+            "oidc_organization_slug": (
+                OIDC_ORGANIZATION_SLUG if AUTH_PROVIDER == "oidc" else None
+            ),
+            "oidc_cookie_secure": OIDC_COOKIE_SECURE if AUTH_PROVIDER == "oidc" else None,
         },
         "llm": {
             "model_name": LLM_MODEL_NAME,

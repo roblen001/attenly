@@ -13,6 +13,7 @@ import asyncio
 from .embedding_batch_service import get_embedding_service
 from .performance_monitor import time_operation
 from .credit_service import get_credit_service
+from .vector_collection import collection_name_for_user
 from app.config import EMBEDDING_MODEL_NAME, EMBEDDING_PROVIDER
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class VectorStore:
 
     def __init__(self, user_id: str):
         self.user_id = user_id
-        self.collection_name = f"user_{user_id}"
+        self.collection_name = collection_name_for_user(user_id)
         self.credit_service = get_credit_service()
         self._initialize_chromadb()
 

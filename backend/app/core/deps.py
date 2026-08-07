@@ -1,7 +1,7 @@
 """Authentication dependencies for configured auth providers."""
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from fastapi import Depends, HTTPException, status, Header
+from fastapi import HTTPException, Request, status, Header
 from typing import Optional
 from app.client import supabase_client
 from app import config
@@ -17,6 +17,11 @@ class AuthenticatedUser:
     email: str
     user_metadata: dict
     created_at: str
+    provider: str = ""
+    app_user_id: Optional[str] = None
+    organization_id: Optional[str] = None
+    organization_role: Optional[str] = None
+    organization_status: Optional[str] = None
 
 
 def _unauthorized(detail: str) -> HTTPException:
@@ -56,6 +61,7 @@ def _get_local_user(token: str) -> AuthenticatedUser:
             "display_name": config.LOCAL_AUTH_DISPLAY_NAME,
         },
         created_at=datetime.now(timezone.utc).isoformat(),
+        provider="local",
     )
 
 
@@ -72,10 +78,55 @@ def _get_external_jwt_user(token: str) -> AuthenticatedUser:
         email=principal.email,
         user_metadata=principal.user_metadata,
         created_at=principal.created_at,
+        provider="external_jwt",
     )
 
 
-async def get_current_user(authorization: Optional[str] = Header(None, alias="Authorization")):
+def _get_oidc_user(request: Request) -> AuthenticatedUser:
+    from app.db import SessionLocal
+    from app.services.oidc_auth import (
+        OIDCAuthenticationError,
+        OIDCAuthorizationError,
+        authenticate_oidc_session,
+        validate_browser_origin,
+    )
+
+    try:
+        validate_browser_origin(request)
+    except OIDCAuthorizationError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    try:
+        with SessionLocal() as db:
+            principal = authenticate_oidc_session(
+                db,
+                request.cookies.get(config.OIDC_SESSION_COOKIE_NAME),
+            )
+    except (OIDCAuthenticationError, OIDCAuthorizationError) as exc:
+        raise _unauthorized(str(exc)) from exc
+
+    return AuthenticatedUser(
+        id=principal.resource_owner_id,
+        email=principal.email,
+        user_metadata={
+            "provider": "oidc",
+            "display_name": principal.display_name,
+            "organization_id": principal.organization_id,
+            "organization_role": principal.organization_role,
+        },
+        created_at=principal.created_at,
+        provider="oidc",
+        app_user_id=principal.app_user_id,
+        organization_id=principal.organization_id,
+        organization_role=principal.organization_role,
+        organization_status=principal.membership_status,
+    )
+
+
+def get_current_user(
+    request: Request,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
     """
     Dependency to get the current authenticated user from the configured auth provider.
     
@@ -88,6 +139,9 @@ async def get_current_user(authorization: Optional[str] = Header(None, alias="Au
     Raises:
         HTTPException: If token is missing, invalid, or user not found
     """
+    if config.AUTH_PROVIDER == "oidc":
+        return _get_oidc_user(request)
+
     token = _extract_bearer_token(authorization)
 
     if config.AUTH_PROVIDER == "local":

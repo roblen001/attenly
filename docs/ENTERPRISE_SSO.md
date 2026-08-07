@@ -21,6 +21,31 @@ and the browser receives only an opaque `HttpOnly` Attenly session cookie.
 - A local block overrides the identity provider and revokes all of that user's
   active Attenly sessions immediately.
 
+### User and admin permissions
+
+These are Attenly application roles. Entra defines and assigns the role values,
+includes them in the verified ID token, and Attenly enforces the corresponding
+permissions.
+
+| Capability | `Attenly.User` | `Attenly.Admin` |
+| --- | :---: | :---: |
+| Sign in and use Attenly | Yes | Yes |
+| Create custom agents | Yes | Yes |
+| Discover and run organization-shared agents | Yes | Yes |
+| Edit or delete an agent they created | Yes | Yes |
+| Edit or delete another member's agent | No | Yes |
+| Open **Settings > Users** and list organization users | No | Yes |
+| Block or unblock another user | No | Yes |
+| View or export system-wide performance metrics | No | Yes |
+| Access their own private files, uploads, reports, usage, and email settings | Yes | Yes |
+| Access another user's private files, uploads, reports, usage, or email settings | No | No |
+
+Assigning `Attenly.Admin` by itself is sufficient for login; an administrator
+does not also need `Attenly.User`. If both are assigned, admin takes precedence.
+An Entra directory role such as Global Administrator does not grant Attenly
+administrator access—the user or group must be assigned the `Attenly.Admin`
+application role for this enterprise application.
+
 Document/report sharing, SAML, SCIM, Graph group synchronization, and local
 passwords are not part of this implementation.
 

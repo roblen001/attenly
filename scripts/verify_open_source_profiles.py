@@ -330,6 +330,7 @@ def cases() -> list[ProfileCase]:
         ProfileCase(
             name="enterprise_openai_oidc",
             env={
+                "ENV": "production",
                 "APP_PROFILE": "enterprise",
                 "APP_URL": "https://attenly.example",
                 "CORS_ORIGINS": "https://attenly.example",
@@ -339,6 +340,8 @@ def cases() -> list[ProfileCase]:
                 "OIDC_CLIENT_ID": "fake-oidc-client",
                 "OIDC_CLIENT_SECRET": "fake-oidc-secret",
                 "OIDC_CALLBACK_URL": "https://attenly.example/api/auth/oidc/callback",
+                "OIDC_ALLOWED_ORIGINS": "https://attenly.example",
+                "OIDC_COOKIE_SECURE": "true",
                 "OIDC_TENANT_ID": "fake-tenant",
                 "OIDC_USER_ROLE": "Attenly.User",
                 "OIDC_ADMIN_ROLE": "Attenly.Admin",

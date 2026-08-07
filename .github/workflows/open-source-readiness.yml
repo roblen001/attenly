@@ -32,6 +32,8 @@ jobs:
           python -m pip install SQLAlchemy==2.0.43
           python -m pip install diff-match-patch==20200713
           python -m pip install beautifulsoup4==4.12.3
+          python -m pip install nh3==0.3.6
+          python -m pip install tinycss2==1.5.1
           python -m pip install PyJWT==2.13.0
 
       - name: Verify documented provider profiles

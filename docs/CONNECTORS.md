@@ -51,6 +51,12 @@ Required Entra/Azure setup:
 - grant tenant-wide admin consent
 - create or choose an Exchange Online mailbox Attenly will poll and send as
 
+Use a dedicated app registration for the Microsoft Graph email connector rather
+than the Attenly browser-SSO registration. Graph email requires privileged
+application permissions, while SSO needs no Microsoft Graph permissions.
+Separate registrations keep credentials, permissions, rotation, and incident
+response independent.
+
 Do not select Delegated permissions. Attenly uses the OAuth client-credentials
 flow, so no Microsoft user is signed in while the backend polls the mailbox.
 
@@ -279,7 +285,8 @@ The initializer securely prompts for the Resend API key and webhook secret.
 
 - No in-app Microsoft setup wizard.
 - No automatic Entra app registration.
-- No full browser Microsoft sign-in flow yet.
+- Browser SSO is configured separately through `AUTH_PROVIDER=oidc`; the Graph
+  connector app itself does not sign users in.
 - Connector credentials are environment-managed, not UI-managed.
 - Production deployments should place internal cron routes behind a private
   network, VPN, gateway, or scheduler with restricted access.

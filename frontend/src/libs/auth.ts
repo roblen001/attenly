@@ -8,7 +8,7 @@ import {
 } from './configs';
 import { supabase } from './supabase';
 
-export type AuthProvider = 'supabase' | 'local' | 'external_jwt';
+export type AuthProvider = 'supabase' | 'local' | 'external_jwt' | 'oidc';
 export type AuthChangeEvent =
   | 'INITIAL_SESSION'
   | 'SIGNED_IN'
@@ -49,17 +49,50 @@ type AuthenticatedUserResponse = {
   id: string;
   email?: string | null;
   user_metadata?: Record<string, unknown> | null;
+  app_metadata?: Record<string, unknown> | null;
+  display_name?: string | null;
+  app_user_id?: string | null;
+  organization_id?: string | null;
+  organization_role?: string | null;
+  organization_status?: string | null;
+  role?: string | null;
 };
 
 export const authProvider = AUTH_PROVIDER as AuthProvider;
 export const isLocalAuthProvider = authProvider === 'local';
 export const isTokenAuthProvider = authProvider === 'local' || authProvider === 'external_jwt';
+export const isOidcAuthProvider = authProvider === 'oidc';
 
 const TOKEN_SESSION_KEY = authProvider === 'local'
   ? 'attenly:local-auth-session'
   : `attenly:${AUTH_PROVIDER}:auth-session`;
 const AUTH_ERROR_KEY = 'attenly:auth-error';
+const AUTH_RETURN_TO_KEY = 'attenly:auth-return-to';
 const listeners = new Set<AuthStateCallback>();
+let oidcSessionCache: AppSession | null | undefined;
+let oidcSessionRequest: Promise<AppSession | null> | null = null;
+
+function backendUrl(path: string) {
+  return `${API_BASE_URL.replace(/\/$/, '')}${path}`;
+}
+
+/**
+ * Accept only a path on this application. The backend applies the same check;
+ * keeping it here also prevents accidentally constructing an open redirect.
+ */
+export function safeRelativeReturnPath(candidate?: string | null): string {
+  if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) {
+    return '/dashboard';
+  }
+
+  try {
+    const url = new URL(candidate, window.location.origin);
+    if (url.origin !== window.location.origin) return '/dashboard';
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return '/dashboard';
+  }
+}
 
 export function storeAuthError(message: string) {
   try {
@@ -96,6 +129,60 @@ function toAppSession(session: Session | null): AppSession | null {
       email: session.user.email,
       user_metadata: session.user.user_metadata,
       app_metadata: session.user.app_metadata,
+    },
+  };
+}
+
+export function storeAuthReturnPath(candidate: string): void {
+  try {
+    window.sessionStorage.setItem(AUTH_RETURN_TO_KEY, safeRelativeReturnPath(candidate));
+  } catch {
+    // Returning to the dashboard remains a safe fallback when storage is unavailable.
+  }
+}
+
+export function consumeAuthReturnPath(): string | null {
+  try {
+    const candidate = window.sessionStorage.getItem(AUTH_RETURN_TO_KEY);
+    window.sessionStorage.removeItem(AUTH_RETURN_TO_KEY);
+    return candidate ? safeRelativeReturnPath(candidate) : null;
+  } catch {
+    return null;
+  }
+}
+
+function toOidcSession(authenticatedUser: AuthenticatedUserResponse): AppSession {
+  const displayName = authenticatedUser.display_name
+    ?? (typeof authenticatedUser.user_metadata?.display_name === 'string'
+      ? authenticatedUser.user_metadata.display_name
+      : undefined);
+
+  const organizationRole = authenticatedUser.organization_role ?? authenticatedUser.role;
+
+  return {
+    // OIDC provider tokens stay in the backend-for-frontend session. These
+    // empty compatibility fields keep consumers focused on session.user.
+    access_token: '',
+    refresh_token: '',
+    user: {
+      id: authenticatedUser.id,
+      email: authenticatedUser.email ?? undefined,
+      user_metadata: {
+        provider: 'oidc',
+        ...(displayName ? { display_name: displayName } : {}),
+        ...(authenticatedUser.user_metadata ?? {}),
+      },
+      app_metadata: {
+        ...(authenticatedUser.app_user_id ? { app_user_id: authenticatedUser.app_user_id } : {}),
+        ...(authenticatedUser.organization_id
+          ? { organization_id: authenticatedUser.organization_id }
+          : {}),
+        ...(organizationRole ? { role: organizationRole } : {}),
+        ...(authenticatedUser.organization_status
+          ? { organization_status: authenticatedUser.organization_status }
+          : {}),
+        ...(authenticatedUser.app_metadata ?? {}),
+      },
     },
   };
 }
@@ -150,12 +237,11 @@ function writeTokenSession(token: string, authenticatedUser: AuthenticatedUserRe
 }
 
 async function validateTokenWithBackend(token: string): Promise<AuthenticatedUserResponse> {
-  const apiBaseUrl = API_BASE_URL.replace(/\/$/, '');
   const tokenName = isLocalAuthProvider ? 'deployment access token' : 'identity token';
 
   let response: Response;
   try {
-    response = await fetch(`${apiBaseUrl}/auth/api/auth/me`, {
+    response = await fetch(backendUrl('/auth/api/auth/me'), {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
@@ -188,6 +274,54 @@ async function validateTokenWithBackend(token: string): Promise<AuthenticatedUse
   return user;
 }
 
+async function requestOidcSession(): Promise<AppSession | null> {
+  let response: Response;
+  try {
+    response = await fetch(backendUrl('/auth/api/auth/me'), {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+  } catch {
+    throw new Error('Unable to check your company session. Check that Attenly is running and try again.');
+  }
+
+  if (response.status === 401) {
+    oidcSessionCache = null;
+    return null;
+  }
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json() as { detail?: unknown };
+      detail = typeof body.detail === 'string' ? body.detail : '';
+    } catch {
+      // Use the status-specific fallback below when the response is not JSON.
+    }
+    throw new Error(detail || `Unable to check your company session (server returned ${response.status}).`);
+  }
+
+  const authenticatedUser = await response.json() as AuthenticatedUserResponse;
+  if (!authenticatedUser.id) {
+    throw new Error('The authentication server returned an invalid user identity.');
+  }
+
+  oidcSessionCache = toOidcSession(authenticatedUser);
+  return oidcSessionCache;
+}
+
+async function readOidcSession(): Promise<AppSession | null> {
+  if (oidcSessionCache !== undefined) return oidcSessionCache;
+  if (oidcSessionRequest) return oidcSessionRequest;
+
+  oidcSessionRequest = requestOidcSession();
+  try {
+    return await oidcSessionRequest;
+  } finally {
+    oidcSessionRequest = null;
+  }
+}
+
 function notifyTokenAuth(event: AuthChangeEvent, session: AppSession | null) {
   listeners.forEach((listener) => listener(event, session));
 }
@@ -195,6 +329,17 @@ function notifyTokenAuth(event: AuthChangeEvent, session: AppSession | null) {
 async function getSession(): Promise<AuthResult> {
   if (isTokenAuthProvider) {
     return { data: { session: readTokenSession() }, error: null };
+  }
+
+  if (isOidcAuthProvider) {
+    try {
+      return { data: { session: await readOidcSession() }, error: null };
+    } catch (error) {
+      return {
+        data: { session: null },
+        error: error instanceof Error ? error : new Error('Unable to check your company session.'),
+      };
+    }
   }
 
   const result = await requireSupabase().auth.getSession();
@@ -205,9 +350,16 @@ async function getSession(): Promise<AuthResult> {
 }
 
 function onAuthStateChange(callback: AuthStateCallback): AuthSubscription {
-  if (isTokenAuthProvider) {
+  if (isTokenAuthProvider || isOidcAuthProvider) {
     listeners.add(callback);
-    window.setTimeout(() => callback('INITIAL_SESSION', readTokenSession()), 0);
+    window.setTimeout(() => {
+      if (isTokenAuthProvider) {
+        callback('INITIAL_SESSION', readTokenSession());
+        return;
+      }
+
+      void getSession().then(({ data }) => callback('INITIAL_SESSION', data.session));
+    }, 0);
     return {
       data: {
         subscription: {
@@ -245,6 +397,10 @@ async function signInWithPassword(credentials: { email: string; password: string
     }
   }
 
+  if (isOidcAuthProvider) {
+    return { data: { session: null }, error: new Error('Use company SSO to sign in') };
+  }
+
   const result = await requireSupabase().auth.signInWithPassword(credentials);
   return {
     data: { session: toAppSession(result.data.session) },
@@ -256,9 +412,41 @@ async function signInWithToken(token: string) {
   return signInWithPassword({ email: LOCAL_AUTH_EMAIL, password: token });
 }
 
+async function signInWithOidc(returnTo = '/dashboard') {
+  if (!isOidcAuthProvider) {
+    return { data: { session: null }, error: new Error('Company SSO is not configured') };
+  }
+
+  const loginUrl = new URL(backendUrl('/auth/oidc/login'), window.location.origin);
+  loginUrl.searchParams.set('return_to', safeRelativeReturnPath(returnTo));
+  window.location.assign(loginUrl.toString());
+  return { data: { session: null }, error: null };
+}
+
 async function signOut(options?: SignOutOptions) {
   if (isTokenAuthProvider) {
     window.localStorage.removeItem(TOKEN_SESSION_KEY);
+    notifyTokenAuth('SIGNED_OUT', null);
+    return { error: null };
+  }
+
+  if (isOidcAuthProvider) {
+    let response: Response;
+    try {
+      response = await fetch(backendUrl('/auth/oidc/logout'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+    } catch {
+      return { error: new Error('Unable to sign out. Check that Attenly is running and try again.') };
+    }
+
+    if (!response.ok && response.status !== 401) {
+      return { error: new Error(`Unable to sign out (server returned ${response.status}).`) };
+    }
+
+    oidcSessionCache = null;
     notifyTokenAuth('SIGNED_OUT', null);
     return { error: null };
   }
@@ -267,22 +455,22 @@ async function signOut(options?: SignOutOptions) {
 }
 
 async function signUp(credentials: { email: string; password: string }) {
-  if (isTokenAuthProvider) {
-    return { data: null, error: new Error('Sign up is not available in token auth mode') };
+  if (isTokenAuthProvider || isOidcAuthProvider) {
+    return { data: null, error: new Error('Sign up is not available for this authentication provider') };
   }
   return requireSupabase().auth.signUp(credentials);
 }
 
 async function resetPasswordForEmail(email: string, options?: { redirectTo?: string }) {
-  if (isTokenAuthProvider) {
-    return { data: null, error: new Error('Password reset is not available in token auth mode') };
+  if (isTokenAuthProvider || isOidcAuthProvider) {
+    return { data: null, error: new Error('Password reset is not available for this authentication provider') };
   }
   return requireSupabase().auth.resetPasswordForEmail(email, options);
 }
 
 async function updateUser(attributes: { password?: string }) {
-  if (isTokenAuthProvider) {
-    return { data: null, error: new Error('Password updates are not available in token auth mode') };
+  if (isTokenAuthProvider || isOidcAuthProvider) {
+    return { data: null, error: new Error('Password updates are not available for this authentication provider') };
   }
   return requireSupabase().auth.updateUser(attributes);
 }
@@ -292,6 +480,7 @@ export const authClient = {
   onAuthStateChange,
   signInWithPassword,
   signInWithToken,
+  signInWithOidc,
   signOut,
   signUp,
   resetPasswordForEmail,

@@ -30,7 +30,7 @@ async def health_check(request: Request):
             "status": "healthy",
             "timestamp": int(time.time()),
             "service": "attenly-api",
-            "version": "1.0.0"
+            "version": "1.1.0"
         }
     )
 
@@ -132,7 +132,7 @@ async def readiness_check(request: Request):
             "status": overall_status,
             "timestamp": int(time.time()),
             "service": "attenly-api",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "checks": checks,
             "total_response_time_ms": total_time,
             "environment": os.getenv("ENV", "development")
@@ -147,7 +147,7 @@ async def metrics_endpoint(request: Request):
     metrics = [
         "# HELP attenly_health_check Process health status.",
         "# TYPE attenly_health_check gauge",
-        "attenly_health_check{service=\"attenly-api\",version=\"1.0.0\"} 1",
+        "attenly_health_check{service=\"attenly-api\",version=\"1.1.0\"} 1",
         "",
         "# HELP attenly_uptime_seconds Process uptime in seconds.",
         "# TYPE attenly_uptime_seconds gauge",

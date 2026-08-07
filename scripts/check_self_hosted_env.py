@@ -9,10 +9,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from typing import Dict, Iterable, List
+from urllib.parse import urlsplit
 
 
 PLACEHOLDER_MARKERS = (
     "replace-with",
+    "paste_",
     "your_",
     "your-",
     "your ",
@@ -37,6 +39,24 @@ GEMINI_SHUT_DOWN_MODELS = {
         f"{CURRENT_GEMINI_EMBEDDING_MODEL}"
     ),
 }
+SAFE_OIDC_ID_TOKEN_ALGORITHMS = {
+    "RS256",
+    "RS384",
+    "RS512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "ES256",
+    "ES384",
+    "ES512",
+    "EdDSA",
+}
+COOKIE_NAME_CHARACTERS = frozenset(
+    "!#$%&'*+-.^_`|~"
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+)
 
 
 def parse_env(path: Path) -> Dict[str, str]:
@@ -110,6 +130,143 @@ def validate(env: Dict[str, str]) -> tuple[List[str], List[str]]:
                 "EXTERNAL_JWT_SECRET or EXTERNAL_JWT_JWKS_URL is required when "
                 "AUTH_PROVIDER=external_jwt"
             )
+    elif auth_provider == "oidc":
+        for key in (
+            "OIDC_DISCOVERY_URL",
+            "OIDC_CLIENT_ID",
+            "OIDC_CALLBACK_URL",
+            "OIDC_USER_ROLE",
+            "OIDC_ADMIN_ROLE",
+            "OIDC_ORGANIZATION_SLUG",
+            "OIDC_ORGANIZATION_NAME",
+        ):
+            require(errors, env, key, when="AUTH_PROVIDER=oidc")
+        client_auth_method = provider(
+            env,
+            "OIDC_CLIENT_AUTH_METHOD",
+            "client_secret_post",
+        )
+        if client_auth_method not in {
+            "client_secret_basic",
+            "client_secret_post",
+            "none",
+        }:
+            errors.append(
+                "OIDC_CLIENT_AUTH_METHOD must be client_secret_basic, "
+                "client_secret_post, or none"
+            )
+        if client_auth_method != "none":
+            require(errors, env, "OIDC_CLIENT_SECRET", when="OIDC confidential client auth")
+        if "openid" not in env.get("OIDC_SCOPES", "openid profile email").split():
+            errors.append("OIDC_SCOPES must include openid")
+        allowed_algorithms = {
+            value.strip()
+            for value in env.get("OIDC_ALLOWED_ID_TOKEN_ALGORITHMS", "RS256").split(",")
+            if value.strip()
+        }
+        if not allowed_algorithms:
+            errors.append("OIDC_ALLOWED_ID_TOKEN_ALGORITHMS cannot be empty")
+        unsupported_algorithms = allowed_algorithms - SAFE_OIDC_ID_TOKEN_ALGORITHMS
+        if unsupported_algorithms:
+            errors.append(
+                "OIDC_ALLOWED_ID_TOKEN_ALGORITHMS contains unsupported values: "
+                + ", ".join(sorted(unsupported_algorithms))
+            )
+        if not env.get("OIDC_ROLES_CLAIM", "roles").strip():
+            errors.append("OIDC_ROLES_CLAIM cannot be blank")
+        user_role = env.get("OIDC_USER_ROLE", "Attenly.User").strip()
+        admin_role = env.get("OIDC_ADMIN_ROLE", "Attenly.Admin").strip()
+        if user_role and admin_role and user_role == admin_role:
+            errors.append("OIDC_USER_ROLE and OIDC_ADMIN_ROLE must be different")
+        for key, default, minimum, maximum in (
+            ("OIDC_SESSION_TTL_HOURS", "12", 1, 168),
+            ("OIDC_LOGIN_TTL_SECONDS", "600", 60, 1800),
+            ("OIDC_CLOCK_SKEW_SECONDS", "60", 0, 300),
+        ):
+            try:
+                value = int(env.get(key, default))
+                if value < minimum or value > maximum:
+                    errors.append(f"{key} must be between {minimum} and {maximum}")
+            except ValueError:
+                errors.append(f"{key} must be an integer")
+        cookie_names = {
+            "OIDC_SESSION_COOKIE_NAME": env.get(
+                "OIDC_SESSION_COOKIE_NAME", "__Host-attenly_session"
+            ).strip(),
+            "OIDC_LOGIN_COOKIE_NAME": env.get(
+                "OIDC_LOGIN_COOKIE_NAME", "__Host-attenly_oidc_flow"
+            ).strip(),
+        }
+        invalid_cookie_names = [
+            key
+            for key, value in cookie_names.items()
+            if not value or any(character not in COOKIE_NAME_CHARACTERS for character in value)
+        ]
+        if invalid_cookie_names:
+            errors.append(
+                "OIDC cookie names are blank or invalid: "
+                + ", ".join(invalid_cookie_names)
+            )
+        if cookie_names["OIDC_SESSION_COOKIE_NAME"] == cookie_names["OIDC_LOGIN_COOKIE_NAME"]:
+            errors.append("OIDC session and login cookie names must be different")
+        allow_insecure = provider(env, "OIDC_ALLOW_INSECURE_HTTP", "false") in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if not allow_insecure:
+            for key in ("OIDC_DISCOVERY_URL", "OIDC_CALLBACK_URL"):
+                value = env.get(key, "")
+                if value and not value.startswith("https://"):
+                    errors.append(f"{key} must use HTTPS")
+        environment = provider(env, "ENV", "development")
+        cookie_secure = provider(
+            env,
+            "OIDC_COOKIE_SECURE",
+            "true" if environment == "production" else "false",
+        ) in {"1", "true", "yes", "on"}
+        if not cookie_secure and any(
+            value.startswith("__Host-") for value in cookie_names.values()
+        ):
+            errors.append(
+                "__Host- OIDC cookie names require OIDC_COOKIE_SECURE=true; "
+                "use non-prefixed cookie names only for local HTTP development"
+            )
+        if environment == "production" and not cookie_secure:
+            errors.append("OIDC_COOKIE_SECURE must be true in production")
+        if environment == "production" and allow_insecure:
+            errors.append("OIDC_ALLOW_INSECURE_HTTP cannot be enabled in production")
+        if environment == "production":
+            for key, value in cookie_names.items():
+                if value and not value.startswith("__Host-"):
+                    errors.append(f"{key} must use the __Host- prefix in production")
+        cors_origins = {
+            origin.strip()
+            for origin in env.get("CORS_ORIGINS", "").split(",")
+        }
+        if "*" in cors_origins:
+            errors.append("CORS_ORIGINS cannot contain '*' with OIDC authentication")
+        callback_url = env.get("OIDC_CALLBACK_URL", "").strip()
+        app_url = env.get("APP_URL", "https://app.attenly.ca").strip()
+        if callback_url and app_url:
+            callback = urlsplit(callback_url)
+            application = urlsplit(app_url)
+            if (
+                callback.scheme.lower(),
+                callback.netloc.casefold(),
+            ) != (
+                application.scheme.lower(),
+                application.netloc.casefold(),
+            ):
+                errors.append(
+                    "OIDC_CALLBACK_URL and APP_URL must use the same origin for the "
+                    "cookie-backed login flow"
+                )
+        if database_provider != "sqlalchemy":
+            errors.append("OIDC authentication requires DATABASE_PROVIDER=sqlalchemy")
+        if storage_provider != "filesystem":
+            errors.append("OIDC authentication requires STORAGE_PROVIDER=filesystem")
     elif auth_provider != "supabase":
         errors.append(f"Unsupported AUTH_PROVIDER for self-hosting: {auth_provider}")
 

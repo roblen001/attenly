@@ -567,23 +567,35 @@ class FileProcessingPerformanceMonitor:
         
         logger.log(level, "=" * 60)
     
-    def export_metrics(self, filepath: str, last_n_files: int = 1000) -> None:
-        """Export performance metrics to JSON file"""
+    def build_export_data(self, last_n_files: int = 1000) -> Dict[str, Any]:
+        """Build a lock-safe snapshot suitable for an authorized download."""
         with self._lock:
             recent_sessions = list(self._completed_sessions)[-last_n_files:]
-            
-            export_data = {
-                "export_timestamp": datetime.now().isoformat(),
-                "total_sessions": len(recent_sessions),
-                "sessions": [session.to_dict() for session in recent_sessions],
-                "summary": self.get_performance_summary(last_n_files),
-                "performance_thresholds": self.performance_thresholds
-            }
-            
-            with open(filepath, 'w') as f:
-                json.dump(export_data, f, indent=2, default=str)
-            
-            logger.info(f"📤 Exported {len(recent_sessions)} processing sessions to {filepath}")
+            sessions = [session.to_dict() for session in recent_sessions]
+            performance_thresholds = dict(self.performance_thresholds)
+
+        # get_performance_summary() acquires the same non-reentrant lock. Call
+        # it only after releasing the snapshot lock to avoid deadlocking every
+        # export request.
+        export_data = {
+            "export_timestamp": datetime.now().isoformat(),
+            "total_sessions": len(sessions),
+            "sessions": sessions,
+            "summary": self.get_performance_summary(last_n_files),
+            "performance_thresholds": performance_thresholds,
+        }
+
+        return export_data
+
+    def export_metrics(self, filepath: str, last_n_files: int = 1000) -> None:
+        """Export performance metrics to a caller-selected JSON file."""
+        export_data = self.build_export_data(last_n_files)
+        sessions = export_data["sessions"]
+
+        with open(filepath, 'w') as f:
+            json.dump(export_data, f, indent=2, default=str)
+
+        logger.info(f"📤 Exported {len(sessions)} processing sessions to {filepath}")
 
 
 # Global performance monitor instance

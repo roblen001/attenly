@@ -12,7 +12,7 @@ hosted models, and optionally process reports through a Microsoft 365 mailbox.
 to see document ingestion, agent configuration, report generation, and
 traceable source references.
 
-The first self-hosted release is designed as a **single-workspace internal
+The default self-hosted profile is designed as a **single-workspace internal
 deployment**:
 
 - one deployment access token unlocks one shared workspace;
@@ -23,15 +23,15 @@ deployment**:
 - the web service and long-running email worker run separately so reports stay
   responsive while email jobs are processed.
 
-Local usernames/passwords and browser OIDC redirects are not included in this
-release. Organizations that need individual identities can use the existing
-Supabase profile or place Attenly behind an identity-aware gateway that supplies
-validated JWTs. See [Authentication](#authentication).
+Enterprise deployments can instead enable generic browser OIDC, with Microsoft
+Entra as the first documented provider. Each employee gets a distinct Attenly user, private files
+and reports, organization-shared agents, and locally revocable sessions. See
+[Authentication](#authentication) and [Enterprise SSO](docs/ENTERPRISE_SSO.md).
 
 ## Requirements
 
 - Docker Engine or Docker Desktop with Compose v2
-- an x86-64 Docker host for the published `v1.0.0` images; this release does
+- an x86-64 Docker host for the published `v1.1.0` images; this release does
   not publish or test native ARM64 images
 - Python 3.10 or newer for the setup and preflight scripts
 - a model endpoint, or a Gemini API key
@@ -206,12 +206,28 @@ To change the browser port, regenerate the environment file with, for example,
 | Mode | Intended use | Current behavior |
 | --- | --- | --- |
 | `local` | Trusted internal pilot | One shared bearer token and workspace identity |
+| `oidc` | Enterprise browser SSO | Generic Authorization Code + PKCE BFF; Microsoft Entra is the first documented target; distinct users, private files/reports, and organization-shared agents |
 | `external_jwt` | Company gateway or IdP integration | Validates an HMAC secret or issuer/audience/JWKS; the user pastes/provides the token |
 | `supabase` | Existing hosted or multi-user deployment | Supabase browser authentication and provider-backed persistence |
 
+For a local Microsoft Entra test, the guided command below preserves the
+existing model/storage configuration, securely prompts for the three Entra
+values, and validates the result:
+
+```powershell
+python scripts/configure_oidc_env.py .env.docker-test
+```
+
+Use the Directory (tenant) ID, Application (client) ID, and client secret Value.
+Do not use the app Object ID or the client Secret ID. Continue with the exact
+build/start command in [Enterprise SSO](docs/ENTERPRISE_SSO.md).
+
 The default local profile is not user-account management. Every person using
-the same token can see the same agents and reports. Do not expose it directly to
-the public internet. Put production deployments behind HTTPS, firewall rules,
+the same token shares one identity. For enterprise users, use `oidc`: files,
+saved reports, usage, and email settings remain scoped to the signed-in user;
+custom agents are visible to active members of the deployment organization.
+Agent creators and organization admins can edit/delete them. Put every
+production deployment behind HTTPS, firewall rules,
 and the organization’s normal access controls.
 
 ## Configuration and customization
@@ -224,7 +240,7 @@ documented in [Provider matrix](docs/PROVIDER_MATRIX.md).
 Important example files:
 
 - `.env.example` — recommended single-workspace Docker profile
-- `.env.enterprise.example` — external JWT and company endpoint example
+- `.env.enterprise.example` — Microsoft Entra/generic OIDC and company endpoint example
 - `.env.default.example` — original Supabase-hosted profile
 - `.env.local.example` — expanded local profile reference
 
@@ -265,6 +281,7 @@ expectations.
 ## Documentation
 
 - [Self-hosting guide](docs/SELF_HOSTING.md)
+- [Enterprise SSO](docs/ENTERPRISE_SSO.md)
 - [Model gateways](docs/MODEL_GATEWAYS.md)
 - [Microsoft Graph and other connectors](docs/CONNECTORS.md)
 - [Provider matrix](docs/PROVIDER_MATRIX.md)

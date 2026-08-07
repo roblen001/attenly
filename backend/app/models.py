@@ -2,6 +2,7 @@
 # models.py
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -13,15 +14,310 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid as UUID,
 )
 from datetime import datetime, timezone
 from uuid import uuid4
 from .db import Base
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+
+class Organization(Base):
+    """An enterprise boundary for members and organization-shared agents."""
+
+    __tablename__ = "organizations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    status = Column(String(32), nullable=False, default="active")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    memberships = relationship(
+        "OrganizationMembership",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
+    agents = relationship("Agent", back_populates="organization")
+    sessions = relationship(
+        "AppSession",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'blocked')",
+            name="ck_organization_status",
+        ),
+    )
+
+
+class AppUser(Base):
+    """An Attenly user independent of any particular identity provider.
+
+    ``resource_owner_id`` deliberately remains a string because existing private
+    resources use string ``user_id`` columns. Authentication principals should
+    continue passing this value to those existing ownership filters.
+    """
+
+    __tablename__ = "app_users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    resource_owner_id = Column(String(255), nullable=False, unique=True, index=True)
+    email = Column(String(320), nullable=True)
+    display_name = Column(String(255), nullable=True)
+    status = Column(String(32), nullable=False, default="active")
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    identities = relationship(
+        "AuthIdentity",
+        back_populates="app_user",
+        cascade="all, delete-orphan",
+    )
+    memberships = relationship(
+        "OrganizationMembership",
+        back_populates="app_user",
+        cascade="all, delete-orphan",
+        foreign_keys="OrganizationMembership.app_user_id",
+    )
+    sessions = relationship(
+        "AppSession",
+        back_populates="app_user",
+        cascade="all, delete-orphan",
+    )
+    created_agents = relationship(
+        "Agent",
+        back_populates="created_by_user",
+        foreign_keys="Agent.created_by_user_id",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'blocked')",
+            name="ck_app_user_status",
+        ),
+    )
+
+
+class AuthIdentity(Base):
+    """A verified external identity bound to an internal user."""
+
+    __tablename__ = "auth_identities"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    app_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider = Column(String(80), nullable=False)
+    issuer = Column(String(2048), nullable=False)
+    subject = Column(String(512), nullable=False)
+    tenant_id = Column(String(255), nullable=True)
+    object_id = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    app_user = relationship("AppUser", back_populates="identities")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "issuer",
+            "subject",
+            name="uq_auth_identity_issuer_subject",
+        ),
+        UniqueConstraint(
+            "provider",
+            "tenant_id",
+            "object_id",
+            name="uq_auth_identity_provider_tenant_object",
+        ),
+        CheckConstraint(
+            "(tenant_id IS NULL AND object_id IS NULL) OR "
+            "(tenant_id IS NOT NULL AND object_id IS NOT NULL)",
+            name="ck_auth_identity_tenant_object_pair",
+        ),
+    )
+
+
+class OrganizationMembership(Base):
+    """A user's role and locally enforced access status within an organization."""
+
+    __tablename__ = "organization_memberships"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    app_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role = Column(String(32), nullable=False, default="user")
+    status = Column(String(32), nullable=False, default="active")
+    blocked_at = Column(DateTime(timezone=True), nullable=True)
+    blocked_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    block_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    organization = relationship("Organization", back_populates="memberships")
+    app_user = relationship(
+        "AppUser",
+        back_populates="memberships",
+        foreign_keys=[app_user_id],
+    )
+    blocked_by_user = relationship("AppUser", foreign_keys=[blocked_by_user_id])
+
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "app_user_id",
+            name="uq_organization_membership_user",
+        ),
+        CheckConstraint(
+            "role IN ('user', 'admin')",
+            name="ck_organization_membership_role",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'blocked')",
+            name="ck_organization_membership_status",
+        ),
+        Index(
+            "idx_organization_memberships_org_status",
+            "organization_id",
+            "status",
+        ),
+    )
+
+
+class AppSession(Base):
+    """An opaque browser session; only a one-way token hash is persisted."""
+
+    __tablename__ = "app_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    app_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    revoked_reason = Column(String(255), nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+
+    app_user = relationship("AppUser", back_populates="sessions")
+    organization = relationship("Organization", back_populates="sessions")
+
+    __table_args__ = (
+        Index(
+            "idx_app_sessions_user_org_active",
+            "app_user_id",
+            "organization_id",
+            "revoked_at",
+        ),
+    )
+
+
+class OIDCLoginTransaction(Base):
+    """Short-lived server-side state for Authorization Code + PKCE logins."""
+
+    __tablename__ = "oidc_login_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider = Column(String(80), nullable=False, default="oidc")
+    state_hash = Column(String(64), nullable=False, unique=True, index=True)
+    browser_binding_hash = Column(String(64), nullable=False)
+    nonce = Column(String(255), nullable=False)
+    code_verifier = Column(Text, nullable=False)
+    redirect_uri = Column(Text, nullable=False)
+    return_to = Column(Text, nullable=False, default="/")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SecurityAuditEvent(Base):
+    """An append-only record of security-relevant identity actions."""
+
+    __tablename__ = "security_audit_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    actor_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    target_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    event_type = Column(String(100), nullable=False, index=True)
+    outcome = Column(String(32), nullable=False, default="success")
+    event_metadata = Column("metadata", JSON, nullable=False, default=dict)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
 
 class Agent(Base):
     __tablename__ = "agents"
@@ -38,6 +334,18 @@ class Agent(Base):
     
     # Custom agent fields
     user_id = Column(String, nullable=True)  # Links custom agents to their creators (nullable for prebuilt agents)
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     is_custom = Column(Boolean, nullable=False, default=False)  # Distinguishes custom from prebuilt agents
     created_by_name = Column(String, nullable=True)  # User's display name for agent attribution
     
@@ -49,6 +357,12 @@ class Agent(Base):
         "AgentQuestion",
         back_populates="agent",
         cascade="all, delete-orphan",
+    )
+    organization = relationship("Organization", back_populates="agents")
+    created_by_user = relationship(
+        "AppUser",
+        back_populates="created_agents",
+        foreign_keys=[created_by_user_id],
     )
 
 class AgentQuestion(Base):

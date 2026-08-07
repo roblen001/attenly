@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { authClient, type AppSession } from '../../libs/auth';
+import { authClient, authProvider, type AppSession } from '../../libs/auth';
 
 const urlHasRecovery = () => {
+  if (authProvider !== 'supabase') return false;
   const q = new URLSearchParams(window.location.search);
   return q.get('type') === 'recovery' || window.location.hash.includes('type=recovery');
 };
@@ -10,12 +11,14 @@ export function useAuth() {
   const [session, setSession] = useState<AppSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(
-    urlHasRecovery() || localStorage.getItem('auth:recovery') === '1'
+    authProvider === 'supabase'
+      && (urlHasRecovery() || localStorage.getItem('auth:recovery') === '1')
   );
 
   // keep LS in sync
   useEffect(() => {
-    if (isPasswordRecovery) localStorage.setItem('auth:recovery', '1');
+    if (authProvider !== 'supabase') localStorage.removeItem('auth:recovery');
+    else if (isPasswordRecovery) localStorage.setItem('auth:recovery', '1');
     else localStorage.removeItem('auth:recovery');
   }, [isPasswordRecovery]);
 
@@ -60,9 +63,16 @@ export function useAuth() {
   const signInWithToken = (token: string) =>
     authClient.signInWithToken(token);
 
+  const signInWithOidc = (returnTo?: string) =>
+    authClient.signInWithOidc(returnTo);
+
   const signOut = async () => {
     setLoading(true);
-    await authClient.signOut();
+    const result = await authClient.signOut();
+    if (result.error) {
+      setLoading(false);
+      throw result.error;
+    }
     setIsPasswordRecovery(false);
   };
 
@@ -76,6 +86,7 @@ export function useAuth() {
     isPasswordRecovery,
     signIn,
     signInWithToken,
+    signInWithOidc,
     signOut,
     clearRecovery,
   };

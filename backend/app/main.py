@@ -6,11 +6,13 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.db import Base, engine
-from app.routers import auth, agents, email_ingest, credits
+from app.routers import auth, agents, email_ingest, credits, performance
 from app.routes import health
 from app.config import (
+    AUTH_PROVIDER,
     DATABASE_AUTO_CREATE_TABLES,
     DATABASE_PROVIDER,
+    ENVIRONMENT,
     INBOUND_EMAIL_PROVIDER,
     validate_config,
     get_config_summary,
@@ -33,10 +35,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Attenly", 
-    version="1.0.0",
+    version="1.1.0",
     description="AI-powered document processing and report generation platform",
-    docs_url="/docs" if os.getenv("ENV") != "production" else None,
-    redoc_url="/redoc" if os.getenv("ENV") != "production" else None
+    docs_url="/docs" if ENVIRONMENT != "production" else None,
+    redoc_url="/redoc" if ENVIRONMENT != "production" else None
 )
 
 # Validate configuration on startup
@@ -50,11 +52,23 @@ except ValueError as e:
     sys.exit(1)
 
 # Create SQLAlchemy tables for development and SQLite/open-source profiles.
-if os.getenv("ENV") != "production" or (
+if ENVIRONMENT != "production" or (
     DATABASE_PROVIDER == "sqlalchemy" and DATABASE_AUTO_CREATE_TABLES
 ):
-    logger.info("Creating SQLAlchemy database tables")
-    Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        from app.services.identity_schema_migration import migrate_local_identity_schema
+
+        migration = migrate_local_identity_schema(engine)
+        logger.info(
+            "SQLite identity schema ready (created tables=%s, added agent columns=%s, "
+            "added identity columns=%s)",
+            migration.created_tables,
+            migration.added_agent_columns,
+            migration.added_identity_columns,
+        )
+    else:
+        logger.info("Creating SQLAlchemy database tables")
+        Base.metadata.create_all(bind=engine)
 
 # CORS configuration 
 cors_origins = os.getenv("CORS_ORIGINS",
@@ -63,7 +77,7 @@ cors_origins = os.getenv("CORS_ORIGINS",
 cors_origins = [o.strip() for o in cors_origins]
 
 # dev extras…
-if os.getenv("ENV") != "production":
+if ENVIRONMENT != "production":
     cors_origins += [
         "http://127.0.0.1:5173",
         "http://localhost:5173",
@@ -74,7 +88,7 @@ if os.getenv("ENV") != "production":
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=False,   # you're using bearer tokens
+    allow_credentials=AUTH_PROVIDER == "oidc",
     allow_methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS"],
     allow_headers=[
         "Authorization","Content-Type","X-Correlation-ID","Idempotency-Key",
@@ -129,6 +143,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/auth", tags=["authentication"])
+app.include_router(auth.oidc_router, tags=["authentication"])
+app.include_router(performance.router, tags=["agents"])
 app.include_router(agents.router, tags=["agents"])
 app.include_router(email_ingest.router, tags=["email-ingest"])
 app.include_router(credits.router, tags=["credits"])
@@ -148,13 +164,13 @@ if __name__ == "__main__":
     import uvicorn
     
     port = int(os.getenv("PORT", 8000))
-    host = "0.0.0.0" if os.getenv("ENV") == "production" else "127.0.0.1"
+    host = "0.0.0.0" if ENVIRONMENT == "production" else "127.0.0.1"
     
     uvicorn.run(
         "app.main:app", 
         host=host, 
         port=port, 
-        reload=os.getenv("ENV") != "production",
+        reload=ENVIRONMENT != "production",
         access_log=True,
         log_level="info",
         server_header=False

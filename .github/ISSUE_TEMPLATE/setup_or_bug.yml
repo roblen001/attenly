@@ -1,0 +1,58 @@
+name: Setup help or bug report
+description: Tell us where installation or a report workflow failed.
+title: "[Setup/Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Attenly. Early-user friction is useful feedback. Do not include API keys, access tokens, private documents, or unredacted logs.
+  - type: input
+    id: version
+    attributes:
+      label: Attenly version
+      description: Release tag, image tag, or commit SHA.
+      placeholder: v1.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Published Docker Compose images
+        - Built locally with Docker Compose
+        - Source development environment
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Model provider and model
+      description: For example, Ollama with qwen3.5:9b. Do not include credentials.
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      description: Include the step you reached and the exact visible error.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Relevant logs, browser errors, operating system, CPU architecture, and Docker version.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Sensitive data check
+      options:
+        - label: I removed credentials, private documents, personal data, and confidential log content.
+          required: true

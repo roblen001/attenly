@@ -1,0 +1,47 @@
+name: Workflow request
+description: Describe a recurring document-to-report workflow Attenly should support.
+title: "[Workflow]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We are looking for real recurring report workflows. Describe the shape of the work, but do not upload confidential source documents.
+  - type: input
+    id: role
+    attributes:
+      label: Team or role
+      placeholder: Compliance analyst, legal operations, insurance broker...
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Source documents
+      description: What arrives, in which formats, and how often?
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Desired report
+      description: What sections, answers, evidence, or export must the finished report contain?
+    validations:
+      required: true
+  - type: textarea
+    id: current_process
+    attributes:
+      label: Current process
+      description: How is the report made today, and where is the most painful manual step?
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Deployment or review requirements
+      description: For example, local models, Microsoft 365, OIDC, source citations, or human approval.
+  - type: checkboxes
+    id: pilot
+    attributes:
+      label: Early-user follow-up
+      options:
+        - label: I am open to testing this workflow and reporting where it fails.

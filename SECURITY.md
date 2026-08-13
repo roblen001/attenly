@@ -23,17 +23,19 @@ fixed security-response SLA.
 
 ## Supported versions
 
-Security fixes are made on the latest tagged `1.0.x` release. The
-`open-sourcing` branch is a development branch and may change before a tag is
-published. Older and untagged versions may need to upgrade before receiving a
-fix.
+Security fixes are made on the latest published GitHub release. Older releases,
+untagged commits, and development branches may need to upgrade before receiving
+a fix.
 
 ## Current security model
 
 - The default self-hosted profile uses one shared bearer token. It is suitable
   for a trusted internal workspace, not public multi-user account management.
+- `oidc` provides browser Authorization Code + PKCE login through a backend-for-
+  frontend session. Microsoft Entra is the first documented provider; generic
+  OIDC is also supported.
 - `external_jwt` validates configured issuer, audience, algorithm, and signing
-  material. Full browser OIDC redirect login is not implemented.
+  material for deployments where a company gateway supplies the token.
 - The Supabase profile uses Supabase authentication and row-level policies.
 - The default Compose stack publishes only the frontend port; Nginx proxies API
   traffic to the private backend container.
@@ -84,4 +86,4 @@ Organizations are responsible for evaluating and configuring the complete
 deployment—including identity, network, models, storage, backups, retention,
 and monitoring—for their legal and regulatory obligations.
 
-Last updated: July 2026.
+Last updated: August 2026.

@@ -1,19 +1,66 @@
 # Attenly
 
-Attenly turns source documents into structured, editable reports with traceable
-references. It can run on one company-controlled Docker host, use local or
-hosted models, and optionally process reports through a Microsoft 365 mailbox.
+**Self-hosted reporting where the handoff between AI and human expertise stays
+visible.**
 
-## Demo
+Attenly is built for subject-matter experts who need structured, recurring
+reports without becoming prompt engineers—and for technical teams that need
+control over deployment, models, and data. Define a reusable workflow, turn
+PDFs, DOCX files, and text documents into an editable draft, inspect each answer
+against its source, correct anything the model missed, and export the result.
 
-[![Watch the Attenly self-hosted demo: AI extracts the data, you design the reports](docs/assets/attenly-demo-thumbnail-v2.png)](https://www.youtube.com/watch?v=TW4FYGe4cGU)
+AI drafts; people remain responsible for the finished report. Source-linked
+references and the audit trail make it clear what the model produced and what a
+person changed.
 
-[Watch the Attenly self-hosted demo on YouTube](https://www.youtube.com/watch?v=TW4FYGe4cGU)
-to see document ingestion, agent configuration, report generation, and
-traceable source references.
+The default Docker profile keeps the application, database, and uploaded files
+on infrastructure you control. Document content is sent to the model provider
+you configure; use Ollama or a private OpenAI-compatible endpoint to keep that
+model path on your network.
 
-The default self-hosted profile is designed as a **single-workspace internal
-deployment**:
+[Watch the full demo](https://www.youtube.com/watch?v=TW4FYGe4cGU) ·
+[Quickstart](#quickstart) ·
+[Get setup help](https://github.com/roblen001/attenly/issues/new?template=setup_or_bug.yml) ·
+[Share a workflow](https://github.com/roblen001/attenly/issues/new?template=workflow_request.yml)
+
+[![Attenly generated report with source-linked evidence](docs/assets/attenly-report-workflow.gif)](https://www.youtube.com/watch?v=TW4FYGe4cGU)
+
+*Open a reference from the generated report and inspect the supporting source
+passage.*
+
+## What Attenly is for
+
+Attenly fits repeated document-to-report work: legal and compliance reviews,
+due-diligence packs, renewal summaries, and internal operational reports. It is
+designed for workflows where the output must be reusable, editable, and
+reviewable—not just conversational.
+
+Many document-AI products land in an awkward middle: too complex for the
+experts doing the work, but too closed or constrained for technical teams to
+operate confidently. Attenly separates those jobs. A technical owner can
+self-host and configure it; a subject-matter expert can define, generate,
+verify, and revise the report without hiding the boundary between AI and human
+work.
+
+| | |
+| --- | --- |
+| Best fit | The same report structure, rebuilt from changing source documents |
+| Output | Editable web reports with PDF export |
+| Review | Source-linked references and an audit trail |
+| Models | Ollama/private OpenAI-compatible endpoints or Gemini |
+| Deployment | Docker Compose on an x86-64 host |
+| Optional | Microsoft 365 mailbox ingestion and browser OIDC |
+
+## How it works
+
+1. Define the questions and layout once as a reusable agent.
+2. Upload documents directly or receive them through a Microsoft 365 mailbox.
+3. Generate a structured report and edit it in the browser.
+4. Open a reference to review the exact source, then export the result.
+
+## Deployment profiles
+
+The default self-hosted profile is a **single-workspace internal deployment**:
 
 - one deployment access token unlocks one shared workspace;
 - SQLite and uploaded documents persist in one Docker volume;
@@ -39,9 +86,17 @@ and reports, organization-shared agents, and locally revocable sessions. See
   document storage; allow at least 20 GB of free space when building the large
   OCR-enabled backend image from source
 
-## Start in a few minutes
+## Quickstart
 
 Choose one model setup, create `.env`, and start Compose.
+
+```bash
+git clone https://github.com/roblen001/attenly.git
+cd attenly
+```
+
+The first start downloads several gigabytes of container images. The published
+`v1.1.0` images currently require an x86-64 host.
 
 ### Option A: Ollama or another OpenAI-compatible endpoint
 
@@ -288,6 +343,19 @@ expectations.
 - [Docker architecture](docs/DOCKER_ARCHITECTURE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Security policy](SECURITY.md)
+
+## Community and support
+
+Attenly is looking for its first real-world workflows. A failed install or a
+workflow that does not fit is useful feedback—not a nuisance.
+
+- [Get help with setup or report generation](https://github.com/roblen001/attenly/issues/new?template=setup_or_bug.yml)
+- [Describe a recurring report you want to automate](https://github.com/roblen001/attenly/issues/new?template=workflow_request.yml)
+- [Contribute a focused fix](CONTRIBUTING.md)
+
+If Attenly solves a real problem for you, a GitHub star helps other self-hosters
+find it. Please do not include confidential documents, credentials, or private
+logs in an issue.
 
 ## Security
 

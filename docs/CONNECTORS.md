@@ -233,7 +233,8 @@ longer provide Attenly with an alias after Exchange normalizes it.
 5. Open the verification email and click its localhost verification link from
    the same computer running Attenly.
 6. Send a new email from the verified sender directly to `GRAPH_MAILBOX`. Include
-   one small PDF and put the report instruction in the message body.
+   one small PDF. The default agent selected in step 3 determines the report
+   workflow; the sender does not need to include instructions in the message body.
 7. Either wait for the next worker poll or trigger one immediate poll:
 
    ```bash
